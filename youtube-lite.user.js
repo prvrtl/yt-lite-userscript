@@ -90,6 +90,10 @@
     'yt-mealbar-promo-renderer',
     'ytd-mealbar-promo-renderer',
     DISABLE_HOVER_PREVIEWS && 'ytd-video-preview',
+    DISABLE_HOVER_PREVIEWS && 'ytd-rich-item-renderer video',
+    DISABLE_HOVER_PREVIEWS && 'yt-lockup-view-model video',
+    DISABLE_HOVER_PREVIEWS && 'ytd-video-renderer video',
+    DISABLE_HOVER_PREVIEWS && 'ytd-compact-video-renderer video',
     DISABLE_AMBIENT_MODE && '#cinematics canvas',
     PRUNE_LEGACY_ICONSETS && 'iron-iconset-svg',
     PRUNE_PLAYER_OVERLAYS && '.ytp-ce-element',
@@ -116,7 +120,7 @@
     #related ytd-compact-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 100px; }
     ytd-video-renderer, ytd-playlist-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 140px; }
     ${DISABLE_AMBIENT_MODE ? '#cinematics,' : ''}
-    ${DISABLE_HOVER_PREVIEWS ? 'ytd-video-preview, ytd-moving-thumbnail-renderer, ytd-thumbnail-overlay-loading-preview-renderer,' : ''}
+    ${DISABLE_HOVER_PREVIEWS ? 'ytd-video-preview, yt-thumbnail-view-model video, a#thumbnail video, ytd-thumbnail-overlay-loading-preview-renderer,' : ''}
     ${HIDE_SHORTS_SHELVES ? 'ytd-rich-section-renderer, ytd-reel-shelf-renderer,' : ''}
     ytd-miniplayer,
     ytd-merch-shelf-renderer,

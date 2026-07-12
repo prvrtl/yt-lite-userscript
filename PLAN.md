@@ -102,6 +102,12 @@ extension for the App Store.
 - [ ] App Store packaging notes (Xcode project, signing, review guidelines re:
       third-party site modification)
 
+### User requests folded in
+- [x] Inline hover-preview PLAYER fully removed (new yt-thumbnail-view-model
+      video variant included): sweeper deletes preview video elements on spawn,
+      freeing media buffers. Animated-webp "gif" thumbnails stay allowed
+      (user: "simple gif is enough"). Verified: 4s hover → 0 video elements.
+
 ## Per-iteration quality control
 
 Every loop iteration must pass ALL gates before commit:
