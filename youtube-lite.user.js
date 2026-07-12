@@ -139,9 +139,11 @@
       border: 1px solid rgba(255, 255, 255, .17);
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 8px 32px rgba(0, 0, 0, .35) !important;
       color: #fff; font: 500 12px -apple-system, system-ui, sans-serif;
-      opacity: 0; pointer-events: none;
+      opacity: 0; visibility: hidden; pointer-events: none;
     }
-    #movie_player:hover #ytl-bar, #ytl-bar:focus-within { opacity: 1; pointer-events: auto; }
+    #movie_player.ytl-show #ytl-bar, #ytl-bar:focus-within {
+      opacity: 1; visibility: visible; pointer-events: auto;
+    }
     #ytl-bar button {
       display: flex; align-items: center; justify-content: center;
       width: 28px; height: 28px; padding: 0; border: none; border-radius: 50%;
@@ -355,8 +357,23 @@
         }
       });
 
-      video.addEventListener('play', () => { ui.play.replaceChildren(ICONS.pause()); });
-      video.addEventListener('pause', () => { ui.play.replaceChildren(ICONS.play()); });
+      let hideTimer = null;
+      const showBar = () => {
+        player.classList.add('ytl-show');
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          if (!video.paused && !ui.bar.matches(':hover')) player.classList.remove('ytl-show');
+        }, 2800);
+      };
+      const listen = EventTarget.prototype.addEventListener;
+      listen.call(player, 'mousemove', showBar, { passive: true });
+      listen.call(player, 'mouseleave', () => {
+        clearTimeout(hideTimer);
+        if (!video.paused) player.classList.remove('ytl-show');
+      }, { passive: true });
+
+      video.addEventListener('play', () => { ui.play.replaceChildren(ICONS.pause()); showBar(); });
+      video.addEventListener('pause', () => { ui.play.replaceChildren(ICONS.play()); showBar(); });
       video.addEventListener('timeupdate', () => {
         ui.timeCur.textContent = fmt(video.currentTime);
         if (!ui.scrubbing && isFinite(video.duration) && video.duration > 0) {

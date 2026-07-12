@@ -25,11 +25,17 @@ extension for the App Store.
       prev hidden outside playlists; verified advancing a Mix, index 2 → 3)
 - [x] Caption language picker: CC select in glass bar via toggleSubtitles +
       setOption('captions','track'). API-verified (tracklist, track set to de-DE
-      rendered German segments, off works). PENDING: visual re-check of the final
-      sequence on a healthy session — YouTube throttled this session's media
-      requests mid-QC (infinite spinner on every video; API layer unaffected).
+      rendered German segments, off works). Visual re-check DONE on healthy
+      session: English track rendered live segments via the shipped code path.
       NOTE: never cycle loadModule/unloadModule('captions') — it reproducibly
       stalls the player at readyState 0.
+- [x] Player-bar autohide matching YouTube: show on mousemove, hide after 2.8s
+      idle while playing, hide on mouseleave, pinned while paused. Hidden state
+      is visibility:hidden (zero paint/backdrop cost in Safari).
+      NOTE: #movie_player shadows DOM addEventListener with the player API —
+      always bind via EventTarget.prototype.addEventListener.call(player, ...).
+      Bar render cost vs stock YT chrome: 33 nodes vs 161; show/hide is one
+      opacity/visibility flip vs YT's class-churn over the whole chrome subtree.
 - [ ] Autoplay toggle (player autonav state API)
 - [ ] Chapters: tick marks on the seek bar (from description/ytInitialData markers)
 - [ ] Seek-preview thumbnails (storyboard) — investigate cost/benefit, may skip for speed
