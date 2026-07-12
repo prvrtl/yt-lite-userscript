@@ -114,6 +114,7 @@
     ytd-comment-thread-renderer { content-visibility: auto; contain-intrinsic-size: 0 120px; }
     #related yt-lockup-view-model,
     #related ytd-compact-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 100px; }
+    ytd-video-renderer, ytd-playlist-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 140px; }
     ${DISABLE_AMBIENT_MODE ? '#cinematics,' : ''}
     ${DISABLE_HOVER_PREVIEWS ? 'ytd-video-preview, ytd-moving-thumbnail-renderer, ytd-thumbnail-overlay-loading-preview-renderer,' : ''}
     ${HIDE_SHORTS_SHELVES ? 'ytd-rich-section-renderer, ytd-reel-shelf-renderer,' : ''}
@@ -259,6 +260,12 @@
     }
     ytd-rich-item-renderer { border-radius: 18px; padding: 8px !important; }
     ytd-rich-item-renderer:hover { background: rgba(255, 255, 255, .05); }
+    ytd-video-renderer, ytd-playlist-renderer, ytd-channel-renderer, ytd-playlist-video-renderer {
+      border-radius: 16px !important;
+    }
+    ytd-video-renderer:hover, ytd-channel-renderer:hover, ytd-playlist-video-renderer:hover {
+      background: rgba(255, 255, 255, .05) !important;
+    }
     ` : ''}
   `;
 

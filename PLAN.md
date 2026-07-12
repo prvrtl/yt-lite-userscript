@@ -73,7 +73,12 @@ extension for the App Store.
       borders + inset highlight, no blur on large surfaces)
 - [x] Home grid polish: hover pills on grid cards (background flip only, no
       transforms/animations), rounded cards, glass chips
-- [ ] Search results, channel pages, subscriptions, history, playlists
+- [x] Search results, channel pages, subscriptions, history, playlists:
+      ytd-video-renderer / ytd-playlist-video-renderer / ytd-channel-renderer get
+      rounded cards + hover pills + content-visibility (long search lists now
+      skip offscreen layout). Channel pages reuse the rich-grid rules.
+      Spot-check in Safari: caption-snippet rows under search results rendered
+      light when dark was forced post-render (document-start forcing should fix).
 - [ ] Dialogs/menus (ytd-popup-container) glass restyle
 - [ ] Light theme variant (currently dark-only)
 
