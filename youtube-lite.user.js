@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Lite — fast, simple rendering
 // @namespace    yt-us
-// @version      2.7.0
+// @version      2.8.0
 // @description  Strips YouTube's heavy UI, deep DOM pruning, custom liquid-glass video player with full YouTube integration.
 // @updateURL    https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
@@ -319,8 +319,12 @@
       -webkit-backdrop-filter: blur(24px) saturate(1.8) !important;
     }
     ytd-masthead { border-bottom: 1px solid rgba(255, 255, 255, .06) !important; }
+    #frosted-glass { display: none !important; }
     html { --ytd-masthead-height: 52px !important; }
-    ytd-masthead #container.ytd-masthead { padding: 0 16px !important; }
+    ytd-masthead { height: 52px !important; }
+    ytd-masthead #container.ytd-masthead {
+      height: 52px !important; min-height: 52px !important; padding: 0 16px !important;
+    }
     ytd-masthead #end, ytd-masthead #buttons { gap: 4px !important; }
     #ytl-brand {
       font: 600 19px -apple-system, system-ui, sans-serif;
@@ -434,10 +438,27 @@
     ytd-guide-entry-renderer tp-yt-paper-item:hover, ytd-mini-guide-entry-renderer:hover {
       background: rgba(255, 255, 255, .08) !important; border-radius: 10px !important;
     }
+    ytd-watch-flexy #columns {
+      max-width: 1600px !important; margin: 0 auto !important;
+      padding: 16px 24px 0 !important; gap: 24px !important;
+    }
+    ytd-watch-flexy #primary, ytd-watch-flexy #primary-inner { min-width: 0 !important; }
+    ytd-watch-flexy #secondary, ytd-watch-flexy #secondary-inner {
+      width: 380px !important; min-width: 380px !important; padding: 0 !important;
+    }
+    ytd-watch-flexy #below { margin-top: 16px !important; }
+    ytd-watch-metadata h1, ytd-watch-metadata #title h1 {
+      font-size: 20px !important; font-weight: 600 !important; letter-spacing: -.02em !important;
+    }
+    ytd-watch-metadata ytd-button-renderer#clip-button,
+    ytd-watch-metadata ytd-donation-shelf-renderer,
+    ytd-watch-metadata #sponsor-button,
+    ytd-merch-shelf-renderer { display: none !important; }
     ytd-watch-metadata #description {
       background: rgba(255, 255, 255, .05) !important;
       border: none !important;
       border-radius: 12px !important;
+      padding: 12px !important;
     }
     ytd-comment-thread-renderer {
       background: transparent !important;
@@ -447,8 +468,11 @@
       margin-bottom: 0 !important;
       border-bottom: 1px solid rgba(255, 255, 255, .07) !important;
     }
+    ytd-comments #contents.ytd-item-section-renderer { padding: 0 !important; }
+    ytd-comments-header-renderer { margin-bottom: 8px !important; }
+    ytd-comments-header-renderer #title { font-size: 16px !important; font-weight: 600 !important; }
     #related yt-lockup-view-model, #related ytd-compact-video-renderer {
-      border-radius: 16px !important; padding: 6px !important;
+      border-radius: 16px !important; padding: 4px !important;
     }
     ytd-rich-item-renderer:hover, ytd-video-renderer:hover, ytd-playlist-video-renderer:hover,
     #related yt-lockup-view-model:hover, #related ytd-compact-video-renderer:hover {
@@ -460,6 +484,11 @@
     #metadata-line, ytd-video-meta-block, ytd-thumbnail-overlay-time-status-renderer {
       font-variant-numeric: tabular-nums !important;
     }
+    ytd-browse, ytd-search { --ytl-gutter: 24px; }
+    ytd-rich-grid-renderer {
+      max-width: 1720px !important; margin: 0 auto !important;
+      padding: 0 var(--ytl-gutter, 24px) !important;
+    }
     ytd-rich-grid-renderer {
       --ytd-rich-grid-item-min-width: ${GRID_MIN_WIDTH}px !important;
       --ytd-rich-grid-item-max-width: 100% !important;
@@ -467,6 +496,7 @@
       --ytd-rich-grid-content-max-width: 100% !important;
       --ytd-rich-grid-gutter-margin: 12px !important;
     }
+    ytd-rich-grid-renderer #contents.ytd-rich-grid-renderer { padding-top: 16px !important; }
     ytd-rich-grid-renderer #contents.ytd-rich-grid-renderer {
       display: grid !important;
       grid-template-columns: repeat(auto-fill, minmax(${GRID_MIN_WIDTH}px, 1fr)) !important;
@@ -538,7 +568,7 @@
     ytd-playlist-panel-renderer#playlist .header { background: transparent !important; }
     #playlist ytd-playlist-panel-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 80px; }
     #playlist ytd-playlist-panel-video-renderer:hover { background: rgba(255, 255, 255, .06) !important; }
-    #related ytd-item-section-renderer #contents { display: flex; flex-direction: column; gap: 4px !important; }
+    #related ytd-item-section-renderer #contents { display: flex; flex-direction: column; gap: 8px !important; }
     #playlist ytd-playlist-panel-video-renderer { padding: 2px 4px !important; border-radius: 12px !important; }
     ytd-playlist-panel-renderer#playlist #header { padding: 10px 14px !important; }
     ytd-comment-view-model { content-visibility: auto; contain-intrinsic-size: 0 90px; }

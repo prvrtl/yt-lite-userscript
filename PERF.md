@@ -16,28 +16,37 @@ then a scripted scroll of 150 rAF frames records real frame intervals.
 
 Reproduce: `scratchpad/bench.js` (Playwright).
 
-## Watch page (v2.7.0)
+## Watch page (v2.8.0)
 
 | Metric | Stock | iTube | Change |
 |---|---|---|---|
-| DOM nodes | 20,241 | 5,567 | **−72%** |
-| First contentful paint | 1,156 ms | 1,012 ms | −12% |
-| Frame time, median | 6.9 ms | 6.9 ms | ~0 |
-| **Frame time, p95** | **16.2 ms** | **8.3 ms** | **−49%** |
-| Janky frames (>16.7 ms) of 147 | 3 | **0** | −100% |
-| Long tasks | 9 | 6 | −33% |
-| Long-task time, total | 1,249 ms | 935 ms | **−25%** |
+| DOM nodes | 20,243 | 5,553 | **−73%** |
+| Frame time, median | 7.0 ms | 7.0 ms | ~0 |
+| **Frame time, p95** | **17.4 ms** | **7.7 ms** | **−56%** |
+| **Worst frame** | **22.5 ms** | **8.1 ms** | **−64%** |
+| Janky frames (>16.7 ms) of 147 | 12 | **0** | −100% |
+| Long tasks | 11 | 8 | −27% |
+| Long-task time, total | 1,501 ms | 1,108 ms | **−26%** |
 
-The p95 frame time is the number that matters for feel. The median is identical
-(both hit the frame budget most of the time); it is the *bad* frames — the ones
-you actually notice — that halve, and the janky ones that disappear. Main-thread
-blocking drops by a quarter.
+Per-run p95 — stock 17.4 / 17.1 / 17.9 ms, iTube 7.7 / 7.7 / 7.6 ms. Tight, no
+overlap, repeatable. The median frame is identical in both (both hit budget most
+of the time); what changes is the *bad* frames — the ones you actually feel —
+which halve, and the janky ones, which disappear entirely.
 
-**JS heap is NOT reported, because it is noise.** Per-run values across 3 runs:
-stock 118 / 123 / 155 MB, iTube 145 / 168 / 102 MB. The ranges overlap
-completely — GC timing dominates, so any heap number here (in either direction)
-is meaningless. Node count (5,517–5,571) and p95 (8.3–8.5 ms) are tight and
-repeatable; those are trustworthy.
+Killing `#frosted-glass` (see below) is a large part of this: it was a fixed,
+full-width, 112px-tall layer with `backdrop-filter: blur(48px)` — recomposited
+on every scroll frame.
+
+### Two metrics deliberately NOT reported, because they are noise
+
+- **JS heap.** Per-run: stock 118 / 123 / 155 MB, iTube 145 / 168 / 102 MB.
+  Ranges overlap completely; GC timing dominates.
+- **First contentful paint.** Per-run across two benchmarks: stock 608–1,272 ms,
+  iTube 776–1,208 ms. Network-dominated, ranges overlap. Earlier versions of this
+  file claimed −26% and then −12% FCP. **Both were noise.** Retracted.
+
+Node count and frame timing are tight and repeatable. Those are the only numbers
+worth trusting here.
 
 ## Grid cards (v2.7.0, channel grid, 30 cards)
 
@@ -83,6 +92,15 @@ cheaper selector matching.
 
 **Never trust a single run.** An earlier one-shot measurement produced a "4.1 ms
 p95 regression" that vanished entirely under repetition. It was GC noise.
+
+## The single most expensive thing YouTube ships
+
+`#frosted-glass` — a **fixed, full-width, 112px-tall** element (double the 56px
+header) with `backdrop-filter: blur(48px)`, `z-index: 2018`. A large blurred
+fixed layer must be recomposited every scroll frame. We already paint the
+masthead glass ourselves, so it is pure waste. It is now `display: none`.
+
+If you only ever apply one rule from this project, apply that one.
 
 ## Where the speed comes from
 
