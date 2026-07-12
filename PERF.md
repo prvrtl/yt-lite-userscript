@@ -93,6 +93,42 @@ cheaper selector matching.
 **Never trust a single run.** An earlier one-shot measurement produced a "4.1 ms
 p95 regression" that vanished entirely under repetition. It was GC noise.
 
+## Fast scrolling on grid pages (v2.9.0)
+
+Extreme fast scroll (180px per frame, 120 frames), channel grid, 120 cards both
+sides:
+
+| Metric | Stock | iTube |
+|---|---|---|
+| Frame time, p95 | 17.9 ms | 17.9 ms |
+| Janky frames | 6 | 6 |
+| Cumulative layout shift | 0 | 0 |
+| Skeleton placeholders visible | **52** | **0** |
+| Thumbnails lazy-loaded / faded in | 0 | all |
+
+**Honest read: grid scrolling is PARITY, not a win.** iTube is not faster here.
+What it removes is the *ugliness* — YouTube's grey skeleton blobs — and it does
+so without costing frames.
+
+Getting to parity took three fixes, and the first attempt was a REGRESSION
+(p95 15.8 → 29 ms, worst frame 420 ms). What actually mattered:
+
+1. **The sweeper must not run while the user is scrolling.** It now defers
+   (200ms after the last scroll event). Sweeping mid-scroll — full-document
+   querySelectorAll on every mutation, while YouTube streams in new cards — is
+   what produced the 420ms frame.
+2. **`contain: layout paint style` on cards** + a fixed `aspect-ratio: 16/9` on
+   thumbnails, so an image decoding cannot reflow the grid. p95 26.5 → 22 ms,
+   janky 13 → 7.
+3. **`contain-intrinsic-size: auto <len>`** (not a fixed guess). Our fixed 230px
+   was a lie — cards render 245px — so every offscreen card mis-reserved space.
+   `auto` makes the browser remember each element's real size.
+
+A confound worth recording: iTube's cards are denser, so at equal scroll
+distance it can render ~25% MORE cards than stock (150 vs 120). Per card the
+cost is identical; per frame it can be higher purely because more content passes
+the viewport. Always check the card count before comparing frame times.
+
 ## The single most expensive thing YouTube ships
 
 `#frosted-glass` — a **fixed, full-width, 112px-tall** element (double the 56px
