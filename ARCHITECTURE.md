@@ -53,8 +53,8 @@ keep laying out to decode) and its `<video>` is adopted by our stage.
 
 ## Stages
 
-1. **Shell + home** — app root, design system, home feed rendered from data. *(v3.0)*
-2. **Watch + player** — our stage, our controls, full API sync. *(v3.1)*
+1. **Shell + home** — app root, design system, home feed rendered from data. *(v3.0 — done)*
+2. **Watch + player** — our stage, our controls, full API sync. *(v3.1 — done: video adopted into our stage, readyState 4; seek, volume round-trip 42→42, mute, speed 1.5x, 9 quality levels, 30 caption tracks, no stall)*
 3. **Search + channel** — InnerTube-driven. *(v3.2)*
 4. **Comments + related** — continuations, bounded. *(v3.3)*
 
