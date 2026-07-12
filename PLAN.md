@@ -42,14 +42,20 @@ extension for the App Store.
       panel data (ytInitialData on load, yt-navigate-finish detail on SPA nav).
       Verified: 35-chapter video → 34 ticks (0:00 skipped), monotonic positions.
       SPA-nav refresh implemented via yt-navigate-finish; spot-check in Safari.
-- [ ] Seek-preview thumbnails (storyboard) — investigate cost/benefit, may skip for speed
+- [ ] Seek-preview thumbnails (storyboard) — INVESTIGATED: spec available via
+      getPlayerResponse().storyboards (playerStoryboardSpecRenderer / live variant).
+      Decision: implement lean — lazy sprite fetch on first hover, background-position
+      updates only, zero idle cost. Scheduled as its own iteration.
 - [x] Live streams: LIVE badge (red at live head, dimmed when behind; click =
       seekToLiveHead), duration hidden, DVR scrubbing kept. Live detection via
       getVideoData().isLive. Note: live duration is FINITE (growing DVR window),
       so isFinite checks do NOT detect liveness; raw DVR seeks snap to segment
       boundaries (same as stock).
-- [ ] Premieres: verify bar doesn't break on waiting-room player
-- [ ] Stats-for-nerds entry (right-click menu still works — verify and document)
+- [x] Premieres: defensively guarded (bar builds only when video+player exist,
+      all player APIs optional-chained, fmt handles NaN/Infinity). No live
+      premiere was available to test against — spot-check when one is encountered.
+- [x] Stats-for-nerds: verified — right-click context menu (8 items) opens with
+      chrome hidden, stats panel renders live data, close button works.
 - [ ] Restore access to features hidden with the chrome: report/loop/context-menu items
 - [ ] Ads/Premium edge cases: bar must not fight ad playback state
 - [ ] Shorts page: either restyle or redirect to normal watch UI
