@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Lite — fast, simple rendering
 // @namespace    yt-us
-// @version      2.3.0
+// @version      2.4.0
 // @description  Strips YouTube's heavy UI, deep DOM pruning, custom liquid-glass video player with full YouTube integration.
 // @updateURL    https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
@@ -239,6 +239,21 @@
     ` : ''}
 
     ${GLASS_UI ? `
+    html, ytd-app {
+      --yt-sys-color-baseline--base-background: #0b0c10 !important;
+      --yt-sys-color-baseline--raised-background: #16181f !important;
+      --yt-sys-color-baseline--text-primary: #f2f3f5 !important;
+      --yt-sys-color-baseline--text-secondary: #969aa6 !important;
+      --yt-sys-color-baseline--call-to-action: #0a84ff !important;
+      --yt-sys-color-baseline--outline: rgba(255, 255, 255, .11) !important;
+      --yt-sys-color-baseline--tonal-rim: rgba(255, 255, 255, .11) !important;
+      --yt-sys-color-baseline--additive-background: rgba(255, 255, 255, .07) !important;
+    }
+    ytd-app {
+      background:
+        radial-gradient(120% 70% at 82% 0%, rgba(10, 132, 255, .10), transparent 60%),
+        #0b0c10 !important;
+    }
     ytd-masthead, ytd-masthead #background {
       background: rgba(12, 12, 18, .62) !important;
       backdrop-filter: blur(24px) saturate(1.8) !important;
@@ -271,19 +286,21 @@
       border-radius: 999px !important;
     }
     yt-chip-cloud-chip-renderer[selected], .ytChipShapeActive {
-      background: rgba(255, 255, 255, .92) !important;
+      background: #0a84ff !important;
+      border-color: transparent !important;
     }
+    yt-chip-cloud-chip-renderer[selected] *, .ytChipShapeActive * { color: #fff !important; }
     .yt-spec-button-shape-next--tonal, .ytSpecButtonShapeNextTonal {
       background: rgba(255, 255, 255, .09) !important;
       border: 1px solid rgba(255, 255, 255, .12) !important;
     }
     .yt-spec-button-shape-next--filled, .ytSpecButtonShapeNextFilled {
-      background: #f1f1f1 !important;
+      background: #0a84ff !important;
       border: none !important;
     }
     .yt-spec-button-shape-next--filled .yt-spec-button-shape-next__button-text-content,
     .ytSpecButtonShapeNextFilled .ytSpecButtonShapeNextButtonTextContent {
-      color: #0f0f0f !important;
+      color: #fff !important;
     }
     ytd-thumbnail, yt-thumbnail-view-model, yt-thumbnail-view-model img, ytd-thumbnail img {
       border-radius: 12px !important; overflow: hidden;
@@ -311,8 +328,21 @@
     #related yt-lockup-view-model, #related ytd-compact-video-renderer {
       border-radius: 16px !important; padding: 6px !important;
     }
+    ytd-rich-item-renderer, ytd-video-renderer, ytd-playlist-video-renderer,
+    #related yt-lockup-view-model, #related ytd-compact-video-renderer {
+      background: rgba(255, 255, 255, .045) !important;
+      border: 1px solid rgba(255, 255, 255, .10) !important;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .09) !important;
+    }
+    ytd-rich-item-renderer:hover, ytd-video-renderer:hover, ytd-playlist-video-renderer:hover,
     #related yt-lockup-view-model:hover, #related ytd-compact-video-renderer:hover {
-      background: rgba(255, 255, 255, .06) !important;
+      background: rgba(255, 255, 255, .075) !important;
+    }
+    #video-title, .yt-lockup-metadata-view-model__title {
+      font-weight: 600 !important; letter-spacing: -.012em !important;
+    }
+    #metadata-line, ytd-video-meta-block, ytd-thumbnail-overlay-time-status-renderer {
+      font-variant-numeric: tabular-nums !important;
     }
     ytd-rich-grid-renderer {
       --ytd-rich-grid-item-min-width: ${GRID_MIN_WIDTH}px !important;
@@ -391,6 +421,42 @@
     #playlist ytd-playlist-panel-video-renderer { padding: 2px 4px !important; border-radius: 12px !important; }
     ytd-playlist-panel-renderer#playlist #header { padding: 10px 14px !important; }
     ytd-comment-view-model { content-visibility: auto; contain-intrinsic-size: 0 90px; }
+    html:not([dark]), html:not([dark]) ytd-app {
+      --yt-sys-color-baseline--base-background: #f6f7f9 !important;
+      --yt-sys-color-baseline--raised-background: #ffffff !important;
+      --yt-sys-color-baseline--text-primary: #14161c !important;
+      --yt-sys-color-baseline--text-secondary: #5c6169 !important;
+      --yt-sys-color-baseline--call-to-action: #007aff !important;
+      --yt-sys-color-baseline--outline: rgba(15, 17, 22, .11) !important;
+      --yt-sys-color-baseline--tonal-rim: rgba(15, 17, 22, .11) !important;
+      --yt-sys-color-baseline--additive-background: rgba(15, 17, 22, .06) !important;
+    }
+    html:not([dark]) ytd-app {
+      background:
+        radial-gradient(120% 70% at 82% 0%, rgba(0, 122, 255, .08), transparent 60%),
+        #f6f7f9 !important;
+    }
+    html:not([dark]) ytd-rich-item-renderer,
+    html:not([dark]) ytd-video-renderer,
+    html:not([dark]) ytd-playlist-video-renderer,
+    html:not([dark]) #related yt-lockup-view-model,
+    html:not([dark]) #related ytd-compact-video-renderer {
+      background: rgba(15, 17, 22, .035) !important;
+      border: 1px solid rgba(15, 17, 22, .09) !important;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8) !important;
+    }
+    html:not([dark]) yt-chip-cloud-chip-renderer[selected],
+    html:not([dark]) .ytChipShapeActive {
+      background: #007aff !important;
+    }
+    html:not([dark]) .yt-spec-button-shape-next--filled,
+    html:not([dark]) .ytSpecButtonShapeNextFilled {
+      background: #007aff !important;
+    }
+    html:not([dark]) .yt-spec-button-shape-next--filled .yt-spec-button-shape-next__button-text-content,
+    html:not([dark]) .ytSpecButtonShapeNextFilled .ytSpecButtonShapeNextButtonTextContent {
+      color: #fff !important;
+    }
     html:not([dark]) ytd-masthead, html:not([dark]) ytd-masthead #background {
       background: rgba(250, 250, 253, .65) !important;
     }
@@ -414,8 +480,7 @@
       background: rgba(0, 0, 0, .05) !important;
       border: 1px solid rgba(0, 0, 0, .10) !important;
     }
-    html:not([dark]) yt-chip-cloud-chip-renderer[selected], html:not([dark]) .ytChipShapeActive {
-      background: rgba(15, 15, 20, .88) !important;
+    html:not([dark]) yt-chip-cloud-chip-renderer[selected] *, html:not([dark]) .ytChipShapeActive * {
       color: #fff !important;
     }
     html:not([dark]) .yt-spec-button-shape-next--tonal, html:not([dark]) .ytSpecButtonShapeNextTonal {

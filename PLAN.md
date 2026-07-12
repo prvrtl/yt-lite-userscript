@@ -147,6 +147,22 @@ extension for the App Store.
       overflow, 2,215 nodes. contain-intrinsic-size lowered 320px → 250px to
       match the new card height.
 
+### M3.7 — iTube design system (done)
+- [x] Site recoloured from the landing page's palette by overriding YouTube's OWN
+      theme tokens rather than chasing individual rules. The token namespace is
+      `--yt-sys-color-baseline--*` (the old `--yt-spec-*` names are GONE from
+      current builds — re-probe the live DOM before assuming any token name).
+      Mapped: base-background #0b0c10, raised #16181f, text-primary #f2f3f5,
+      text-secondary #969aa6, call-to-action #0a84ff, outline/tonal-rim
+      rgba(255,255,255,.11). Light theme mirrors it (#f6f7f9 / #14161c / #007aff).
+- [x] Accent is now Apple blue, not YouTube white/red: filled buttons (Subscribe)
+      and the selected chip are #0a84ff with white text. Verified Subscribe
+      computes rgb(10,132,255) on white text.
+- [x] Feed/related/search rows are true glass cards (surface fill + hairline +
+      inset highlight), matching the landing page's card treatment.
+- [x] Ambient accent glow behind the app (single static radial gradient — no
+      repaint cost) and tightened title typography (600 weight, -.012em).
+
 ### M4 — Performance proof
 - [ ] Baseline vs iTube numbers: DOM nodes, LCP, long tasks, memory (Chrome tracing
       as proxy + manual Safari spot checks)
