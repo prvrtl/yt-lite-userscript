@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Lite — fast, simple rendering
 // @namespace    yt-us
-// @version      2.2.0
+// @version      2.3.0
 // @description  Strips YouTube's heavy UI, deep DOM pruning, custom liquid-glass video player with full YouTube integration.
 // @updateURL    https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
@@ -24,6 +24,7 @@
   const MAX_RELATED = 10;
   const MAX_COMMENT_THREADS = 10;
   const MAX_REPLIES = 10;
+  const GRID_MIN_WIDTH = 240;
   const GLASS_PLAYER = true;
   const GLASS_UI = true;
   const FORCE_DARK = true;
@@ -123,7 +124,7 @@
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
     }
-    ytd-rich-item-renderer { content-visibility: auto; contain-intrinsic-size: 0 320px; }
+    ytd-rich-item-renderer { content-visibility: auto; contain-intrinsic-size: 0 250px; }
     ytd-comment-thread-renderer { content-visibility: auto; contain-intrinsic-size: 0 120px; }
     #related yt-lockup-view-model,
     #related ytd-compact-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 100px; }
@@ -313,6 +314,22 @@
     #related yt-lockup-view-model:hover, #related ytd-compact-video-renderer:hover {
       background: rgba(255, 255, 255, .06) !important;
     }
+    ytd-rich-grid-renderer {
+      --ytd-rich-grid-item-min-width: ${GRID_MIN_WIDTH}px !important;
+      --ytd-rich-grid-item-max-width: 100% !important;
+      --ytd-rich-grid-item-margin: 12px !important;
+      --ytd-rich-grid-content-max-width: 100% !important;
+      --ytd-rich-grid-gutter-margin: 12px !important;
+    }
+    ytd-rich-grid-renderer #contents.ytd-rich-grid-renderer {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fill, minmax(${GRID_MIN_WIDTH}px, 1fr)) !important;
+      gap: 14px 12px !important;
+    }
+    ytd-rich-grid-renderer #contents ytd-rich-item-renderer {
+      width: auto !important; max-width: none !important; margin: 0 !important;
+    }
+    ytd-rich-item-renderer #details, ytd-rich-item-renderer #meta { min-width: 0 !important; }
     ytd-rich-item-renderer { border-radius: 16px; padding: 8px !important; }
     ytd-rich-item-renderer:hover { background: rgba(255, 255, 255, .05); }
     ytd-video-renderer, ytd-playlist-renderer, ytd-channel-renderer, ytd-playlist-video-renderer {

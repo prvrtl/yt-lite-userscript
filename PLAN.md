@@ -135,6 +135,18 @@ extension for the App Store.
       which only strips the continuation once the cap is reached (never before
       first load — that bug already bit us once with comments).
 
+### M3.6 — Home grid density (done)
+- [x] Home feed regridded: YouTube caps cards at --ytd-rich-grid-item-max-width
+      700px, which on a wide window yields 2-3 giant cards and a dead right
+      margin. Override the grid vars (max-width 100%, min-width GRID_MIN_WIDTH,
+      12px margins) and replace the flex #contents with
+      `display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr))`.
+      Density is tunable via the GRID_MIN_WIDTH const.
+      Verified at 1590px viewport: 3 cards (418px wide, 418x235 thumbs) → 5
+      cards (253px wide, 237x133 thumbs), rows uniform at 266px, no horizontal
+      overflow, 2,215 nodes. contain-intrinsic-size lowered 320px → 250px to
+      match the new card height.
+
 ### M4 — Performance proof
 - [ ] Baseline vs iTube numbers: DOM nodes, LCP, long tasks, memory (Chrome tracing
       as proxy + manual Safari spot checks)
