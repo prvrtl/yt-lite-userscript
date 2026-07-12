@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iTube — YouTube, rebuilt for Safari</title>
+<meta name="description" content="iTube — a userscript that makes YouTube fast and native-looking in Safari. 72% fewer DOM nodes, worst-case frame times halved.">
+<meta property="og:title" content="iTube — YouTube, rebuilt for Safari">
+<meta property="og:description" content="YouTube, rebuilt for Safari. 72% fewer DOM nodes. Worst-case frame times halved. Zero features lost.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫧</text></svg>">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  img { max-width: 100%; }
+</style>
+<style>
+  :root {
+    --ink: #0b0c10;
+    --ink-2: #16181f;
+    --paper: #f6f7f9;
+    --paper-2: #ffffff;
+    --bg: var(--ink);
+    --bg-2: #101218;
+    --surface: rgba(255, 255, 255, .045);
+    --surface-2: rgba(255, 255, 255, .07);
+    --hairline: rgba(255, 255, 255, .11);
+    --hairline-2: rgba(255, 255, 255, .18);
+    --text: #f2f3f5;
+    --muted: #969aa6;
+    --dim: #6d717c;
+    --accent: #0a84ff;
+    --accent-soft: rgba(10, 132, 255, .16);
+    --inset: inset 0 1px 0 rgba(255, 255, 255, .12);
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    --r-sm: 10px;
+    --r-md: 16px;
+    --r-lg: 22px;
+    --maxw: 1080px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: var(--paper);
+      --bg-2: #eceef2;
+      --surface: rgba(15, 17, 22, .035);
+      --surface-2: rgba(15, 17, 22, .06);
+      --hairline: rgba(15, 17, 22, .11);
+      --hairline-2: rgba(15, 17, 22, .18);
+      --text: #14161c;
+      --muted: #5c6169;
+      --dim: #868b95;
+      --accent: #007aff;
+      --accent-soft: rgba(0, 122, 255, .12);
+      --inset: inset 0 1px 0 rgba(255, 255, 255, .8);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: var(--ink);
+    --bg-2: #101218;
+    --surface: rgba(255, 255, 255, .045);
+    --surface-2: rgba(255, 255, 255, .07);
+    --hairline: rgba(255, 255, 255, .11);
+    --hairline-2: rgba(255, 255, 255, .18);
+    --text: #f2f3f5;
+    --muted: #969aa6;
+    --dim: #6d717c;
+    --accent: #0a84ff;
+    --accent-soft: rgba(10, 132, 255, .16);
+    --inset: inset 0 1px 0 rgba(255, 255, 255, .12);
+  }
+  :root[data-theme="light"] {
+    --bg: var(--paper);
+    --bg-2: #eceef2;
+    --surface: rgba(15, 17, 22, .035);
+    --surface-2: rgba(15, 17, 22, .06);
+    --hairline: rgba(15, 17, 22, .11);
+    --hairline-2: rgba(15, 17, 22, .18);
+    --text: #14161c;
+    --muted: #5c6169;
+    --dim: #868b95;
+    --accent: #007aff;
+    --accent-soft: rgba(0, 122, 255, .12);
+    --inset: inset 0 1px 0 rgba(255, 255, 255, .8);
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; letter-spacing: -.022em; }
+  h1 { font-size: clamp(40px, 6.4vw, 76px); line-height: 1.02; font-weight: 700; letter-spacing: -.038em; }
+  h2 { font-size: clamp(26px, 3vw, 34px); font-weight: 650; }
+  h3 { font-size: 19px; font-weight: 600; letter-spacing: -.012em; }
+  p { margin: 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+  .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--dim);
+  }
+  .lede { font-size: clamp(18px, 2vw, 21px); color: var(--muted); max-width: 60ch; }
+
+  /* ---------- hero ---------- */
+  header.hero {
+    position: relative;
+    padding: 96px 0 72px;
+    overflow: hidden;
+    border-bottom: 1px solid var(--hairline);
+    background:
+      radial-gradient(120% 90% at 78% 0%, var(--accent-soft), transparent 62%),
+      linear-gradient(180deg, var(--bg-2), var(--bg));
+  }
+  .hero-grid {
+    display: grid;
+    gap: 56px;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+  }
+  @media (min-width: 900px) {
+    .hero-grid { grid-template-columns: 1.02fr 1fr; gap: 48px; }
+  }
+  .hero-copy { display: flex; flex-direction: column; gap: 22px; align-items: flex-start; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 12px 5px 8px;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    background: var(--surface);
+    box-shadow: var(--inset);
+    font-size: 13px; color: var(--muted);
+  }
+  .badge b { color: var(--text); font-weight: 600; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 20px; border-radius: 999px;
+    font-size: 15px; font-weight: 600; border: 1px solid transparent;
+    cursor: pointer; font-family: inherit;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-ghost {
+    background: var(--surface); color: var(--text);
+    border-color: var(--hairline); box-shadow: var(--inset);
+  }
+  .btn-ghost:hover { background: var(--surface-2); }
+
+  /* ---------- the player bar: the script's own CSS ---------- */
+  .stage {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid var(--hairline);
+    background:
+      radial-gradient(90% 70% at 22% 18%, #3a4d7a, transparent 60%),
+      radial-gradient(80% 80% at 82% 78%, #6b3a5c, transparent 62%),
+      linear-gradient(150deg, #10131c, #2a1f2e 55%, #0d1016);
+  }
+  .stage::after {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, .028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, .028) 1px, transparent 1px);
+    background-size: 34px 34px;
+  }
+  .ytl-bar {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    width: min(94%, 560px); z-index: 2;
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 12px; border-radius: 22px;
+    background: rgba(18, 18, 24, .52);
+    backdrop-filter: blur(22px) saturate(1.7);
+    -webkit-backdrop-filter: blur(22px) saturate(1.7);
+    border: 1px solid rgba(255, 255, 255, .17);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 8px 32px rgba(0, 0, 0, .35);
+    color: #fff; font: 500 12px var(--sans);
+  }
+  .zone { display: flex; align-items: center; gap: 4px; flex: 0 0 96px; }
+  .zone.right { justify-content: flex-end; }
+  .center { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+  .ytl-bar button {
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; padding: 0; border: none; border-radius: 50%;
+    background: transparent; color: #fff; cursor: pointer; flex: none;
+  }
+  .ytl-bar button:hover { background: rgba(255, 255, 255, .14); }
+  .ytl-bar button[aria-expanded="true"] { background: rgba(255, 255, 255, .2); }
+  .time { flex: none; opacity: .85; font-variant-numeric: tabular-nums; }
+  .track {
+    position: relative; flex: 1; height: 4px; border-radius: 2px;
+    background: linear-gradient(to right,
+      rgba(255, 255, 255, .95) 38%,
+      rgba(255, 255, 255, .4) 38%,
+      rgba(255, 255, 255, .4) 62%,
+      rgba(255, 255, 255, .16) 62%);
+  }
+  .knob {
+    position: absolute; left: 38%; top: 50%;
+    width: 12px; height: 12px; margin: -6px 0 0 -6px;
+    border-radius: 50%; background: #fff;
+  }
+  .tick {
+    position: absolute; top: 50%; transform: translate(-50%, -50%);
+    width: 2px; height: 8px; border-radius: 1px; background: rgba(10, 10, 14, .55);
+  }
+  .vol {
+    width: 44px; height: 4px; border-radius: 2px; flex: none;
+    background: linear-gradient(to right, #fff 70%, rgba(255, 255, 255, .18) 70%);
+  }
+  .ytl-menu {
+    position: absolute; right: 10px; bottom: 100%;
+    min-width: 208px; padding: 6px; border-radius: 16px;
+    background: rgba(18, 18, 24, .72);
+    backdrop-filter: blur(22px) saturate(1.7);
+    -webkit-backdrop-filter: blur(22px) saturate(1.7);
+    border: 1px solid rgba(255, 255, 255, .17);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 8px 32px rgba(0, 0, 0, .35);
+    display: none;
+  }
+  .ytl-menu[data-open="true"] { display: block; }
+  .row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 14px; padding: 5px 8px; border-radius: 10px;
+  }
+  .row:hover { background: rgba(255, 255, 255, .08); }
+  .row > span { opacity: .7; }
+  .pill {
+    background: rgba(255, 255, 255, .1); color: #fff;
+    border: 1px solid rgba(255, 255, 255, .14); border-radius: 999px;
+    padding: 3px 9px; font: 500 11px var(--sans);
+  }
+  .caption {
+    position: absolute; left: 0; right: 0; bottom: -34px;
+    text-align: center; font-size: 13px; color: var(--dim);
+  }
+  .stage-note { margin-top: 44px; font-size: 13px; color: var(--dim); text-align: center; }
+
+  /* ---------- sections ---------- */
+  section { padding: 84px 0; border-bottom: 1px solid var(--hairline); }
+  .sec-head { display: flex; flex-direction: column; gap: 12px; margin-bottom: 44px; max-width: 62ch; }
+
+  .metrics { display: grid; gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); border-radius: var(--r-md); overflow: hidden; grid-template-columns: 1fr; }
+  @media (min-width: 700px) { .metrics { grid-template-columns: repeat(3, 1fr); } }
+  .metric { background: var(--bg); padding: 26px 24px; display: flex; flex-direction: column; gap: 6px; }
+  .metric .n {
+    font-size: 30px; font-weight: 660; letter-spacing: -.03em;
+    font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 9px;
+  }
+  .metric .was { font-size: 15px; color: var(--dim); text-decoration: line-through; font-weight: 400; }
+  .metric i { font-style: normal; font-size: .62em; font-weight: 500; opacity: .7; margin-left: 1px; }
+  .metric .arrow { color: var(--accent); font-weight: 500; }
+  .metric .lbl { font-size: 14px; color: var(--muted); }
+
+  .benefits { display: grid; gap: 20px; grid-template-columns: 1fr; }
+  @media (min-width: 780px) { .benefits { grid-template-columns: 1fr 1fr; } }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-md);
+    box-shadow: var(--inset);
+    padding: 26px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .card p { color: var(--muted); font-size: 16px; }
+  .card .k {
+    font-size: 12px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--accent);
+  }
+
+  /* keeps list */
+  .keeps { display: flex; flex-wrap: wrap; gap: 8px; }
+  .keep {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 13px 7px 10px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--hairline);
+    box-shadow: var(--inset); font-size: 14px; color: var(--text);
+  }
+  .check { color: var(--accent); font-weight: 700; font-size: 13px; }
+
+  /* install */
+  .install { display: grid; gap: 20px; grid-template-columns: 1fr; }
+  @media (min-width: 780px) { .install { grid-template-columns: 1fr 1fr; } }
+  .steps { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; counter-reset: s; }
+  .steps li {
+    display: grid; grid-template-columns: 24px 1fr; gap: 12px;
+    align-items: start; font-size: 16px; color: var(--muted); counter-increment: s;
+  }
+  .steps li::before {
+    content: counter(s);
+    display: grid; place-items: center;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--surface-2); border: 1px solid var(--hairline);
+    color: var(--text); font-size: 12px; font-weight: 640;
+    font-variant-numeric: tabular-nums;
+  }
+  .steps b { color: var(--text); font-weight: 600; }
+  .src {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 22px; padding: 12px 12px 12px 16px;
+    background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: var(--r-sm); box-shadow: var(--inset);
+    overflow-x: auto;
+  }
+  .src code { font-family: var(--mono); font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .copy {
+    margin-left: auto; flex: none;
+    padding: 7px 13px; border-radius: 7px;
+    background: var(--surface-2); border: 1px solid var(--hairline);
+    color: var(--text); font: 600 13px var(--sans); cursor: pointer;
+  }
+  .copy:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  footer { padding: 56px 0 72px; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; color: var(--dim); font-size: 14px; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <span class="badge"><span class="dot"></span><b>iTube</b> · userscript · v2.6.1</span>
+      <h1>YouTube, rebuilt<br>for Safari.</h1>
+      <p class="lede">
+        YouTube ships a DOM tuned for Chrome. In Safari it hauls around thousands of nodes
+        it never paints. iTube strips the page down, replaces the player chrome with a
+        Liquid&nbsp;Glass bar, and gives back every feature it removes.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/refs/heads/main/youtube-lite.user.js">Install the script</a>
+        <a class="btn btn-ghost" href="https://github.com/prvrtl/yt-lite-userscript">View source</a>
+      </div>
+    </div>
+
+    <div>
+      <div class="stage">
+        <div class="ytl-bar">
+          <div class="zone">
+            <button aria-label="Previous">
+              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M4 2.5h1.6v11H4z"/><path fill="currentColor" d="M13.5 2.5v11L6.5 8z"/></svg>
+            </button>
+            <button aria-label="Pause">
+              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M4 2h3v12H4zM9 2h3v12H9z"/></svg>
+            </button>
+            <button aria-label="Next">
+              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M10.4 2.5H12v11h-1.6z"/><path fill="currentColor" d="M2.5 2.5v11L9.5 8z"/></svg>
+            </button>
+          </div>
+
+          <div class="center">
+            <span class="time">4:21</span>
+            <div class="track">
+              <div class="tick" style="left: 18%"></div>
+              <div class="tick" style="left: 52%"></div>
+              <div class="tick" style="left: 74%"></div>
+              <div class="knob"></div>
+            </div>
+            <span class="time">11:31</span>
+          </div>
+
+          <div class="zone right">
+            <button aria-label="Mute">
+              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M2 6h3l4-3.5v11L5 10H2z"/><path stroke="currentColor" stroke-width="1.3" fill="none" d="M11 5.5a3 3 0 010 5"/></svg>
+            </button>
+            <div class="vol"></div>
+            <button id="more" aria-label="More controls" aria-expanded="true" aria-controls="menu">
+              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="3" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="13" cy="8" r="1.5" fill="currentColor"/></svg>
+            </button>
+            <button aria-label="Picture in picture">
+              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="8" y="8" width="5" height="3.5" rx="0.8" fill="currentColor"/></svg>
+            </button>
+            <button aria-label="Fullscreen">
+              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4"/></svg>
+            </button>
+          </div>
+
+          <div class="ytl-menu" id="menu" data-open="true">
+            <div class="row"><span>Speed</span><span class="pill">1×</span></div>
+            <div class="row"><span>Quality</span><span class="pill">1080p</span></div>
+            <div class="row"><span>Captions</span><span class="pill">English</span></div>
+            <div class="row"><span>Autoplay</span><span class="pill">On</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="stage-note">The player bar, rendered here with the script's own CSS. Three balanced zones, one overflow menu, 33 DOM nodes.</p>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Measured, not claimed</span>
+      <h2>Less page to render.</h2>
+      <p class="lede">
+        A live YouTube watch page, loaded twice in a headed browser — once stock, once with iTube
+        injected at document-start, exactly as a userscript manager runs it. Median of three runs.
+      </p>
+    </div>
+    <div class="metrics">
+      <div class="metric">
+        <span class="n"><span class="was">19,928</span><span class="arrow">→</span>5,599</span>
+        <span class="lbl">DOM nodes on a watch page — 72% removed</span>
+      </div>
+      <div class="metric">
+        <span class="n"><span class="was">14.5<i>ms</i></span><span class="arrow">→</span>7.7<i>ms</i></span>
+        <span class="lbl">Worst-case frame time while scrolling (p95) — the frames you actually feel, halved</span>
+      </div>
+      <div class="metric">
+        <span class="n"><span class="was">1,244<i>ms</i></span><span class="arrow">→</span>924<i>ms</i></span>
+        <span class="lbl">First contentful paint. Main-thread blocking drops 25%</span>
+      </div>
+    </div>
+    <p class="stage-note" style="margin-top: 28px; text-align: left;">
+      Measured in Chromium, not Safari — the DOM and script work are identical, but frame timing is
+      engine-specific. Method and the numbers that <em>didn't</em> improve are in
+      <a href="https://github.com/prvrtl/yt-lite-userscript/blob/main/PERF.md">PERF.md</a>.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Why it's worth installing</span>
+      <h2>Four things that actually matter.</h2>
+    </div>
+    <div class="benefits">
+      <div class="card">
+        <span class="k">Speed</span>
+        <h3>The page stops fighting Safari</h3>
+        <p>
+          The win is work that never happens. Off-screen comments, thumbnails and sidebar rows skip
+          layout entirely via <code>content-visibility</code>. Animations, transitions and shadows
+          are killed outright, so there is nothing to composite each frame. Hover-preview video
+          players — a real <code>&lt;video&gt;</code> element, with media buffers, per thumbnail —
+          are deleted the moment they spawn.
+        </p>
+      </div>
+      <div class="card">
+        <span class="k">Design</span>
+        <h3>It looks like it belongs on a Mac</h3>
+        <p>
+          The system typeface, macOS focus rings, sidebar selection pills and translucent glass
+          surfaces — with real blur reserved for small surfaces where Safari renders it cheaply.
+          Dark and light both. The Google look is gone.
+        </p>
+      </div>
+      <div class="card">
+        <span class="k">Parity</span>
+        <h3>You lose nothing</h3>
+        <p>
+          This is the hard part, and it's done. Quality, speed, caption languages, chapters,
+          seek-preview thumbnails, playlists, autoplay, PiP, live streams and DVR scrubbing,
+          stats-for-nerds, every keyboard shortcut — all of it still works.
+        </p>
+      </div>
+      <div class="card">
+        <span class="k">Memory</span>
+        <h3>The tab stops growing</h3>
+        <p>
+          Comments, replies and the related sidebar are capped, so an hour-long session doesn't
+          leave you with a tab holding thousands of nodes and a dozen buffered video elements.
+          Shorts redirect to the normal watch page, where you get a real scrubber.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Nothing removed</span>
+      <h2>Everything you'd miss, still there.</h2>
+    </div>
+    <div class="keeps">
+      <span class="keep"><span class="check">✓</span>Quality up to 4320p</span>
+      <span class="keep"><span class="check">✓</span>Playback speed</span>
+      <span class="keep"><span class="check">✓</span>Caption languages</span>
+      <span class="keep"><span class="check">✓</span>Chapter markers</span>
+      <span class="keep"><span class="check">✓</span>Seek-preview thumbnails</span>
+      <span class="keep"><span class="check">✓</span>Picture in Picture</span>
+      <span class="keep"><span class="check">✓</span>Playlists &amp; queue</span>
+      <span class="keep"><span class="check">✓</span>Autoplay toggle</span>
+      <span class="keep"><span class="check">✓</span>Live &amp; DVR scrubbing</span>
+      <span class="keep"><span class="check">✓</span>Keyboard shortcuts</span>
+      <span class="keep"><span class="check">✓</span>Stats for nerds</span>
+      <span class="keep"><span class="check">✓</span>Comments &amp; replies</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Two minutes</span>
+      <h2>Install it.</h2>
+      <p class="lede">iTube is a userscript — a single file, no build step, no tracking, no network calls of its own. It needs a userscript manager to run.</p>
+    </div>
+
+    <div class="install">
+      <div class="card">
+        <span class="k">Safari · recommended</span>
+        <h3>Userscripts</h3>
+        <ol class="steps">
+          <li>Install <b>Userscripts</b> from the Mac App Store — it's free.</li>
+          <li>Open <b>Safari → Settings → Extensions</b> and enable it, then allow it on <b>youtube.com</b>.</li>
+          <li>Click the puzzle icon in the toolbar, choose <b>Open&nbsp;app</b>, and set a scripts folder.</li>
+          <li>Paste the script from the link below into a new file ending in <b>.user.js</b>.</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <span class="k">Chrome, Edge, Firefox</span>
+        <h3>Tampermonkey</h3>
+        <ol class="steps">
+          <li>Install <b>Tampermonkey</b> (or Violentmonkey) from your browser's extension store.</li>
+          <li>Open the raw script link below — the manager offers to install it automatically.</li>
+          <li>Confirm, then reload <b>youtube.com</b>.</li>
+          <li>Updates arrive on their own: the script carries an update URL.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="src">
+      <code id="url">https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/refs/heads/main/youtube-lite.user.js</code>
+      <button class="copy" id="copy">Copy</button>
+    </div>
+  </div>
+</section>
+
+<footer class="wrap">
+  <span>iTube — a userscript by <a href="https://github.com/prvrtl">prvrtl</a>. Not affiliated with YouTube or Google.</span>
+  <span><a href="https://github.com/prvrtl/yt-lite-userscript">github.com/prvrtl/yt-lite-userscript</a></span>
+</footer>
+
+<script>
+  const more = document.getElementById('more');
+  const menu = document.getElementById('menu');
+  more.addEventListener('click', () => {
+    const open = menu.dataset.open !== 'true';
+    menu.dataset.open = String(open);
+    more.setAttribute('aria-expanded', String(open));
+  });
+
+  const copy = document.getElementById('copy');
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById('url').textContent.trim());
+      copy.textContent = 'Copied';
+      setTimeout(() => { copy.textContent = 'Copy'; }, 1600);
+    } catch (e) {
+      copy.textContent = 'Select it';
+      setTimeout(() => { copy.textContent = 'Copy'; }, 1600);
+    }
+  });
+</script>
+
+</body>
+</html>
