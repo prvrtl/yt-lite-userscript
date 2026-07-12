@@ -42,10 +42,12 @@ extension for the App Store.
       panel data (ytInitialData on load, yt-navigate-finish detail on SPA nav).
       Verified: 35-chapter video → 34 ticks (0:00 skipped), monotonic positions.
       SPA-nav refresh implemented via yt-navigate-finish; spot-check in Safari.
-- [ ] Seek-preview thumbnails (storyboard) — INVESTIGATED: spec available via
-      getPlayerResponse().storyboards (playerStoryboardSpecRenderer / live variant).
-      Decision: implement lean — lazy sprite fetch on first hover, background-position
-      updates only, zero idle cost. Scheduled as its own iteration.
+- [x] Seek-preview thumbnails (storyboard): hover the seek bar → glass-framed
+      preview with timestamp, parsed from getPlayerResponse().storyboards spec.
+      Lazy: nothing fetched until first hover; sprite changes swap one
+      background-image; position updates are background-position only. Verified:
+      spec parse (160x90, 5x5 grid, 1603 thumbs), sprite URL loads (800x450),
+      distinct sprites across positions. Disabled on live streams.
 - [x] Live streams: LIVE badge (red at live head, dimmed when behind; click =
       seekToLiveHead), duration hidden, DVR scrubbing kept. Live detection via
       getVideoData().isLive. Note: live duration is FINITE (growing DVR window),

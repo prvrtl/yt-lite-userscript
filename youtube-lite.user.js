@@ -175,6 +175,17 @@
       background: rgba(10, 10, 14, .55); pointer-events: none;
     }
     #ytl-vol { width: 64px; flex: none; }
+    #ytl-preview {
+      position: absolute; bottom: 24px; transform: translateX(-50%);
+      display: none; pointer-events: none; z-index: 10001;
+      border-radius: 10px; border: 1px solid rgba(255, 255, 255, .25);
+      overflow: hidden; background-color: #000; background-repeat: no-repeat;
+    }
+    #ytl-preview .ytl-ptime {
+      position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+      font: 600 11px -apple-system, system-ui, sans-serif; color: #fff;
+      background: rgba(0, 0, 0, .6); padding: 1px 6px; border-radius: 6px;
+    }
     #ytl-live { width: auto !important; border-radius: 999px !important; padding: 0 10px !important; font-weight: 600; }
     #ytl-live::before {
       content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
@@ -332,6 +343,44 @@
     });
     chapterSecs = parseChapters(window.ytInitialData);
 
+    let storyboard = null;
+    const parseStoryboard = (player) => {
+      storyboard = null;
+      try {
+        const spec = player.getPlayerResponse?.()?.storyboards?.playerStoryboardSpecRenderer?.spec;
+        if (!spec) return;
+        const parts = spec.split('|');
+        if (parts.length < 2) return;
+        const L = parts.length - 1;
+        const p = parts[L].split('#');
+        if (p.length < 8) return;
+        const [w, h, count, rows, cols, interval] = p.slice(0, 6).map(Number);
+        if (!w || !h || !count || !rows || !cols) return;
+        const url = parts[0].replace('$L', String(L - 1)).replace('$N', p[6])
+          + '&sigh=' + encodeURIComponent(p[7]);
+        storyboard = { url, w, h, count, rows, cols, interval };
+      } catch (e) {}
+    };
+
+    const updatePreview = (frac) => {
+      const sb = storyboard;
+      if (!sb || !ui || !wired || !isFinite(wired.duration) || !wired.duration) return;
+      const t = frac * wired.duration;
+      const per = sb.interval > 0 ? sb.interval : (wired.duration * 1000) / sb.count;
+      const idx = Math.min(sb.count - 1, Math.floor((t * 1000) / per));
+      const perSprite = sb.rows * sb.cols;
+      const within = idx % perSprite;
+      const src = sb.url.replace('$M', String(Math.floor(idx / perSprite)));
+      if (ui.preview.dataset.src !== src) {
+        ui.preview.dataset.src = src;
+        ui.preview.style.backgroundImage = 'url("' + src + '")';
+      }
+      ui.preview.style.backgroundPosition =
+        (-(within % sb.cols) * sb.w) + 'px ' + (-Math.floor(within / sb.cols) * sb.h) + 'px';
+      ui.preview.style.left = (frac * 100) + '%';
+      ui.ptime.textContent = fmt(t);
+    };
+
     const el = (tag, id, child) => {
       const e = document.createElement(tag);
       if (id) e.id = id;
@@ -365,11 +414,24 @@
       const fs = el('button', 'ytl-fs', ICONS.fs());
       const seekwrap = el('div', 'ytl-seekwrap');
       seekwrap.appendChild(seek);
+      const preview = el('div', 'ytl-preview');
+      const ptime = el('span', null); ptime.className = 'ytl-ptime';
+      preview.appendChild(ptime);
+      seekwrap.appendChild(preview);
+      seekwrap.addEventListener('pointerenter', () => {
+        if (storyboard && !ui.isLive) preview.style.display = 'block';
+      });
+      seekwrap.addEventListener('pointerleave', () => { preview.style.display = 'none'; });
+      seekwrap.addEventListener('pointermove', (e) => {
+        if (preview.style.display === 'none') return;
+        const rect = seekwrap.getBoundingClientRect();
+        updatePreview(Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)));
+      });
       const live = el('button', 'ytl-live', 'LIVE');
       live.style.display = 'none';
       bar.append(prev, play, next, timeCur, seekwrap, timeDur, live, mute, vol, speed, quality, cc, auto, pip, fs);
       player.appendChild(bar);
-      ui = { bar, prev, next, play, timeCur, seek, seekwrap, timeDur, live, mute, vol, speed, quality, cc, auto, pip, fs, scrubbing: false, isLive: false };
+      ui = { bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol, speed, quality, cc, auto, pip, fs, scrubbing: false, isLive: false };
       live.addEventListener('click', () => {
         if (player.seekToLiveHead) player.seekToLiveHead();
         else if (isFinite(video.duration)) video.currentTime = video.duration - 2;
@@ -531,6 +593,13 @@
         ui.isLive = !!player.getVideoData?.()?.isLive;
         ui.live.style.display = ui.isLive ? '' : 'none';
         ui.timeDur.style.display = ui.isLive ? 'none' : '';
+        parseStoryboard(player);
+        ui.preview.style.display = 'none';
+        ui.preview.dataset.src = '';
+        if (storyboard) {
+          ui.preview.style.width = storyboard.w + 'px';
+          ui.preview.style.height = storyboard.h + 'px';
+        }
         renderTicks();
       }
 
