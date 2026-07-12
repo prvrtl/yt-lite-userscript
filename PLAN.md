@@ -60,7 +60,12 @@ extension for the App Store.
       chrome hidden, stats panel renders live data, close button works.
 - [ ] Restore access to features hidden with the chrome: report/loop/context-menu items
 - [ ] Ads/Premium edge cases: bar must not fight ad playback state
-- [ ] Shorts page: either restyle or redirect to normal watch UI
+- [x] Shorts: redirect /shorts/<id> → /watch?v=<id> (REDIRECT_SHORTS toggle).
+      Chosen over restyling because the watch page GAINS functionality (Shorts
+      player lacks scrubber/speed/quality). Bare /shorts feed and channel
+      /shorts tabs untouched; runs at document-start and in the sweeper for SPA
+      navs. Regex verified against 6 URL shapes; live redirect spot-check in
+      Safari (no short reachable in this session's feeds).
 
 ### M3 — Liquid Glass everywhere
 - [ ] Watch page metadata, comments, sidebar as glass cards

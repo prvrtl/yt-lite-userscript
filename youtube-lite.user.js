@@ -24,6 +24,14 @@
   const GLASS_PLAYER = true;
   const GLASS_UI = true;
   const FORCE_DARK = true;
+  const REDIRECT_SHORTS = true;
+
+  const shortsToWatch = () => {
+    const m = location.pathname.match(/^\/shorts\/([\w-]{5,})/);
+    if (m) location.replace('/watch?v=' + m[1]);
+    return !!m;
+  };
+  if (REDIRECT_SHORTS && shortsToWatch()) return;
 
   const PANEL_KEEP = new Set(['engagement-panel-structured-description']);
   const RELATED_TAGS = new Set(['YT-LOCKUP-VIEW-MODEL', 'YTD-COMPACT-VIDEO-RENDERER']);
@@ -277,6 +285,7 @@
   let sweepScheduled = false;
   const sweep = () => {
     sweepScheduled = false;
+    if (REDIRECT_SHORTS && shortsToWatch()) return;
     if (FORCE_DARK && !document.documentElement.hasAttribute('dark')) {
       document.documentElement.setAttribute('dark', '');
     }
