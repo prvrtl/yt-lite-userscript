@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Lite — fast, simple rendering
 // @namespace    yt-us
-// @version      2.4.0
+// @version      2.5.0
 // @description  Strips YouTube's heavy UI, deep DOM pruning, custom liquid-glass video player with full YouTube integration.
 // @updateURL    https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
@@ -25,6 +25,8 @@
   const MAX_COMMENT_THREADS = 10;
   const MAX_REPLIES = 10;
   const GRID_MIN_WIDTH = 240;
+  const REMOVE_SHORTS = true;
+  const CLEAN_SIDEBAR = true;
   const GLASS_PLAYER = true;
   const GLASS_UI = true;
   const FORCE_DARK = true;
@@ -104,6 +106,9 @@
     DISABLE_HOVER_PREVIEWS && 'yt-lockup-view-model video',
     DISABLE_HOVER_PREVIEWS && 'ytd-video-renderer video',
     DISABLE_HOVER_PREVIEWS && 'ytd-compact-video-renderer video',
+    REMOVE_SHORTS && 'ytm-shorts-lockup-view-model',
+    REMOVE_SHORTS && 'ytd-reel-shelf-renderer',
+    REMOVE_SHORTS && 'ytd-reel-item-renderer',
     DISABLE_AMBIENT_MODE && '#cinematics canvas',
     PRUNE_LEGACY_ICONSETS && 'iron-iconset-svg',
     PRUNE_PLAYER_OVERLAYS && '.ytp-ce-element',
@@ -308,8 +313,41 @@
     #movie_player, ytd-watch-flexy #ytd-player {
       border-radius: 18px !important; overflow: hidden;
     }
+    ${REMOVE_SHORTS ? `
+    ytd-guide-entry-renderer:has(a[title="Shorts"]),
+    ytd-mini-guide-entry-renderer:has(a[title="Shorts"]),
+    yt-tab-shape[tab-title="Shorts"],
+    ytm-shorts-lockup-view-model,
+    ytd-reel-shelf-renderer { display: none !important; }
+    ` : ''}
+    ${CLEAN_SIDEBAR ? `
+    ytd-guide-renderer, tp-yt-app-drawer #contentContainer { background: transparent !important; }
+    ytd-guide-renderer #footer { display: none !important; }
+    ytd-guide-section-renderer {
+      padding: 10px 0 !important;
+      border-top: 1px solid rgba(255, 255, 255, .08) !important;
+    }
+    ytd-guide-section-renderer:first-of-type { border-top: none !important; }
+    #guide-section-title.ytd-guide-section-renderer {
+      font-size: 11px !important; font-weight: 600 !important;
+      letter-spacing: .08em !important; text-transform: uppercase !important;
+      color: #6d717c !important; padding: 4px 12px 6px 20px !important;
+    }
+    ytd-guide-entry-renderer tp-yt-paper-item {
+      height: 38px !important; min-height: 38px !important;
+      margin: 1px 8px !important; padding: 0 12px !important;
+      border-radius: 10px !important;
+    }
+    ytd-guide-entry-renderer yt-formatted-string { font-size: 14px !important; }
+    ytd-guide-entry-renderer[active] tp-yt-paper-item {
+      background: rgba(10, 132, 255, .16) !important;
+    }
+    ytd-guide-entry-renderer[active] yt-formatted-string,
+    ytd-guide-entry-renderer[active] yt-icon { color: #0a84ff !important; }
+    ytd-guide-entry-renderer[active] yt-icon svg { fill: #0a84ff !important; }
+    ` : ''}
     ytd-guide-entry-renderer tp-yt-paper-item:hover, ytd-mini-guide-entry-renderer:hover {
-      background: rgba(255, 255, 255, .08) !important; border-radius: 12px !important;
+      background: rgba(255, 255, 255, .08) !important; border-radius: 10px !important;
     }
     ytd-watch-metadata #description {
       background: rgba(255, 255, 255, .06) !important;
@@ -397,9 +435,8 @@
     ytd-thumbnail-overlay-time-status-renderer { font-variant-numeric: tabular-nums; }
     ::selection { background: rgba(10, 132, 255, .4); }
     ytd-app :focus-visible, ytd-masthead :focus-visible { outline: 2px solid #0a84ff !important; outline-offset: 2px; }
-    ytd-guide-entry-renderer[active] tp-yt-paper-item,
     ytd-mini-guide-entry-renderer[active] {
-      background: rgba(255, 255, 255, .12) !important; border-radius: 12px !important;
+      background: rgba(10, 132, 255, .16) !important; border-radius: 10px !important;
     }
     ytd-guide-section-renderer { content-visibility: auto; contain-intrinsic-size: 0 280px; }
     .yt-spec-button-shape-next--tonal:active, .ytSpecButtonShapeNextTonal:active {
@@ -525,8 +562,13 @@
     html:not([dark]) ytd-app :focus-visible, html:not([dark]) ytd-masthead :focus-visible { outline-color: #007aff !important; }
     html:not([dark]) ytd-guide-entry-renderer[active] tp-yt-paper-item,
     html:not([dark]) ytd-mini-guide-entry-renderer[active] {
-      background: rgba(0, 0, 0, .07) !important;
+      background: rgba(0, 122, 255, .12) !important;
     }
+    html:not([dark]) ytd-guide-entry-renderer[active] yt-formatted-string,
+    html:not([dark]) ytd-guide-entry-renderer[active] yt-icon { color: #007aff !important; }
+    html:not([dark]) ytd-guide-entry-renderer[active] yt-icon svg { fill: #007aff !important; }
+    html:not([dark]) ytd-guide-section-renderer { border-top: 1px solid rgba(15, 17, 22, .08) !important; }
+    html:not([dark]) #guide-section-title.ytd-guide-section-renderer { color: #868b95 !important; }
     html:not([dark]) .yt-spec-button-shape-next--tonal:active, html:not([dark]) .ytSpecButtonShapeNextTonal:active {
       background: rgba(0, 0, 0, .09) !important;
     }
@@ -567,6 +609,16 @@
     }
   };
 
+  const pruneShorts = () => {
+    for (const a of document.querySelectorAll('a[title="Shorts"]')) {
+      const entry = a.closest('ytd-guide-entry-renderer, ytd-mini-guide-entry-renderer');
+      if (entry) entry.remove();
+    }
+    for (const t of document.querySelectorAll('yt-tab-shape')) {
+      if (t.getAttribute('tab-title') === 'Shorts') t.remove();
+    }
+  };
+
   const capList = (containerSel, tags, max) => {
     if (!max) return;
     for (const c of document.querySelectorAll(containerSel)) {
@@ -592,6 +644,7 @@
     }
     for (const n of document.querySelectorAll(KILL)) n.remove();
     if (PRUNE_HIDDEN_PANELS) prunePanels();
+    if (REMOVE_SHORTS) pruneShorts();
     capList('#related ytd-item-section-renderer #contents', RELATED_TAGS, MAX_RELATED);
     capList('ytd-comments ytd-item-section-renderer > #contents', COMMENT_TAGS, MAX_COMMENT_THREADS);
     capList('ytd-comment-replies-renderer #expander-contents > #contents', REPLY_TAGS, MAX_REPLIES);

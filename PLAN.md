@@ -163,6 +163,22 @@ extension for the App Store.
 - [x] Ambient accent glow behind the app (single static radial gradient — no
       repaint cost) and tightened title typography (600 weight, -.012em).
 
+### M3.8 — Shorts removed, sidebar redesigned (done)
+- [x] Shorts gone everywhere (REMOVE_SHORTS): sidebar + mini-sidebar entries,
+      channel Shorts tab, reel shelves, shorts lockups. Redirect of /shorts/<id>
+      → /watch?v=<id> stays, so a shared Shorts link still plays (with a real
+      scrubber) instead of 404ing.
+      NOTE: the Shorts guide entry has NO href — it is JS-navigated — so the only
+      stable hook is `a[title="Shorts"]` ("Shorts" is not localized). Hidden via
+      `:has()` in CSS and REMOVED via pruneShorts() in the sweeper.
+      `:has()` must NOT go in the KILL selector string: one unsupported selector
+      makes the whole querySelectorAll throw and takes the entire sweep down.
+      Hence the separate guarded pruneShorts().
+- [x] Sidebar redesign (CLEAN_SIDEBAR): transparent ground, hairline section
+      separators, uppercase eyebrow section titles, 38px rows on 10px pills,
+      accent-tinted active row (blue fill + blue icon/label), and the legal-links
+      footer removed. Light theme mirrors it.
+
 ### M4 — Performance proof
 - [ ] Baseline vs iTube numbers: DOM nodes, LCP, long tasks, memory (Chrome tracing
       as proxy + manual Safari spot checks)
