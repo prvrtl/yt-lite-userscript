@@ -110,6 +110,31 @@ extension for the App Store.
       by specificity when FORCE_DARK is off. Player bar stays dark glass over
       video by design. Verified visually on home in light mode.
 
+### M3.5 — Compact + symmetrical pass (done)
+- [x] Player bar: 3 zones (#ytl-left / #ytl-center / #ytl-right) with the four
+      rarely-used controls (speed, quality, captions, autoplay) moved into an
+      overflow popover (#ytl-menu, "⋯"). Left/right zones use `flex: 0 0 190px`
+      — an EQUAL FIXED BASIS, not min-width: a floor lets the heavier right zone
+      grow (measured 150 vs 184px) and pushes the seek bar off-centre.
+      Verified: both zones 190px, #ytl-center centre-x == #ytl-bar centre-x
+      (545.5 == 545.5). Selects are REPARENTED, never recreated, so every
+      existing handler/populate path keeps working (speed 1.5x round-trip
+      verified through the menu).
+      NOTE: the popover must sit FLUSH on the bar (`bottom: 100%`). An 8px gap
+      leaves a band where the top element is #movie_player, not a bar
+      descendant, so bar.mouseleave fires and closes the menu before the cursor
+      reaches it. mouseleave also guards on `menu.contains(e.relatedTarget)`,
+      and the menu is force-closed on SPA nav (else the autohide guard keeps
+      the bar stuck visible).
+- [x] Masthead compacted via `--ytd-masthead-height: 52px` (set the var YT owns
+      rather than overriding heights, so sticky offsets stay consistent).
+- [x] One radius scale: 12 thumbnails / 16 cards+popups / 18 player / 22 bar.
+- [x] Compact rows: related list, playlist panel, menu items.
+- [x] Replies capped (MAX_REPLIES=10) — threads were bounded but replies were
+      not, so expanding a big thread grew the DOM without limit. Reuses capList,
+      which only strips the continuation once the cap is reached (never before
+      first load — that bug already bit us once with comments).
+
 ### M4 — Performance proof
 - [ ] Baseline vs iTube numbers: DOM nodes, LCP, long tasks, memory (Chrome tracing
       as proxy + manual Safari spot checks)

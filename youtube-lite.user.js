@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Lite — fast, simple rendering
 // @namespace    yt-us
-// @version      2.1.0
+// @version      2.2.0
 // @description  Strips YouTube's heavy UI, deep DOM pruning, custom liquid-glass video player with full YouTube integration.
 // @updateURL    https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
@@ -23,6 +23,7 @@
   const PRUNE_PLAYER_OVERLAYS = true;
   const MAX_RELATED = 10;
   const MAX_COMMENT_THREADS = 10;
+  const MAX_REPLIES = 10;
   const GLASS_PLAYER = true;
   const GLASS_UI = true;
   const FORCE_DARK = true;
@@ -38,6 +39,7 @@
   const PANEL_KEEP = new Set(['engagement-panel-structured-description']);
   const RELATED_TAGS = new Set(['YT-LOCKUP-VIEW-MODEL', 'YTD-COMPACT-VIDEO-RENDERER']);
   const COMMENT_TAGS = new Set(['YTD-COMMENT-THREAD-RENDERER']);
+  const REPLY_TAGS = new Set(['YTD-COMMENT-VIEW-MODEL', 'YTD-COMMENT-RENDERER']);
   const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
   const QUALITY_LABELS = {
     highres: '4320p', hd2160: '2160p', hd1440: '1440p', hd1080: '1080p',
@@ -80,6 +82,11 @@
     next: () => icon([
       ['path', { fill: 'currentColor', d: 'M10.4 2.5H12v11h-1.6z' }],
       ['path', { fill: 'currentColor', d: 'M2.5 2.5v11L9.5 8z' }],
+    ]),
+    more: () => icon([
+      ['circle', { cx: '3', cy: '8', r: '1.5', fill: 'currentColor' }],
+      ['circle', { cx: '8', cy: '8', r: '1.5', fill: 'currentColor' }],
+      ['circle', { cx: '13', cy: '8', r: '1.5', fill: 'currentColor' }],
     ]),
   };
 
@@ -146,8 +153,8 @@
     #ytl-bar {
       position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
       width: min(94%, 920px); z-index: 10000;
-      display: flex; align-items: center; gap: 10px;
-      padding: 9px 16px; border-radius: 22px;
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 12px; border-radius: 22px;
       background: rgba(18, 18, 24, .52);
       backdrop-filter: blur(22px) saturate(1.7) !important;
       -webkit-backdrop-filter: blur(22px) saturate(1.7) !important;
@@ -156,6 +163,25 @@
       color: #fff; font: 500 12px -apple-system, system-ui, sans-serif;
       opacity: 0; visibility: hidden; pointer-events: none;
     }
+    #ytl-left, #ytl-right { display: flex; align-items: center; gap: 4px; flex: 0 0 190px; }
+    #ytl-left { justify-content: flex-start; }
+    #ytl-right { justify-content: flex-end; }
+    #ytl-center { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+    #ytl-menu {
+      position: absolute; right: 10px; bottom: 100%;
+      display: none; min-width: 208px; padding: 6px; z-index: 10002;
+      border-radius: 16px;
+      background: rgba(18, 18, 24, .72);
+      backdrop-filter: blur(22px) saturate(1.7) !important;
+      -webkit-backdrop-filter: blur(22px) saturate(1.7) !important;
+      border: 1px solid rgba(255, 255, 255, .17);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 8px 32px rgba(0, 0, 0, .35) !important;
+    }
+    .ytl-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 5px 8px; border-radius: 10px; }
+    .ytl-row:hover { background: rgba(255, 255, 255, .08); }
+    .ytl-row > span { opacity: .7; }
+    #ytl-menu select { min-width: 96px; }
+    #ytl-menu #ytl-auto { width: auto; height: 22px; padding: 0 12px; border-radius: 999px; background: rgba(255, 255, 255, .12); font: 500 11px -apple-system, system-ui, sans-serif; }
     #movie_player.ytl-show #ytl-bar, #ytl-bar:focus-within {
       opacity: 1; visibility: visible; pointer-events: auto;
     }
@@ -190,7 +216,7 @@
       width: 2px; height: 8px; border-radius: 1px;
       background: rgba(10, 10, 14, .55); pointer-events: none;
     }
-    #ytl-vol { width: 64px; flex: none; }
+    #ytl-vol { width: 56px; flex: none; }
     #ytl-preview {
       position: absolute; bottom: 24px; transform: translateX(-50%);
       display: none; pointer-events: none; z-index: 10001;
@@ -218,6 +244,9 @@
       -webkit-backdrop-filter: blur(24px) saturate(1.8) !important;
     }
     ytd-masthead { border-bottom: 1px solid rgba(255, 255, 255, .09) !important; }
+    html { --ytd-masthead-height: 52px !important; }
+    ytd-masthead #container.ytd-masthead { padding: 0 16px !important; }
+    ytd-masthead #end, ytd-masthead #buttons { gap: 4px !important; }
     ytd-searchbox #container, .ytSearchboxComponentInputBox {
       background: rgba(255, 255, 255, .07) !important;
       border: 1px solid rgba(255, 255, 255, .15) !important;
@@ -256,7 +285,7 @@
       color: #0f0f0f !important;
     }
     ytd-thumbnail, yt-thumbnail-view-model, yt-thumbnail-view-model img, ytd-thumbnail img {
-      border-radius: 14px !important; overflow: hidden;
+      border-radius: 12px !important; overflow: hidden;
     }
     #movie_player, ytd-watch-flexy #ytd-player {
       border-radius: 18px !important; overflow: hidden;
@@ -273,18 +302,18 @@
     ytd-comment-thread-renderer {
       background: rgba(255, 255, 255, .045) !important;
       border: 1px solid rgba(255, 255, 255, .08) !important;
-      border-radius: 14px !important;
-      padding: 12px 16px !important;
-      margin-bottom: 10px !important;
+      border-radius: 16px !important;
+      padding: 10px 14px !important;
+      margin-bottom: 8px !important;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06) !important;
     }
     #related yt-lockup-view-model, #related ytd-compact-video-renderer {
-      border-radius: 14px !important; padding: 4px !important;
+      border-radius: 16px !important; padding: 6px !important;
     }
     #related yt-lockup-view-model:hover, #related ytd-compact-video-renderer:hover {
       background: rgba(255, 255, 255, .06) !important;
     }
-    ytd-rich-item-renderer { border-radius: 18px; padding: 8px !important; }
+    ytd-rich-item-renderer { border-radius: 16px; padding: 8px !important; }
     ytd-rich-item-renderer:hover { background: rgba(255, 255, 255, .05); }
     ytd-video-renderer, ytd-playlist-renderer, ytd-channel-renderer, ytd-playlist-video-renderer {
       border-radius: 16px !important;
@@ -313,6 +342,10 @@
     ytd-menu-service-item-renderer:hover, ytd-menu-navigation-item-renderer:hover {
       background: rgba(255, 255, 255, .09) !important;
     }
+    ytd-menu-service-item-renderer, ytd-menu-navigation-item-renderer {
+      min-height: 40px !important; border-radius: 10px !important; margin: 2px 6px !important;
+    }
+    ytd-menu-popup-renderer tp-yt-paper-listbox { padding: 6px 0 !important; }
     ytd-app *:not(.ytp-caption-segment):not(.ytp-caption-segment *) { font-family: -apple-system, system-ui, sans-serif !important; }
     ytd-thumbnail-overlay-time-status-renderer { font-variant-numeric: tabular-nums; }
     ::selection { background: rgba(10, 132, 255, .4); }
@@ -337,6 +370,10 @@
     ytd-playlist-panel-renderer#playlist .header { background: transparent !important; }
     #playlist ytd-playlist-panel-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 80px; }
     #playlist ytd-playlist-panel-video-renderer:hover { background: rgba(255, 255, 255, .06) !important; }
+    #related ytd-item-section-renderer #contents { display: flex; flex-direction: column; gap: 4px !important; }
+    #playlist ytd-playlist-panel-video-renderer { padding: 2px 4px !important; border-radius: 12px !important; }
+    ytd-playlist-panel-renderer#playlist #header { padding: 10px 14px !important; }
+    ytd-comment-view-model { content-visibility: auto; contain-intrinsic-size: 0 90px; }
     html:not([dark]) ytd-masthead, html:not([dark]) ytd-masthead #background {
       background: rgba(250, 250, 253, .65) !important;
     }
@@ -475,6 +512,7 @@
     if (PRUNE_HIDDEN_PANELS) prunePanels();
     capList('#related ytd-item-section-renderer #contents', RELATED_TAGS, MAX_RELATED);
     capList('ytd-comments ytd-item-section-renderer > #contents', COMMENT_TAGS, MAX_COMMENT_THREADS);
+    capList('ytd-comment-replies-renderer #expander-contents > #contents', REPLY_TAGS, MAX_REPLIES);
   };
   const scheduleSweep = () => {
     if (sweepScheduled) return;
@@ -620,16 +658,45 @@
       });
       const live = el('button', 'ytl-live', 'LIVE');
       live.style.display = 'none';
-      bar.append(prev, play, next, timeCur, seekwrap, timeDur, live, mute, vol, speed, quality, cc, auto, pip, fs);
+      const more = el('button', 'ytl-more', ICONS.more());
+      const menu = el('div', 'ytl-menu');
+      const left = el('div', 'ytl-left');
+      const center = el('div', 'ytl-center');
+      const right = el('div', 'ytl-right');
+      const row = (label, control) => {
+        const r = el('div');
+        r.className = 'ytl-row';
+        const s = el('span', null, label);
+        r.append(s, control);
+        return r;
+      };
+      menu.append(row('Speed', speed), row('Quality', quality), row('Captions', cc), row('Autoplay', auto));
+      left.append(prev, play, next);
+      center.append(timeCur, seekwrap, timeDur, live);
+      right.append(mute, vol, more, pip, fs);
+      bar.append(left, center, right, menu);
       player.appendChild(bar);
-      ui = { bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol, speed, quality, cc, auto, pip, fs, scrubbing: false, isLive: false };
+      ui = { bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol, speed, quality, cc, auto, pip, fs, scrubbing: false, isLive: false, more, menu, left, right };
+      const setMenu = (open) => { menu.style.display = open ? 'block' : 'none'; };
+      menu.style.display = 'none';
+      more.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = menu.style.display !== 'block';
+        if (open) { populateQuality(player); populateTracks(player); ui.syncAuto?.(); }
+        setMenu(open);
+      });
+      menu.addEventListener('change', () => setMenu(false));
+      bar.addEventListener('mouseleave', (e) => {
+        if (!menu.contains(e.relatedTarget)) setMenu(false);
+      });
       live.addEventListener('click', () => {
         if (player.seekToLiveHead) player.seekToLiveHead();
         else if (isFinite(video.duration)) video.currentTime = video.duration - 2;
       });
       ui.syncAuto = () => {
         const b = document.querySelector('#movie_player .ytp-autonav-toggle-button');
-        auto.style.display = b ? '' : 'none';
+        const r = auto.closest('.ytl-row');
+        if (r) r.style.display = b ? 'flex' : 'none';
         auto.style.opacity = b?.getAttribute('aria-checked') === 'true' ? '1' : '.45';
       };
       auto.addEventListener('click', () => {
@@ -686,14 +753,14 @@
         player.classList.add('ytl-show');
         clearTimeout(hideTimer);
         hideTimer = setTimeout(() => {
-          if (!video.paused && !ui.bar.matches(':hover')) player.classList.remove('ytl-show');
+          if (!video.paused && !ui.bar.matches(':hover') && ui.menu.style.display !== 'block') player.classList.remove('ytl-show');
         }, 2800);
       };
       const listen = EventTarget.prototype.addEventListener;
       listen.call(player, 'mousemove', showBar, { passive: true });
       listen.call(player, 'mouseleave', () => {
         clearTimeout(hideTimer);
-        if (!video.paused) player.classList.remove('ytl-show');
+        if (!video.paused && ui.menu.style.display !== 'block') player.classList.remove('ytl-show');
       }, { passive: true });
 
       video.addEventListener('play', () => { ui.play.replaceChildren(ICONS.pause()); showBar(); });
@@ -787,6 +854,7 @@
         parseStoryboard(player);
         ui.preview.style.display = 'none';
         ui.preview.dataset.src = '';
+        ui.menu.style.display = 'none';
         if (storyboard) {
           ui.preview.style.width = storyboard.w + 'px';
           ui.preview.style.height = storyboard.h + 'px';
