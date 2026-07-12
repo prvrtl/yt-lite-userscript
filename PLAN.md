@@ -94,6 +94,17 @@ extension for the App Store.
       rgba(255,255,255,.12), DOM 4303/3350 nodes, console clean. Deliberate
       skips: custom scrollbars (would disable Safari's native auto-hiding
       overlay scrollbars), radius rework (existing scale already coherent).
+- [x] Shape/consistency pass: search field + magnifier button are now ONE pill
+      (input = left half, button = right half, shared border, seam removed);
+      playlist panel (#playlist) is a glass card with content-visibility on its
+      rows. Fixed a latent breakage: YouTube renamed button classes from kebab
+      (.yt-spec-button-shape-next--tonal) to camelCase (.ytSpecButtonShapeNextTonal),
+      so all tonal-button styling had been silently dead — both forms are now
+      selected. Filled buttons (Subscribe) rendered white-on-white under forced
+      dark because YT's text-primary-inverse var breaks; now explicitly
+      #f1f1f1 bg / #0f0f0f text (inverted in light theme).
+      NOTE: verify class names against the live DOM after YT ships a redesign —
+      silent CSS misses are invisible until screenshotted.
 - [x] Light theme variant: html:not([dark])-scoped overrides recolor all glass
       surfaces (masthead, chips, cards, popups) with dark-on-light values; wins
       by specificity when FORCE_DARK is off. Player bar stays dark glass over

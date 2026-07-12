@@ -1,8 +1,10 @@
 // ==UserScript==
 // @name         YouTube Lite — fast, simple rendering
 // @namespace    yt-us
-// @version      2.0.0
+// @version      2.1.0
 // @description  Strips YouTube's heavy UI, deep DOM pruning, custom liquid-glass video player with full YouTube integration.
+// @updateURL    https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
+// @downloadURL  https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
 // @run-at       document-start
@@ -219,8 +221,19 @@
     ytd-searchbox #container, .ytSearchboxComponentInputBox {
       background: rgba(255, 255, 255, .07) !important;
       border: 1px solid rgba(255, 255, 255, .15) !important;
-      border-radius: 999px !important;
+      border-right: none !important;
+      border-radius: 999px 0 0 999px !important;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1) !important;
+    }
+    button.ytSearchboxComponentSearchButton, ytd-searchbox #search-icon-legacy {
+      background: rgba(255, 255, 255, .07) !important;
+      border: 1px solid rgba(255, 255, 255, .15) !important;
+      border-left: none !important;
+      border-radius: 0 999px 999px 0 !important;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1) !important;
+    }
+    button.ytSearchboxComponentSearchButton:hover, ytd-searchbox #search-icon-legacy:hover {
+      background: rgba(255, 255, 255, .12) !important;
     }
     yt-chip-cloud-chip-renderer, chip-shape button, .ytChipShapeChip {
       background: rgba(255, 255, 255, .08) !important;
@@ -230,9 +243,17 @@
     yt-chip-cloud-chip-renderer[selected], .ytChipShapeActive {
       background: rgba(255, 255, 255, .92) !important;
     }
-    .yt-spec-button-shape-next--tonal {
+    .yt-spec-button-shape-next--tonal, .ytSpecButtonShapeNextTonal {
       background: rgba(255, 255, 255, .09) !important;
       border: 1px solid rgba(255, 255, 255, .12) !important;
+    }
+    .yt-spec-button-shape-next--filled, .ytSpecButtonShapeNextFilled {
+      background: #f1f1f1 !important;
+      border: none !important;
+    }
+    .yt-spec-button-shape-next--filled .yt-spec-button-shape-next__button-text-content,
+    .ytSpecButtonShapeNextFilled .ytSpecButtonShapeNextButtonTextContent {
+      color: #0f0f0f !important;
     }
     ytd-thumbnail, yt-thumbnail-view-model, yt-thumbnail-view-model img, ytd-thumbnail img {
       border-radius: 14px !important; overflow: hidden;
@@ -301,7 +322,21 @@
       background: rgba(255, 255, 255, .12) !important; border-radius: 12px !important;
     }
     ytd-guide-section-renderer { content-visibility: auto; contain-intrinsic-size: 0 280px; }
-    .yt-spec-button-shape-next--tonal:active { background: rgba(255, 255, 255, .14) !important; }
+    .yt-spec-button-shape-next--tonal:active, .ytSpecButtonShapeNextTonal:active {
+      background: rgba(255, 255, 255, .14) !important;
+    }
+    .yt-spec-button-shape-next--filled:active, .ytSpecButtonShapeNextFilled:active {
+      background: #d8d8d8 !important;
+    }
+    ytd-playlist-panel-renderer#playlist {
+      background: rgba(255, 255, 255, .045) !important;
+      border: 1px solid rgba(255, 255, 255, .08) !important;
+      border-radius: 16px !important;
+      overflow: hidden;
+    }
+    ytd-playlist-panel-renderer#playlist .header { background: transparent !important; }
+    #playlist ytd-playlist-panel-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 80px; }
+    #playlist ytd-playlist-panel-video-renderer:hover { background: rgba(255, 255, 255, .06) !important; }
     html:not([dark]) ytd-masthead, html:not([dark]) ytd-masthead #background {
       background: rgba(250, 250, 253, .65) !important;
     }
@@ -309,7 +344,17 @@
     html:not([dark]) ytd-searchbox #container, html:not([dark]) .ytSearchboxComponentInputBox {
       background: rgba(0, 0, 0, .04) !important;
       border: 1px solid rgba(0, 0, 0, .12) !important;
+      border-right: none !important;
       box-shadow: none !important;
+    }
+    html:not([dark]) button.ytSearchboxComponentSearchButton, html:not([dark]) ytd-searchbox #search-icon-legacy {
+      background: rgba(0, 0, 0, .04) !important;
+      border: 1px solid rgba(0, 0, 0, .12) !important;
+      border-left: none !important;
+      box-shadow: none !important;
+    }
+    html:not([dark]) button.ytSearchboxComponentSearchButton:hover, html:not([dark]) ytd-searchbox #search-icon-legacy:hover {
+      background: rgba(0, 0, 0, .08) !important;
     }
     html:not([dark]) yt-chip-cloud-chip-renderer, html:not([dark]) chip-shape button, html:not([dark]) .ytChipShapeChip {
       background: rgba(0, 0, 0, .05) !important;
@@ -319,9 +364,16 @@
       background: rgba(15, 15, 20, .88) !important;
       color: #fff !important;
     }
-    html:not([dark]) .yt-spec-button-shape-next--tonal {
+    html:not([dark]) .yt-spec-button-shape-next--tonal, html:not([dark]) .ytSpecButtonShapeNextTonal {
       background: rgba(0, 0, 0, .05) !important;
       border: 1px solid rgba(0, 0, 0, .09) !important;
+    }
+    html:not([dark]) .yt-spec-button-shape-next--filled, html:not([dark]) .ytSpecButtonShapeNextFilled {
+      background: #0f0f0f !important;
+    }
+    html:not([dark]) .yt-spec-button-shape-next--filled .yt-spec-button-shape-next__button-text-content,
+    html:not([dark]) .ytSpecButtonShapeNextFilled .ytSpecButtonShapeNextButtonTextContent {
+      color: #fff !important;
     }
     html:not([dark]) ytd-watch-metadata #description,
     html:not([dark]) ytd-comment-thread-renderer {
@@ -356,7 +408,17 @@
     html:not([dark]) ytd-mini-guide-entry-renderer[active] {
       background: rgba(0, 0, 0, .07) !important;
     }
-    html:not([dark]) .yt-spec-button-shape-next--tonal:active { background: rgba(0, 0, 0, .09) !important; }
+    html:not([dark]) .yt-spec-button-shape-next--tonal:active, html:not([dark]) .ytSpecButtonShapeNextTonal:active {
+      background: rgba(0, 0, 0, .09) !important;
+    }
+    html:not([dark]) .yt-spec-button-shape-next--filled:active, html:not([dark]) .ytSpecButtonShapeNextFilled:active {
+      background: #333 !important;
+    }
+    html:not([dark]) ytd-playlist-panel-renderer#playlist {
+      background: rgba(0, 0, 0, .035) !important;
+      border: 1px solid rgba(0, 0, 0, .08) !important;
+    }
+    html:not([dark]) #playlist ytd-playlist-panel-video-renderer:hover { background: rgba(0, 0, 0, .04) !important; }
     ` : ''}
   `;
 
