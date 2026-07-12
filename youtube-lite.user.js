@@ -167,7 +167,13 @@
       -webkit-appearance: none; appearance: none;
       width: 12px; height: 12px; border-radius: 50%; background: #fff; border: none;
     }
-    #ytl-seek { flex: 1; }
+    #ytl-seekwrap { position: relative; flex: 1; display: flex; align-items: center; min-width: 60px; }
+    #ytl-seek { width: 100%; }
+    .ytl-tick {
+      position: absolute; top: 50%; transform: translate(-50%, -50%);
+      width: 2px; height: 8px; border-radius: 1px;
+      background: rgba(10, 10, 14, .55); pointer-events: none;
+    }
     #ytl-vol { width: 64px; flex: none; }
     ` : ''}
 
@@ -279,6 +285,45 @@
     let wired = null;
     let lastVideoId = null;
     let ui = null;
+    let chapterSecs = [];
+
+    const parseChapters = (data) => {
+      try {
+        for (const ep of data?.engagementPanels || []) {
+          const c = ep.engagementPanelSectionListRenderer;
+          if (!/macro|chapter/i.test(c?.targetId || '')) continue;
+          const items = c.content?.macroMarkersListRenderer?.contents || [];
+          return items.map((i) => {
+            const t = i.macroMarkersListItemRenderer?.timeDescription?.simpleText || '';
+            const parts = t.split(':').map(Number);
+            return parts.length && !parts.some(isNaN)
+              ? parts.reduce((a, b) => a * 60 + b, 0)
+              : null;
+          }).filter((v) => v !== null);
+        }
+      } catch (e) {}
+      return [];
+    };
+
+    const renderTicks = () => {
+      if (!ui) return;
+      const dur = wired?.duration;
+      for (const t of ui.seekwrap.querySelectorAll('.ytl-tick')) t.remove();
+      if (!isFinite(dur) || !dur || chapterSecs.length < 2) return;
+      for (const s of chapterSecs) {
+        if (!s) continue;
+        const t = document.createElement('div');
+        t.className = 'ytl-tick';
+        t.style.left = (s / dur * 100) + '%';
+        ui.seekwrap.appendChild(t);
+      }
+    };
+
+    window.addEventListener('yt-navigate-finish', (e) => {
+      chapterSecs = parseChapters(e.detail?.response?.response || e.detail?.response || window.ytInitialData);
+      renderTicks();
+    });
+    chapterSecs = parseChapters(window.ytInitialData);
 
     const el = (tag, id, child) => {
       const e = document.createElement(tag);
@@ -311,9 +356,11 @@
       const auto = el('button', 'ytl-auto', 'Auto');
       const pip = el('button', 'ytl-pip', ICONS.pip());
       const fs = el('button', 'ytl-fs', ICONS.fs());
-      bar.append(prev, play, next, timeCur, seek, timeDur, mute, vol, speed, quality, cc, auto, pip, fs);
+      const seekwrap = el('div', 'ytl-seekwrap');
+      seekwrap.appendChild(seek);
+      bar.append(prev, play, next, timeCur, seekwrap, timeDur, mute, vol, speed, quality, cc, auto, pip, fs);
       player.appendChild(bar);
-      ui = { bar, prev, next, play, timeCur, seek, timeDur, mute, vol, speed, quality, cc, auto, pip, fs, scrubbing: false };
+      ui = { bar, prev, next, play, timeCur, seek, seekwrap, timeDur, mute, vol, speed, quality, cc, auto, pip, fs, scrubbing: false };
       ui.syncAuto = () => {
         const b = document.querySelector('#movie_player .ytp-autonav-toggle-button');
         auto.style.display = b ? '' : 'none';
@@ -392,7 +439,10 @@
         }
         paintSeek(video);
       });
-      video.addEventListener('durationchange', () => { ui.timeDur.textContent = fmt(video.duration); });
+      video.addEventListener('durationchange', () => {
+        ui.timeDur.textContent = fmt(video.duration);
+        renderTicks();
+      });
       video.addEventListener('progress', () => paintSeek(video));
       ui.play.replaceChildren(video.paused ? ICONS.play() : ICONS.pause());
       ui.timeCur.textContent = fmt(video.currentTime);
@@ -462,6 +512,7 @@
         ui.prev.style.display = player.getPlaylist?.()?.length ? '' : 'none';
         ui.cc.replaceChildren(new Option('CC', ''));
         ui.syncAuto?.();
+        renderTicks();
       }
 
       if (wired === video) return;

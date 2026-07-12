@@ -38,7 +38,10 @@ extension for the App Store.
       opacity/visibility flip vs YT's class-churn over the whole chrome subtree.
 - [x] Autoplay toggle: "Auto" button proxies YT's hidden .ytp-autonav-toggle-button
       (keeps YT persistence/server sync; dimmed when off). Verified round-trip.
-- [ ] Chapters: tick marks on the seek bar (from description/ytInitialData markers)
+- [x] Chapters: tick marks on the seek bar, parsed from the chapters engagement
+      panel data (ytInitialData on load, yt-navigate-finish detail on SPA nav).
+      Verified: 35-chapter video → 34 ticks (0:00 skipped), monotonic positions.
+      SPA-nav refresh implemented via yt-navigate-finish; spot-check in Safari.
 - [ ] Seek-preview thumbnails (storyboard) — investigate cost/benefit, may skip for speed
 - [ ] Live streams: LIVE badge, DVR seek behavior, hide duration
 - [ ] Premieres: verify bar doesn't break on waiting-room player
