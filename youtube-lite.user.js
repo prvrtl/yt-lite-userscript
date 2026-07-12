@@ -163,6 +163,7 @@
       background: transparent; color: #fff; cursor: pointer; flex: none;
     }
     #ytl-bar button:hover { background: rgba(255, 255, 255, .14); }
+    #ytl-bar button:active { background: rgba(255, 255, 255, .22); }
     #ytl-bar select {
       -webkit-appearance: none; appearance: none;
       background: rgba(255, 255, 255, .1); color: #fff;
@@ -291,6 +292,16 @@
     ytd-menu-service-item-renderer:hover, ytd-menu-navigation-item-renderer:hover {
       background: rgba(255, 255, 255, .09) !important;
     }
+    ytd-app *:not(.ytp-caption-segment):not(.ytp-caption-segment *) { font-family: -apple-system, system-ui, sans-serif !important; }
+    ytd-thumbnail-overlay-time-status-renderer { font-variant-numeric: tabular-nums; }
+    ::selection { background: rgba(10, 132, 255, .4); }
+    ytd-app :focus-visible, ytd-masthead :focus-visible { outline: 2px solid #0a84ff !important; outline-offset: 2px; }
+    ytd-guide-entry-renderer[active] tp-yt-paper-item,
+    ytd-mini-guide-entry-renderer[active] {
+      background: rgba(255, 255, 255, .12) !important; border-radius: 12px !important;
+    }
+    ytd-guide-section-renderer { content-visibility: auto; contain-intrinsic-size: 0 280px; }
+    .yt-spec-button-shape-next--tonal:active { background: rgba(255, 255, 255, .14) !important; }
     html:not([dark]) ytd-masthead, html:not([dark]) ytd-masthead #background {
       background: rgba(250, 250, 253, .65) !important;
     }
@@ -339,6 +350,13 @@
     html:not([dark]) ytd-menu-navigation-item-renderer:hover {
       background: rgba(0, 0, 0, .06) !important;
     }
+    html:not([dark]) ::selection { background: rgba(0, 122, 255, .3); }
+    html:not([dark]) ytd-app :focus-visible, html:not([dark]) ytd-masthead :focus-visible { outline-color: #007aff !important; }
+    html:not([dark]) ytd-guide-entry-renderer[active] tp-yt-paper-item,
+    html:not([dark]) ytd-mini-guide-entry-renderer[active] {
+      background: rgba(0, 0, 0, .07) !important;
+    }
+    html:not([dark]) .yt-spec-button-shape-next--tonal:active { background: rgba(0, 0, 0, .09) !important; }
     ` : ''}
   `;
 

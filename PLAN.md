@@ -84,6 +84,16 @@ extension for the App Store.
       inner spec-layer backgrounds forced transparent. Computed styles verified;
       full visual pass PENDING re-check (session was image-throttled during QC) —
       re-verify in Safari.
+- [x] macOS-native fidelity pass: site-wide -apple-system typography (caption
+      segments and their descendants excluded to respect user caption fonts),
+      macOS focus rings (:focus-visible, #0a84ff dark / #007aff light),
+      ::selection accent, guide sidebar [active] selection pills, instant
+      :active pressed states (bar buttons, tonal buttons), tabular-nums
+      duration badges, content-visibility on guide sections. Verified live:
+      fonts resolve to -apple-system on watch+home, active pill renders
+      rgba(255,255,255,.12), DOM 4303/3350 nodes, console clean. Deliberate
+      skips: custom scrollbars (would disable Safari's native auto-hiding
+      overlay scrollbars), radius rework (existing scale already coherent).
 - [x] Light theme variant: html:not([dark])-scoped overrides recolor all glass
       surfaces (masthead, chips, cards, popups) with dark-on-light values; wins
       by specificity when FORCE_DARK is off. Player bar stays dark glass over
