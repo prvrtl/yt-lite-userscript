@@ -287,6 +287,54 @@
     ytd-menu-service-item-renderer:hover, ytd-menu-navigation-item-renderer:hover {
       background: rgba(255, 255, 255, .09) !important;
     }
+    html:not([dark]) ytd-masthead, html:not([dark]) ytd-masthead #background {
+      background: rgba(250, 250, 253, .65) !important;
+    }
+    html:not([dark]) ytd-masthead { border-bottom: 1px solid rgba(0, 0, 0, .08) !important; }
+    html:not([dark]) ytd-searchbox #container, html:not([dark]) .ytSearchboxComponentInputBox {
+      background: rgba(0, 0, 0, .04) !important;
+      border: 1px solid rgba(0, 0, 0, .12) !important;
+      box-shadow: none !important;
+    }
+    html:not([dark]) yt-chip-cloud-chip-renderer, html:not([dark]) chip-shape button, html:not([dark]) .ytChipShapeChip {
+      background: rgba(0, 0, 0, .05) !important;
+      border: 1px solid rgba(0, 0, 0, .10) !important;
+    }
+    html:not([dark]) yt-chip-cloud-chip-renderer[selected], html:not([dark]) .ytChipShapeActive {
+      background: rgba(15, 15, 20, .88) !important;
+      color: #fff !important;
+    }
+    html:not([dark]) .yt-spec-button-shape-next--tonal {
+      background: rgba(0, 0, 0, .05) !important;
+      border: 1px solid rgba(0, 0, 0, .09) !important;
+    }
+    html:not([dark]) ytd-watch-metadata #description,
+    html:not([dark]) ytd-comment-thread-renderer {
+      background: rgba(0, 0, 0, .035) !important;
+      border: 1px solid rgba(0, 0, 0, .08) !important;
+      box-shadow: none !important;
+    }
+    html:not([dark]) ytd-rich-item-renderer:hover,
+    html:not([dark]) #related yt-lockup-view-model:hover,
+    html:not([dark]) #related ytd-compact-video-renderer:hover,
+    html:not([dark]) ytd-video-renderer:hover,
+    html:not([dark]) ytd-channel-renderer:hover,
+    html:not([dark]) ytd-playlist-video-renderer:hover {
+      background: rgba(0, 0, 0, .04) !important;
+    }
+    html:not([dark]) ytd-menu-popup-renderer,
+    html:not([dark]) tp-yt-paper-dialog,
+    html:not([dark]) yt-sheet-view-model,
+    html:not([dark]) yt-contextual-sheet-layout,
+    html:not([dark]) ytd-multi-page-menu-renderer {
+      background: rgba(250, 250, 253, .8) !important;
+      border: 1px solid rgba(0, 0, 0, .10) !important;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 12px 40px rgba(0, 0, 0, .18) !important;
+    }
+    html:not([dark]) ytd-menu-service-item-renderer:hover,
+    html:not([dark]) ytd-menu-navigation-item-renderer:hover {
+      background: rgba(0, 0, 0, .06) !important;
+    }
     ` : ''}
   `;
 

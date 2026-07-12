@@ -84,7 +84,10 @@ extension for the App Store.
       inner spec-layer backgrounds forced transparent. Computed styles verified;
       full visual pass PENDING re-check (session was image-throttled during QC) —
       re-verify in Safari.
-- [ ] Light theme variant (currently dark-only)
+- [x] Light theme variant: html:not([dark])-scoped overrides recolor all glass
+      surfaces (masthead, chips, cards, popups) with dark-on-light values; wins
+      by specificity when FORCE_DARK is off. Player bar stays dark glass over
+      video by design. Verified visually on home in light mode.
 
 ### M4 — Performance proof
 - [ ] Baseline vs iTube numbers: DOM nodes, LCP, long tasks, memory (Chrome tracing
