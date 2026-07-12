@@ -71,7 +71,8 @@ extension for the App Store.
 - [x] Watch page metadata, comments, sidebar as glass cards (description card,
       per-thread comment cards, sidebar hover pills; translucent fills + hairline
       borders + inset highlight, no blur on large surfaces)
-- [ ] Home grid polish, hover states without animations
+- [x] Home grid polish: hover pills on grid cards (background flip only, no
+      transforms/animations), rounded cards, glass chips
 - [ ] Search results, channel pages, subscriptions, history, playlists
 - [ ] Dialogs/menus (ytd-popup-container) glass restyle
 - [ ] Light theme variant (currently dark-only)

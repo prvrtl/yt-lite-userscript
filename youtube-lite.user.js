@@ -257,6 +257,8 @@
     #related yt-lockup-view-model:hover, #related ytd-compact-video-renderer:hover {
       background: rgba(255, 255, 255, .06) !important;
     }
+    ytd-rich-item-renderer { border-radius: 18px; padding: 8px !important; }
+    ytd-rich-item-renderer:hover { background: rgba(255, 255, 255, .05); }
     ` : ''}
   `;
 
