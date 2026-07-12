@@ -129,7 +129,7 @@
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
     }
-    ytd-rich-item-renderer { content-visibility: auto; contain-intrinsic-size: 0 250px; }
+    ytd-rich-item-renderer { content-visibility: auto; contain-intrinsic-size: 0 267px; }
     ytd-comment-thread-renderer { content-visibility: auto; contain-intrinsic-size: 0 120px; }
     #related yt-lockup-view-model,
     #related ytd-compact-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 100px; }
@@ -398,7 +398,17 @@
       width: auto !important; max-width: none !important; margin: 0 !important;
     }
     ytd-rich-item-renderer #details, ytd-rich-item-renderer #meta { min-width: 0 !important; }
-    ytd-rich-item-renderer { border-radius: 16px; padding: 8px !important; }
+    ytd-rich-item-renderer {
+      border-radius: 16px; padding: 0 !important; overflow: hidden !important;
+    }
+    ytd-rich-item-renderer ytd-thumbnail,
+    ytd-rich-item-renderer yt-thumbnail-view-model,
+    ytd-rich-item-renderer yt-thumbnail-view-model img,
+    ytd-rich-item-renderer ytd-thumbnail img,
+    ytd-rich-item-renderer .ytThumbnailViewModelImage { border-radius: 0 !important; }
+    ytd-rich-item-renderer a.ytLockupViewModelContentImage { width: 100% !important; }
+    ytd-rich-item-renderer .ytLockupViewModelMetadata,
+    ytd-rich-item-renderer #details { padding: 12px !important; }
     ytd-rich-item-renderer:hover { background: rgba(255, 255, 255, .05); }
     ytd-video-renderer, ytd-playlist-renderer, ytd-channel-renderer, ytd-playlist-video-renderer {
       border-radius: 16px !important;
