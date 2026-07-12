@@ -237,6 +237,26 @@
     ytd-guide-entry-renderer tp-yt-paper-item:hover, ytd-mini-guide-entry-renderer:hover {
       background: rgba(255, 255, 255, .08) !important; border-radius: 12px !important;
     }
+    ytd-watch-metadata #description {
+      background: rgba(255, 255, 255, .06) !important;
+      border: 1px solid rgba(255, 255, 255, .10) !important;
+      border-radius: 16px !important;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08) !important;
+    }
+    ytd-comment-thread-renderer {
+      background: rgba(255, 255, 255, .045) !important;
+      border: 1px solid rgba(255, 255, 255, .08) !important;
+      border-radius: 14px !important;
+      padding: 12px 16px !important;
+      margin-bottom: 10px !important;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06) !important;
+    }
+    #related yt-lockup-view-model, #related ytd-compact-video-renderer {
+      border-radius: 14px !important; padding: 4px !important;
+    }
+    #related yt-lockup-view-model:hover, #related ytd-compact-video-renderer:hover {
+      background: rgba(255, 255, 255, .06) !important;
+    }
     ` : ''}
   `;
 
