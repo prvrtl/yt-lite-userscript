@@ -55,11 +55,31 @@ keep laying out to decode) and its `<video>` is adopted by our stage.
 
 1. **Shell + home** — app root, design system, home feed rendered from data. *(v3.0 — done)*
 2. **Watch + player** — our stage, our controls, full API sync. *(v3.1 — done: video adopted into our stage, readyState 4; seek, volume round-trip 42→42, mute, speed 1.5x, 9 quality levels, 30 caption tracks, no stall)*
-3. **Search + channel** — InnerTube-driven. *(v3.2)*
+3. **Search + channel** — InnerTube-driven. *(v3.2 — done: search 26 results, channel 90 videos, both our UI)*
 4. **Comments + related** — continuations, bounded. *(v3.3)*
 
 Each stage ships only when it is measurably faster than the skin it replaces and
 loses no function.
+
+## Data shapes (learned the hard way)
+
+YouTube is migrating renderers to **`lockupViewModel`**. In that shape the object
+carrying `videoId` is only a watch endpoint — it has NO title and NO thumbnail,
+so a walker keyed on `videoId` silently returns zero items. The real data lives
+elsewhere on the lockup:
+
+    lockupViewModel.contentId                                  → video id
+    lockupViewModel.metadata.lockupMetadataViewModel.title.content  → title
+    lockupViewModel.contentImage.thumbnailViewModel.image.sources[] → thumbnail
+    …overlays[] text matching /^\d+:\d\d/                      → duration
+
+The extractor handles BOTH shapes. Channel pages already use lockups; search and
+home are migrating. If a view suddenly renders zero items, this is the first
+thing to check.
+
+Channel tabs: never hardcode the `params` blob. Read the browseEndpoint params
+off the page and pick the tab by **base64-decoding** them and matching the tab
+name (`videos`, `shorts`, `streams`) — locale-independent, survives redesigns.
 
 ## Non-negotiables (carried over — every one of these has bitten us)
 

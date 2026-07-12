@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         iTube
 // @namespace    yt-us
-// @version      3.1.0
+// @version      3.2.0
 // @description  YouTube rebuilt as a native-feeling app. Our UI, YouTube's data.
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -13,7 +13,9 @@
 (() => {
   'use strict';
 
-  if (location.pathname !== '/' && location.pathname !== '/watch') return;
+  const CHANNEL_PATH_RE = /^\/(?:@[^/]+|channel\/[^/]+|c\/[^/]+)(?:\/.*)?$/;
+
+  if (location.pathname !== '/' && location.pathname !== '/watch' && location.pathname !== '/results' && !CHANNEL_PATH_RE.test(location.pathname)) return;
 
   const SVGNS = 'http://www.w3.org/2000/svg';
   const icon = (nodes) => {
@@ -408,6 +410,135 @@
       font-size: 11.5px;
       color: var(--dim);
     }
+    #itube .list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+    #itube .row {
+      display: flex;
+      gap: 16px;
+      color: var(--text);
+      text-decoration: none;
+      content-visibility: auto;
+      contain-intrinsic-size: auto 138px;
+      contain: layout paint style;
+    }
+    #itube .row-thumb {
+      width: 246px;
+      height: 138px;
+      flex: 0 0 246px;
+      border-radius: var(--r-md);
+      overflow: hidden;
+      background: var(--raised);
+      position: relative;
+    }
+    #itube .row:hover .row-thumb {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    #itube .row-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      opacity: 0;
+    }
+    #itube .row-thumb img.in {
+      opacity: 1;
+      transition: opacity .18s ease-out;
+    }
+    #itube .row-dur {
+      position: absolute;
+      right: 4px;
+      bottom: 4px;
+      background: rgba(0, 0, 0, .8);
+      border-radius: 6px;
+      font: 600 11px -apple-system, system-ui, sans-serif;
+      font-variant-numeric: tabular-nums;
+      color: #fff;
+      padding: 2px 4px;
+    }
+    #itube .row-body {
+      flex: 1;
+      min-width: 0;
+    }
+    #itube .row-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -.01em;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    #itube .row-chan {
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    #itube .row-meta {
+      margin-top: 2px;
+      font-size: 12.5px;
+      color: var(--dim);
+      font-variant-numeric: tabular-nums;
+    }
+    #itube .row-desc {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--dim);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    #itube .empty {
+      grid-column: 1 / -1;
+      color: var(--muted);
+      text-align: center;
+      padding: 60px 0;
+      font-size: 14px;
+    }
+    #itube .ch-header {
+      margin-bottom: 24px;
+    }
+    #itube .ch-banner {
+      display: block;
+      width: 100%;
+      aspect-ratio: 6 / 1;
+      object-fit: cover;
+      border-radius: var(--r-lg);
+      margin-bottom: 16px;
+      opacity: 0;
+    }
+    #itube .ch-banner.in {
+      opacity: 1;
+      transition: opacity .18s ease-out;
+    }
+    #itube .ch-avatar {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--raised);
+      opacity: 0;
+    }
+    #itube .ch-avatar.in {
+      opacity: 1;
+      transition: opacity .18s ease-out;
+    }
+    #itube .ch-name {
+      margin: 12px 0 0;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -.02em;
+    }
+    #itube .ch-meta {
+      margin-top: 4px;
+      font-size: 13px;
+      color: var(--muted);
+    }
     #itube-bar {
       position: absolute;
       left: 50%;
@@ -714,10 +845,54 @@
 
   const getPublished = (node) => node?.publishedTimeText?.simpleText || null;
 
+  const getSnippet = (node) => (
+    node?.detailedMetadataSnippets?.[0]?.snippetText?.runs?.map((r) => r?.text || '').join('')
+    || node?.descriptionSnippet?.runs?.map((r) => r?.text || '').join('')
+    || null
+  );
+
   const seenVideoIds = new Set();
+  const lockupItem = (node, seen) => {
+    const lk = node.lockupViewModel;
+    if (!lk || lk.contentType !== 'LOCKUP_CONTENT_TYPE_VIDEO') return null;
+    const id = lk.contentId;
+    if (typeof id !== 'string' || !id || seen.has(id)) return null;
+    const meta = lk.metadata?.lockupMetadataViewModel;
+    const title = meta?.title?.content;
+    const img = lk.contentImage?.thumbnailViewModel;
+    const sources = img?.image?.sources || [];
+    const thumb = sources.length ? sources[sources.length - 1].url : null;
+    if (!title || !thumb) return null;
+    const texts = [];
+    walk(img?.overlays, (n) => {
+      if (typeof n.text === 'string') texts.push(n.text);
+    });
+    const rows = [];
+    walk(meta?.metadata, (n) => {
+      if (typeof n.content === 'string') rows.push(n.content);
+    });
+    const rest = rows.filter((t) => t !== title);
+    seen.add(id);
+    return {
+      id,
+      title,
+      channel: rest.find((t) => !/views?|ago|watching/i.test(t)) || '',
+      thumb,
+      duration: texts.find((t) => /^\d+:\d\d/.test(t)) || '',
+      views: rest.find((t) => /views?|watching/i.test(t)) || '',
+      published: rest.find((t) => /ago/i.test(t)) || '',
+      snippet: '',
+    };
+  };
+
   const extractVideos = (root, seen = seenVideoIds) => {
     const out = [];
     walk(root, (node) => {
+      const lk = lockupItem(node, seen);
+      if (lk) {
+        out.push(lk);
+        return;
+      }
       if (typeof node.videoId !== 'string' || !node.videoId || seen.has(node.videoId)) return;
       const title = getTitle(node);
       if (!title) return;
@@ -732,6 +907,7 @@
         duration: getDuration(node),
         views: getViews(node),
         published: getPublished(node),
+        snippet: getSnippet(node),
       });
     });
     return out;
@@ -818,6 +994,47 @@
     meta.className = 'rc-meta';
     meta.textContent = [item.views, item.published].filter(Boolean).join(' · ');
     body.append(title, chan, meta);
+    a.append(thumbWrap, body);
+    return a;
+  };
+
+  const createRowCard = (item) => {
+    const a = document.createElement('a');
+    a.className = 'row';
+    a.href = '/watch?v=' + encodeURIComponent(item.id);
+    const thumbWrap = document.createElement('div');
+    thumbWrap.className = 'row-thumb';
+    const img = document.createElement('img');
+    img.addEventListener('load', () => img.classList.add('in'), { once: true });
+    img.addEventListener('error', () => img.classList.add('in'), { once: true });
+    img.setAttribute('loading', 'lazy');
+    img.setAttribute('decoding', 'async');
+    img.src = item.thumb;
+    thumbWrap.appendChild(img);
+    if (item.duration) {
+      const dur = document.createElement('span');
+      dur.className = 'row-dur';
+      dur.textContent = item.duration;
+      thumbWrap.appendChild(dur);
+    }
+    const body = document.createElement('div');
+    body.className = 'row-body';
+    const title = document.createElement('h3');
+    title.className = 'row-title';
+    title.textContent = item.title;
+    const chan = document.createElement('div');
+    chan.className = 'row-chan';
+    chan.textContent = item.channel || '';
+    const meta = document.createElement('div');
+    meta.className = 'row-meta';
+    meta.textContent = [item.views, item.published].filter(Boolean).join(' · ');
+    body.append(title, chan, meta);
+    if (item.snippet) {
+      const desc = document.createElement('div');
+      desc.className = 'row-desc';
+      desc.textContent = item.snippet;
+      body.appendChild(desc);
+    }
     a.append(thumbWrap, body);
     return a;
   };
@@ -982,6 +1199,350 @@
       document.addEventListener('DOMContentLoaded', renderInitial, { once: true });
     } else {
       renderInitial();
+    }
+
+    return () => { io.disconnect(); };
+  };
+
+  const mountSearch = () => {
+    const query = new URLSearchParams(location.search).get('search_query') || '';
+    search.value = query;
+    const seen = new Set();
+
+    const list = document.createElement('div');
+    list.className = 'list';
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner';
+    spinner.textContent = 'Loading…';
+    const sentinel = document.createElement('div');
+    sentinel.className = 'sentinel';
+    list.append(sentinel);
+
+    let appendScheduled = false;
+    let pendingItems = null;
+    const tryAppend = () => {
+      appendScheduled = false;
+      if (Date.now() - lastScroll < 200) {
+        appendScheduled = true;
+        setTimeout(tryAppend, 200);
+        return;
+      }
+      const items = pendingItems;
+      pendingItems = null;
+      if (items) appendRows(items);
+    };
+    const scheduleAppend = (items) => {
+      pendingItems = pendingItems ? pendingItems.concat(items) : items;
+      if (appendScheduled) return;
+      appendScheduled = true;
+      idle(tryAppend);
+    };
+
+    const MAX_ROWS = 200;
+    const capList = () => {
+      const rows = list.querySelectorAll('.row');
+      const excess = rows.length - MAX_ROWS;
+      if (excess <= 0) return;
+      const heightBefore = list.getBoundingClientRect().height;
+      for (let i = 0; i < excess; i++) {
+        rows[i].remove();
+      }
+      const heightAfter = list.getBoundingClientRect().height;
+      const removedHeight = heightBefore - heightAfter;
+      let spacer = list.querySelector('.spacer');
+      if (!spacer) {
+        spacer = document.createElement('div');
+        spacer.className = 'spacer';
+        list.insertBefore(spacer, list.firstChild);
+      }
+      const current = parseFloat(spacer.style.height) || 0;
+      spacer.style.height = (current + removedHeight) + 'px';
+    };
+
+    const appendRows = (items) => {
+      for (const item of items) {
+        list.insertBefore(createRowCard(item), sentinel);
+      }
+      capList();
+    };
+
+    const showEmpty = (msg) => {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = msg;
+      list.replaceChildren(empty);
+    };
+
+    let continuationToken = null;
+    let loading = false;
+    const loadMore = async () => {
+      if (loading || !continuationToken) return;
+      loading = true;
+      spinner.classList.add('show');
+      try {
+        const res = await innertube('search', { continuation: continuationToken });
+        if (!res) return;
+        const items = extractVideos(res, seen);
+        continuationToken = findContinuationToken(res);
+        scheduleAppend(items);
+      } finally {
+        loading = false;
+        spinner.classList.remove('show');
+      }
+    };
+
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) loadMore();
+    }, { rootMargin: '600px' });
+    io.observe(sentinel);
+
+    view.replaceChildren(list, spinner);
+
+    const runInitial = async () => {
+      if (!query) {
+        showEmpty('Type something to search.');
+        return;
+      }
+      loading = true;
+      spinner.classList.add('show');
+      try {
+        const res = await innertube('search', { query });
+        if (!res) {
+          showEmpty('Something went wrong.');
+          return;
+        }
+        const items = extractVideos(res, seen);
+        continuationToken = findContinuationToken(res);
+        if (items.length === 0 && !continuationToken) {
+          showEmpty('No results for "' + query + '"');
+          return;
+        }
+        for (const item of items) list.insertBefore(createRowCard(item), sentinel);
+      } finally {
+        loading = false;
+        spinner.classList.remove('show');
+      }
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', runInitial, { once: true });
+    } else {
+      runInitial();
+    }
+
+    return () => { io.disconnect(); };
+  };
+
+  const mountChannel = () => {
+    const CHANNEL_ID_IN_PATH_RE = /^\/channel\/([^/]+)/;
+    const resolveBrowseId = () => {
+      const m = location.pathname.match(CHANNEL_ID_IN_PATH_RE);
+      if (m) return m[1];
+      const data = window.ytInitialData;
+      const metaNode = findNode(data, (n) => typeof n?.metadata?.channelMetadataRenderer?.externalId === 'string');
+      if (metaNode) return metaNode.metadata.channelMetadataRenderer.externalId;
+      const idNode = findNode(data, (n) => typeof n?.browseId === 'string' && n.browseId.startsWith('UC'));
+      return idNode ? idNode.browseId : null;
+    };
+
+    const showEmpty = (msg) => {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = msg;
+      view.replaceChildren(empty);
+    };
+
+    const seen = new Set();
+
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner';
+    spinner.textContent = 'Loading…';
+    const sentinel = document.createElement('div');
+    sentinel.className = 'sentinel';
+    grid.append(sentinel);
+
+    let appendScheduled = false;
+    let pendingItems = null;
+    const tryAppend = () => {
+      appendScheduled = false;
+      if (Date.now() - lastScroll < 200) {
+        appendScheduled = true;
+        setTimeout(tryAppend, 200);
+        return;
+      }
+      const items = pendingItems;
+      pendingItems = null;
+      if (items) appendCards(items);
+    };
+    const scheduleAppend = (items) => {
+      pendingItems = pendingItems ? pendingItems.concat(items) : items;
+      if (appendScheduled) return;
+      appendScheduled = true;
+      idle(tryAppend);
+    };
+
+    const MAX_CARDS = 200;
+    const capGrid = () => {
+      const cards = grid.querySelectorAll('.c');
+      const excess = cards.length - MAX_CARDS;
+      if (excess <= 0) return;
+      const heightBefore = grid.getBoundingClientRect().height;
+      for (let i = 0; i < excess; i++) {
+        cards[i].remove();
+      }
+      const heightAfter = grid.getBoundingClientRect().height;
+      const removedHeight = heightBefore - heightAfter;
+      let spacer = grid.querySelector('.spacer');
+      if (!spacer) {
+        spacer = document.createElement('div');
+        spacer.className = 'spacer';
+        grid.insertBefore(spacer, grid.firstChild);
+      }
+      const current = parseFloat(spacer.style.height) || 0;
+      spacer.style.height = (current + removedHeight) + 'px';
+    };
+
+    const appendCards = (items) => {
+      for (const item of items) {
+        grid.insertBefore(createCard(item), sentinel);
+      }
+      capGrid();
+    };
+
+    let continuationToken = null;
+    let loading = false;
+    const loadMore = async () => {
+      if (loading || !continuationToken) return;
+      loading = true;
+      spinner.classList.add('show');
+      try {
+        const res = await innertube('browse', { continuation: continuationToken });
+        if (!res) return;
+        const items = extractVideos(res, seen);
+        continuationToken = findContinuationToken(res);
+        scheduleAppend(items);
+      } finally {
+        loading = false;
+        spinner.classList.remove('show');
+      }
+    };
+
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) loadMore();
+    }, { rootMargin: '600px' });
+    io.observe(sentinel);
+
+    const header = document.createElement('div');
+    header.className = 'ch-header';
+
+    const thumbFrom = (node) => {
+      const list = node?.thumbnails;
+      if (Array.isArray(list) && list.length) return list[list.length - 1]?.url || null;
+      return getThumb(node);
+    };
+
+    const decodeParams = (p) => {
+      try {
+        return atob(String(p).replace(/-/g, '+').replace(/_/g, '/'));
+      } catch (e) {
+        return '';
+      }
+    };
+
+    const tabParams = (want) => {
+      const found = [];
+      const walkEp = (o, d) => {
+        if (!o || typeof o !== 'object' || d > 16) return;
+        if (Array.isArray(o)) {
+          for (const x of o) walkEp(x, d + 1);
+          return;
+        }
+        const p = o.browseEndpoint?.params;
+        if (typeof p === 'string') found.push(p);
+        for (const k in o) walkEp(o[k], d + 1);
+      };
+      walkEp(window.ytInitialData, 0);
+      for (const p of found) {
+        if (decodeParams(p).includes(want)) return p;
+      }
+      return null;
+    };
+
+    const runInitial = async () => {
+      const browseId = resolveBrowseId();
+      if (!browseId) {
+        showEmpty("Couldn't load this channel.");
+        return;
+      }
+      view.replaceChildren(header, grid, spinner);
+      loading = true;
+      spinner.classList.add('show');
+      try {
+        const params = tabParams('videos');
+        const res = await innertube('browse', params ? { browseId, params } : { browseId });
+        if (!res) {
+          showEmpty("Couldn't load this channel.");
+          return;
+        }
+
+        const getHeaderRenderer = (data) => (
+          findNode(data, (n) => n?.c4TabbedHeaderRenderer)?.c4TabbedHeaderRenderer
+          || findNode(data, (n) => n?.pageHeaderRenderer)?.pageHeaderRenderer
+          || null
+        );
+        const h = getHeaderRenderer(res);
+        if (h) {
+          const name = (typeof h?.title === 'string' ? h.title : null)
+            || h?.title?.runs?.[0]?.text || h?.title?.simpleText
+            || h?.content?.pageHeaderViewModel?.title?.dynamicTextViewModel?.text?.content || null;
+          const handle = h?.channelHandleText?.runs?.[0]?.text || h?.channelHandleText?.simpleText || null;
+          const avatarUrl = thumbFrom(h?.avatar);
+          const subCount = h?.subscriberCountText?.simpleText || h?.subscriberCountText?.runs?.[0]?.text || null;
+          const videoCount = (h?.videosCountText?.runs || []).map((r) => r?.text || '').join('') || h?.videosCountText?.simpleText || null;
+          const bannerUrl = thumbFrom(h?.banner);
+
+          if (bannerUrl) {
+            const banner = document.createElement('img');
+            banner.className = 'ch-banner';
+            banner.addEventListener('load', () => banner.classList.add('in'), { once: true });
+            banner.addEventListener('error', () => banner.classList.add('in'), { once: true });
+            banner.setAttribute('loading', 'lazy');
+            banner.setAttribute('decoding', 'async');
+            banner.src = bannerUrl;
+            header.appendChild(banner);
+          }
+          if (avatarUrl) {
+            const avatar = document.createElement('img');
+            avatar.className = 'ch-avatar';
+            avatar.addEventListener('load', () => avatar.classList.add('in'), { once: true });
+            avatar.addEventListener('error', () => avatar.classList.add('in'), { once: true });
+            avatar.setAttribute('loading', 'lazy');
+            avatar.setAttribute('decoding', 'async');
+            avatar.src = avatarUrl;
+            header.appendChild(avatar);
+          }
+          const nameEl = document.createElement('h1');
+          nameEl.className = 'ch-name';
+          nameEl.textContent = name || '';
+          const meta = document.createElement('div');
+          meta.className = 'ch-meta';
+          meta.textContent = [handle, subCount, videoCount].filter(Boolean).join(' · ');
+          header.append(nameEl, meta);
+        }
+
+        const items = extractVideos(res, seen);
+        continuationToken = findContinuationToken(res);
+        for (const item of items) grid.insertBefore(createCard(item), sentinel);
+      } finally {
+        loading = false;
+        spinner.classList.remove('show');
+      }
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', runInitial, { once: true });
+    } else {
+      runInitial();
     }
 
     return () => { io.disconnect(); };
@@ -1508,15 +2069,24 @@
   };
 
   let cleanup = null;
-  let currentRoute = null;
+  let currentKey = null;
   const route = () => {
     const path = location.pathname;
-    const next = path === '/watch' ? 'watch' : (path === '/' ? 'home' : null);
-    if (!next || next === currentRoute) { syncNav(); return; }
+    let type = null;
+    if (path === '/watch') type = 'watch';
+    else if (path === '/') type = 'home';
+    else if (path === '/results') type = 'search';
+    else if (CHANNEL_PATH_RE.test(path)) type = 'channel';
+    if (!type) { syncNav(); return; }
+    const key = type === 'search' ? path + location.search : path;
+    if (key === currentKey) { syncNav(); return; }
     if (cleanup) { cleanup(); cleanup = null; }
-    currentRoute = next;
+    currentKey = key;
     syncNav();
-    cleanup = next === 'watch' ? mountWatch() : mountHome();
+    cleanup = type === 'watch' ? mountWatch()
+      : type === 'home' ? mountHome()
+      : type === 'search' ? mountSearch()
+      : mountChannel();
   };
 
   window.addEventListener('yt-navigate-finish', route);
