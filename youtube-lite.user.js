@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Lite — fast, simple rendering
 // @namespace    yt-us
-// @version      2.5.0
+// @version      2.6.0
 // @description  Strips YouTube's heavy UI, deep DOM pruning, custom liquid-glass video player with full YouTube integration.
 // @updateURL    https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
@@ -31,6 +31,10 @@
   const GLASS_UI = true;
   const FORCE_DARK = true;
   const REDIRECT_SHORTS = true;
+  const NATIVE_ICONS = true;
+  const HIDE_CHIP_BAR = true;
+  const MINIMAL_SIDEBAR = true;
+  const ITUBE_LOGO = true;
 
   const shortsToWatch = () => {
     const m = location.pathname.match(/^\/shorts\/([\w-]{5,})/);
@@ -91,6 +95,52 @@
       ['circle', { cx: '8', cy: '8', r: '1.5', fill: 'currentColor' }],
       ['circle', { cx: '13', cy: '8', r: '1.5', fill: 'currentColor' }],
     ]),
+    home: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round', d: 'M2.2 7.2 8 2.6l5.8 4.6V13a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z' }]]),
+    subs: () => icon([
+      ['rect', { x: '1.6', y: '3.4', width: '12.8', height: '9.2', rx: '2', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
+      ['path', { fill: 'currentColor', d: 'M6.7 5.9 10.6 8l-3.9 2.1z' }],
+    ]),
+    history: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M2.6 6.2A5.8 5.8 0 1 1 2.2 8' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M1.2 3.6v2.8h2.8' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M8 5.1V8l2.1 1.3' }],
+    ]),
+    later: () => icon([
+      ['circle', { cx: '8', cy: '8', r: '5.9', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M8 4.6V8l2.4 1.5' }],
+    ]),
+    playlist: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M2 4.2h9M2 7.6h9M2 11h5.4' }],
+      ['path', { fill: 'currentColor', d: 'M10.6 8.6 14 10.7l-3.4 2.1z' }],
+    ]),
+    liked: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round', d: 'M5.6 13.9V6.9l2.7-4.8.9.5a1.7 1.7 0 0 1 .8 1.9l-.6 1.9h3.2a1.2 1.2 0 0 1 1.2 1.5l-1.1 4.6a1.7 1.7 0 0 1-1.6 1.4z' }],
+      ['rect', { x: '1.7', y: '6.9', width: '2.6', height: '7', rx: '.6', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
+    ]),
+    videos: () => icon([
+      ['rect', { x: '1.6', y: '3.4', width: '12.8', height: '9.2', rx: '1.6', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', d: 'M4.6 3.4v9.2M11.4 3.4v9.2' }],
+    ]),
+    download: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M8 2.4v7.2M5.2 6.9 8 9.7l2.8-2.8M2.6 13.2h10.8' }]]),
+    person: () => icon([
+      ['circle', { cx: '8', cy: '5.4', r: '2.7', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M2.9 13.6a5.1 5.1 0 0 1 10.2 0' }],
+    ]),
+    menu: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M2.2 4.2h11.6M2.2 8h11.6M2.2 11.8h11.6' }]]),
+    search: () => icon([
+      ['circle', { cx: '7', cy: '7', r: '4.6', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M10.4 10.4 14 14' }],
+    ]),
+    bell: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round', d: 'M8 2.1a3.8 3.8 0 0 0-3.8 3.8v2.5L3 10.7h10L11.8 8.4V5.9A3.8 3.8 0 0 0 8 2.1z' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M6.6 12.4a1.5 1.5 0 0 0 2.8 0' }],
+    ]),
+    plus: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round', d: 'M8 3.2v9.6M3.2 8h9.6' }]]),
+    share: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M4.2 7.6v5.3a1 1 0 0 0 1 1h5.6a1 1 0 0 0 1-1V7.6' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M8 10V2.2M5.2 5 8 2.2 10.8 5' }],
+    ]),
+    save: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round', d: 'M4 2.6h8v11l-4-2.7-4 2.7z' }]]),
   };
 
   const KILL = [
@@ -268,6 +318,15 @@
     html { --ytd-masthead-height: 52px !important; }
     ytd-masthead #container.ytd-masthead { padding: 0 16px !important; }
     ytd-masthead #end, ytd-masthead #buttons { gap: 4px !important; }
+    #ytl-brand {
+      font: 600 19px -apple-system, system-ui, sans-serif;
+      letter-spacing: -.02em; color: #f2f3f5;
+    }
+    ${HIDE_CHIP_BAR ? `
+    ytd-feed-filter-chip-bar-renderer { display: none !important; }
+    ` : ''}
+    ytd-thumbnail-overlay-resume-playback-renderer #progress,
+    .ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment { background: #0a84ff !important; }
     ytd-searchbox #container, .ytSearchboxComponentInputBox {
       background: rgba(255, 255, 255, .07) !important;
       border: 1px solid rgba(255, 255, 255, .15) !important;
@@ -323,6 +382,9 @@
     ${CLEAN_SIDEBAR ? `
     ytd-guide-renderer, tp-yt-app-drawer #contentContainer { background: transparent !important; }
     ytd-guide-renderer #footer { display: none !important; }
+    ${MINIMAL_SIDEBAR ? `
+    ytd-guide-section-renderer:nth-of-type(n+4) { display: none !important; }
+    ` : ''}
     ytd-guide-section-renderer {
       padding: 10px 0 !important;
       border-top: 1px solid rgba(255, 255, 255, .08) !important;
@@ -592,6 +654,9 @@
       border: 1px solid rgba(0, 0, 0, .08) !important;
     }
     html:not([dark]) #playlist ytd-playlist-panel-video-renderer:hover { background: rgba(0, 0, 0, .04) !important; }
+    html:not([dark]) #ytl-brand { color: #14161c; }
+    html:not([dark]) ytd-thumbnail-overlay-resume-playback-renderer #progress,
+    html:not([dark]) .ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment { background: #007aff !important; }
     ` : ''}
   `;
 
@@ -631,6 +696,42 @@
     }
   };
 
+  const ICON_BY_LABEL = {
+    home: 'home', subscriptions: 'subs', history: 'history', playlists: 'playlist',
+    'watch later': 'later', 'liked videos': 'liked', 'your videos': 'videos',
+    downloads: 'download', 'your channel': 'person', guide: 'menu', search: 'search',
+    notifications: 'bell', create: 'plus',
+  };
+
+  const swapIcons = () => {
+    for (const root of document.querySelectorAll('ytd-guide-renderer, ytd-mini-guide-renderer, ytd-masthead')) {
+      for (const host of root.querySelectorAll('yt-icon:not([data-ytl]), .ytIconWrapperHost:not([data-ytl])')) {
+        const entry = host.closest('ytd-guide-entry-renderer, ytd-mini-guide-entry-renderer');
+        const label = entry
+          ? (entry.querySelector('a')?.getAttribute('title') || entry.textContent || '').trim()
+          : (host.closest('button, a')?.getAttribute('aria-label') || '').trim();
+        if (!label) continue;
+        host.setAttribute('data-ytl', '1');
+        const key = ICON_BY_LABEL[label.toLowerCase()];
+        if (!key || !ICONS[key]) continue;
+        const svg = ICONS[key]();
+        svg.setAttribute('width', '22');
+        svg.setAttribute('height', '22');
+        host.replaceChildren(svg);
+      }
+    }
+  };
+
+  const brandLogo = () => {
+    const logo = document.querySelector('ytd-topbar-logo-renderer a#logo:not([data-ytl])');
+    if (!logo) return;
+    logo.setAttribute('data-ytl', '1');
+    const mark = document.createElement('span');
+    mark.id = 'ytl-brand';
+    mark.textContent = 'iTube';
+    logo.replaceChildren(mark);
+  };
+
   const capList = (containerSel, tags, max) => {
     if (!max) return;
     for (const c of document.querySelectorAll(containerSel)) {
@@ -646,7 +747,9 @@
 
   if (FORCE_DARK) document.documentElement.setAttribute('dark', '');
 
-  const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 200));
+  const idle = window.requestIdleCallback
+    ? (cb) => window.requestIdleCallback(cb, { timeout: 1200 })
+    : (cb) => setTimeout(cb, 200);
   let sweepScheduled = false;
   const sweep = () => {
     sweepScheduled = false;
@@ -657,6 +760,8 @@
     for (const n of document.querySelectorAll(KILL)) n.remove();
     if (PRUNE_HIDDEN_PANELS) prunePanels();
     if (REMOVE_SHORTS) pruneShorts();
+    if (NATIVE_ICONS) swapIcons();
+    if (ITUBE_LOGO && GLASS_UI) brandLogo();
     capList('#related ytd-item-section-renderer #contents', RELATED_TAGS, MAX_RELATED);
     capList('ytd-comments ytd-item-section-renderer > #contents', COMMENT_TAGS, MAX_COMMENT_THREADS);
     capList('ytd-comment-replies-renderer #expander-contents > #contents', REPLY_TAGS, MAX_REPLIES);

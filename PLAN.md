@@ -179,6 +179,32 @@ extension for the App Store.
       accent-tinted active row (blue fill + blue icon/label), and the legal-links
       footer removed. Light theme mirrors it.
 
+### M3.9 — Native app pass (done)
+- [x] YouTube's icons replaced with our own SF-style stroke set (NATIVE_ICONS):
+      swapIcons() rewrites the children of icon hosts in the guide + masthead,
+      mapped by exact lowercase label. TWO host types exist — `yt-icon` (guide,
+      hamburger) and `.ytIconWrapperHost` (Create, Notifications, voice search).
+      Missing the second one silently leaves YouTube icons in the masthead.
+      Verified live: 27 guide icons + Guide/Create/Notifications all swapped.
+- [x] YouTube logo → "iTube" wordmark (brandLogo()); the anchor keeps its href so
+      click-to-home still works.
+- [x] Home genre chip bar removed (HIDE_CHIP_BAR). Scope it to
+      ytd-feed-filter-chip-bar-renderer ONLY — hiding yt-chip-cloud-renderer also
+      kills the SEARCH filter chips, which are useful.
+- [x] Sidebar cut to Home / Subscriptions / You (MINIMAL_SIDEBAR):
+      `ytd-guide-section-renderer:nth-of-type(n+4)` drops Explore, More from
+      YouTube, Report history. Positional — recheck if YT reorders sections.
+- [x] Watched-progress bars recoloured off YouTube red to the accent.
+      Kept red: the LIVE badge (red is semantic for live, as it is on Apple's
+      platforms).
+- [x] FIXED A LATENT BUG affecting EVERYTHING sweep-driven: sweep was scheduled
+      with a bare requestIdleCallback, which YouTube's busy main thread can starve
+      for 20-30s on first load (measured). Pruning, caps, icons and logo all waited
+      on it. Now `requestIdleCallback(cb, { timeout: 1200 })` bounds it.
+      NOTE: the icon-swap must stamp data-ytl only AFTER the label resolves —
+      stamping on attempt permanently blacklists icons whose aria-label Polymer
+      hasn't bound yet (non-deterministic, load-order dependent).
+
 ### M4 — Performance proof
 - [ ] Baseline vs iTube numbers: DOM nodes, LCP, long tasks, memory (Chrome tracing
       as proxy + manual Safari spot checks)
