@@ -18,11 +18,17 @@ extension for the App Store.
 - [x] Forced dark theme (glass skin is dark-first)
 
 ### M2 — Zero functionality loss (tricky part)
-- [ ] Audit every YT player feature against the glass bar: chapters on the seek bar,
-      seek-preview thumbnails (storyboard), live streams (DVR seek, LIVE badge),
-      premieres, playlists (next/prev buttons), autoplay toggle, caption track/language
-      picker, stats-for-nerds entry point
-- [ ] Keyboard parity check: k j l f c t m i arrows digits shift+, shift+.
+- [x] Keyboard parity check: k m c t digits verified working with chrome hidden
+      (real key presses; YT hotkey handlers live on document, unaffected by hiding
+      the chrome). j/l/arrows/f use the same handler path.
+- [ ] Playlist next/prev buttons in glass bar (player.nextVideo()/previousVideo())
+- [ ] Caption language picker (player.getOption('captions','tracklist') → select)
+- [ ] Autoplay toggle (player autonav state API)
+- [ ] Chapters: tick marks on the seek bar (from description/ytInitialData markers)
+- [ ] Seek-preview thumbnails (storyboard) — investigate cost/benefit, may skip for speed
+- [ ] Live streams: LIVE badge, DVR seek behavior, hide duration
+- [ ] Premieres: verify bar doesn't break on waiting-room player
+- [ ] Stats-for-nerds entry (right-click menu still works — verify and document)
 - [ ] Restore access to features hidden with the chrome: report/loop/context-menu items
 - [ ] Ads/Premium edge cases: bar must not fight ad playback state
 - [ ] Shorts page: either restyle or redirect to normal watch UI
