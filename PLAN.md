@@ -21,7 +21,8 @@ extension for the App Store.
 - [x] Keyboard parity check: k m c t digits verified working with chrome hidden
       (real key presses; YT hotkey handlers live on document, unaffected by hiding
       the chrome). j/l/arrows/f use the same handler path.
-- [ ] Playlist next/prev buttons in glass bar (player.nextVideo()/previousVideo())
+- [x] Playlist next/prev buttons in glass bar (player.nextVideo()/previousVideo();
+      prev hidden outside playlists; verified advancing a Mix, index 2 → 3)
 - [ ] Caption language picker (player.getOption('captions','tracklist') → select)
 - [ ] Autoplay toggle (player autonav state API)
 - [ ] Chapters: tick marks on the seek bar (from description/ytInitialData markers)

@@ -63,6 +63,14 @@
       ['rect', { x: '8', y: '8', width: '5', height: '3.5', rx: '0.8', fill: 'currentColor' }],
     ]),
     fs: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', d: 'M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4' }]]),
+    prev: () => icon([
+      ['path', { fill: 'currentColor', d: 'M4 2.5h1.6v11H4z' }],
+      ['path', { fill: 'currentColor', d: 'M13.5 2.5v11L6.5 8z' }],
+    ]),
+    next: () => icon([
+      ['path', { fill: 'currentColor', d: 'M10.4 2.5H12v11h-1.6z' }],
+      ['path', { fill: 'currentColor', d: 'M2.5 2.5v11L9.5 8z' }],
+    ]),
   };
 
   const KILL = [
@@ -281,6 +289,8 @@
     const buildBar = (player, video) => {
       if (document.getElementById('ytl-bar')) return;
       const bar = el('div', 'ytl-bar');
+      const prev = el('button', 'ytl-prev', ICONS.prev());
+      const next = el('button', 'ytl-next', ICONS.next());
       const play = el('button', 'ytl-play', ICONS.pause());
       const timeCur = el('span', null); timeCur.className = 'ytl-time';
       const seek = el('input', 'ytl-seek'); seek.type = 'range'; seek.min = 0; seek.max = 1000; seek.value = 0;
@@ -297,10 +307,12 @@
       const cc = el('button', 'ytl-cc', 'CC');
       const pip = el('button', 'ytl-pip', ICONS.pip());
       const fs = el('button', 'ytl-fs', ICONS.fs());
-      bar.append(play, timeCur, seek, timeDur, mute, vol, speed, quality, cc, pip, fs);
+      bar.append(prev, play, next, timeCur, seek, timeDur, mute, vol, speed, quality, cc, pip, fs);
       player.appendChild(bar);
-      ui = { bar, play, timeCur, seek, timeDur, mute, vol, speed, quality, cc, pip, fs, scrubbing: false };
+      ui = { bar, prev, next, play, timeCur, seek, timeDur, mute, vol, speed, quality, cc, pip, fs, scrubbing: false };
 
+      prev.addEventListener('click', () => player.previousVideo?.());
+      next.addEventListener('click', () => player.nextVideo?.());
       play.addEventListener('click', () => { video.paused ? video.play() : video.pause(); });
       seek.addEventListener('pointerdown', () => { ui.scrubbing = true; });
       seek.addEventListener('change', () => {
@@ -395,6 +407,7 @@
         populateQuality(player);
         if (saved) ui.quality.value = saved;
         ui.speed.value = String(player.getPlaybackRate?.() || 1);
+        ui.prev.style.display = player.getPlaylist?.()?.length ? '' : 'none';
       }
 
       if (wired === video) return;
