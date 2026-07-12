@@ -16,24 +16,47 @@ then a scripted scroll of 150 rAF frames records real frame intervals.
 
 Reproduce: `scratchpad/bench.js` (Playwright).
 
-## Watch page
+## Watch page (v2.7.0)
 
 | Metric | Stock | iTube | Change |
 |---|---|---|---|
-| DOM nodes | 19,928 | 5,599 | **−72%** |
-| JS heap | 123 MB | 109 MB | **−11%** |
-| First contentful paint | 1,244 ms | 924 ms | **−26%** |
-| DOM content loaded | 1,721 ms | 1,578 ms | −8% |
-| Frame time, median | 7.0 ms | 6.9 ms | ~0 |
-| **Frame time, p95** | **14.5 ms** | **7.7 ms** | **−47%** |
-| Janky frames (>16.7 ms) of 147 | 3 | 1 | −67% |
-| Long tasks | 12 | 8 | −33% |
-| Long-task time, total | 1,481 ms | 1,118 ms | **−25%** |
+| DOM nodes | 20,241 | 5,567 | **−72%** |
+| First contentful paint | 1,156 ms | 1,012 ms | −12% |
+| Frame time, median | 6.9 ms | 6.9 ms | ~0 |
+| **Frame time, p95** | **16.2 ms** | **8.3 ms** | **−49%** |
+| Janky frames (>16.7 ms) of 147 | 3 | **0** | −100% |
+| Long tasks | 9 | 6 | −33% |
+| Long-task time, total | 1,249 ms | 935 ms | **−25%** |
 
-The p95 frame time is the number that matters for feel. The median is the same
-in both (both hit the frame budget most of the time); it's the *bad* frames —
-the ones you actually notice — that halve. Main-thread blocking drops by a
-quarter.
+The p95 frame time is the number that matters for feel. The median is identical
+(both hit the frame budget most of the time); it is the *bad* frames — the ones
+you actually notice — that halve, and the janky ones that disappear. Main-thread
+blocking drops by a quarter.
+
+**JS heap is NOT reported, because it is noise.** Per-run values across 3 runs:
+stock 118 / 123 / 155 MB, iTube 145 / 168 / 102 MB. The ranges overlap
+completely — GC timing dominates, so any heap number here (in either direction)
+is meaningless. Node count (5,517–5,571) and p95 (8.3–8.5 ms) are tight and
+repeatable; those are trustworthy.
+
+## Grid cards (v2.7.0, channel grid, 30 cards)
+
+| Metric | Stock | iTube | Change |
+|---|---|---|---|
+| Total page nodes | 3,890 | 2,542 | **−35%** |
+| Nodes per card | 45 | 35 | **−22%** |
+| Guide (sidebar) nodes | 195 | 113 | −42% |
+| Dead strip under the header | 48 px | **0** | gone |
+| Durations still shown | 30 | **30** | none lost |
+
+Per-card pruning removes the channel avatar subtree (12 nodes **and one image
+request per card**), thumbnail badges, touch-feedback shapes and hover overlays.
+The duration pill is deliberately kept.
+
+**Trap, do not repeat:** the duration pill IS a `yt-thumbnail-badge-view-model` —
+the same element type as the "New"/"4K" badges. Removing badges by tag deletes
+every duration on the page. Badges are pruned only when they are *not* inside
+`yt-thumbnail-bottom-overlay-view-model`.
 
 ## Home page
 
