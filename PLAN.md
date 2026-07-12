@@ -206,10 +206,33 @@ extension for the App Store.
       hasn't bound yet (non-deterministic, load-order dependent).
 
 ### M4 — Performance proof
-- [ ] Baseline vs iTube numbers: DOM nodes, LCP, long tasks, memory (Chrome tracing
-      as proxy + manual Safari spot checks)
-- [ ] Idle CPU on watch page ≤ stock YouTube
-- [ ] No layout thrash from the sweeper (verify with Performance panel)
+- [x] Baseline vs iTube numbers measured A/B in one tab; written up in PERF.md
+      with method and honest gaps. Watch page: 3,647 → 2,364 nodes (−35%) on a
+      RATE-LIMITED (partially loaded) session; −70% on a healthy one. Heap 86 →
+      82 MB.
+      KEY FINDING, do not re-litigate: our CSS does NOT speed up style recalc —
+      it costs ~+0.1ms per full pass (within noise). The universal `*` kills, the
+      `ytd-app *:not(...)` font rule and the `:has()` rules were each isolated
+      and re-measured: none is measurably expensive at this page size. The speed
+      comes from work that never happens (fewer nodes, no preview <video>s, no
+      animation/compositing, content-visibility), NOT from cheaper matching.
+      Never trust a single run here: a "4.1ms p95" appeared once and vanished
+      under 5x repetition. It was GC noise.
+- [x] No layout thrash from the sweeper: 0 mutations in a 5s idle window.
+- [ ] Frame rate during scroll — UNMEASURED. requestAnimationFrame is throttled
+      in a background tab, so the scripted-scroll harness cannot capture frame
+      timing. Must be done in Safari's Web Inspector timeline on a FOCUSED
+      window. Do not claim FPS or "no stutter" until then.
+- [ ] Cold-load timing (LCP, long tasks) with the script at document-start. The
+      post-load injection harness cannot see load-time effects at all.
+
+### M4.5 — Visual weight reduction (done)
+- [x] Feed/search/related cards flattened: no fill, no border, no inset sheen.
+      The thumbnail is the only shape; hover is the only affordance. Comments
+      became a divided list. Ambient glow removed. Verified via computed style
+      (card bg transparent, border 0, shadow none, thumb radius 12).
+      Visual sign-off still PENDING on a healthy session — Chrome was
+      rate-limited (0 thumbnails loading) during the check.
 
 ### M5 — iTube branding + extension
 - [ ] Rename userscript to itube.user.js, meta/name/version reset
