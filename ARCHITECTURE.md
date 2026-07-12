@@ -56,7 +56,7 @@ keep laying out to decode) and its `<video>` is adopted by our stage.
 1. **Shell + home** — app root, design system, home feed rendered from data. *(v3.0 — done)*
 2. **Watch + player** — our stage, our controls, full API sync. *(v3.1 — done: video adopted into our stage, readyState 4; seek, volume round-trip 42→42, mute, speed 1.5x, 9 quality levels, 30 caption tracks, no stall)*
 3. **Search + channel** — InnerTube-driven. *(v3.2 — done: search 26 results, channel 90 videos, both our UI)*
-4. **Comments + related** — continuations, bounded. *(v3.3)*
+4. **Comments + related** — continuations, bounded. *(v3.3 — done: 20 comments/page, cap 50, related rail. REPLIES NOT WIRED — see below)*
 
 Each stage ships only when it is measurably faster than the skin it replaces and
 loses no function.
@@ -80,6 +80,26 @@ thing to check.
 Channel tabs: never hardcode the `params` blob. Read the browseEndpoint params
 off the page and pick the tab by **base64-decoding** them and matching the tab
 name (`videos`, `shorts`, `streams`) — locale-independent, survives redesigns.
+
+## Known gap: comment replies
+
+Reply buttons are NOT rendered. The reply continuation token is not reachable
+from the thread in the current shape: `commentThreadRenderer` has keys
+`[trackingParams, renderingPriority, isModeratedElqComment, commentViewModel,
+loggingDirectives]` — **no `replies` key at all**. A probe finds 19 `replies`
+objects elsewhere in the response, so the token exists but hangs off a structure
+we have not yet mapped.
+
+Attempting to wire it by extracting from the thread wrapper BROKE comment
+extraction entirely (20 rows -> 0). Reverted. Do not retry without first dumping
+where those 19 `replies` objects actually live.
+
+Everything else (comment text, author, avatar, time, likes, paging, caps) works.
+
+## Player bar
+
+Two-row grid: the seek bar spans the FULL width of the bar (its own grid row),
+with controls beneath it. Verified: seek 713px inside a 743px bar.
 
 ## Non-negotiables (carried over — every one of these has bitten us)
 

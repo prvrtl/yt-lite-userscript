@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         iTube
 // @namespace    yt-us
-// @version      3.2.0
+// @version      3.3.0
 // @description  YouTube rebuilt as a native-feeling app. Our UI, YouTube's data.
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -76,6 +76,9 @@
   };
 
   const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  const MAX_COMMENTS = 50;
+  const COMMENTS_PAGE = 20;
+  const MAX_REPLIES = 10;
   const QUALITY_LABELS = {
     highres: '4320p', hd2160: '2160p', hd1440: '1440p', hd1080: '1080p',
     hd720: '720p', large: '480p', medium: '360p', small: '240p', tiny: '144p',
@@ -350,6 +353,134 @@
       cursor: pointer;
       padding: 0;
     }
+    #itube .comments {
+      margin-top: 28px;
+    }
+    #itube .comments-header {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -.01em;
+      margin: 0 0 4px;
+    }
+    #itube .comments-list {
+      display: flex;
+      flex-direction: column;
+    }
+    #itube .comment-row {
+      display: flex;
+      gap: 12px;
+      padding: 14px 0;
+      content-visibility: auto;
+      contain-intrinsic-size: auto 90px;
+      contain: layout paint style;
+    }
+    #itube .comment-row + .comment-row {
+      border-top: 1px solid rgba(255, 255, 255, .07);
+    }
+    #itube .comment-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--raised);
+      flex: none;
+      opacity: 0;
+    }
+    #itube .comment-avatar.in {
+      opacity: 1;
+      transition: opacity .18s ease-out;
+    }
+    #itube .comment-body {
+      flex: 1;
+      min-width: 0;
+    }
+    #itube .comment-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    #itube .comment-author {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    #itube .comment-time {
+      font-size: 12.5px;
+      color: var(--dim);
+    }
+    #itube .comment-text {
+      margin-top: 4px;
+      font-size: 14px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    #itube .comment-text.expanded {
+      display: block;
+      -webkit-line-clamp: unset;
+    }
+    #itube .comment-showmore {
+      display: none;
+      margin-top: 4px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+    }
+    #itube .comment-likes {
+      margin-top: 6px;
+      font-size: 12.5px;
+      color: var(--dim);
+    }
+    #itube .comment-replies-btn {
+      display: block;
+      margin-top: 8px;
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+    }
+    #itube .comment-replies {
+      margin-top: 10px;
+      margin-left: 24px;
+      display: flex;
+      flex-direction: column;
+    }
+    #itube .comments-more {
+      display: block;
+      margin-top: 4px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 12px 0 0;
+    }
+    #itube .comments-spinner {
+      display: none;
+      justify-content: center;
+      padding: 16px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    #itube .comments-spinner.show {
+      display: flex;
+    }
+    #itube .comments-empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 24px 0;
+      font-size: 14px;
+    }
     #itube .rc {
       display: flex;
       gap: 10px;
@@ -546,10 +677,12 @@
       transform: translateX(-50%);
       width: min(94%, 920px);
       z-index: 20;
-      display: flex;
+      display: grid;
+      grid-template-areas: 'seek seek seek' 'left center right';
+      grid-template-columns: 1fr auto 1fr;
       align-items: center;
-      gap: 12px;
-      padding: 8px 12px;
+      gap: 6px 12px;
+      padding: 10px 14px 8px;
       border-radius: 22px;
       background: rgba(18, 18, 24, .52);
       backdrop-filter: blur(22px) saturate(1.7);
@@ -573,16 +706,19 @@
       display: flex;
       align-items: center;
       gap: 4px;
-      flex: 0 0 190px;
     }
-    #itube-bar-left { justify-content: flex-start; }
-    #itube-bar-right { justify-content: flex-end; }
+    #itube-bar-left { grid-area: left; justify-content: flex-start; }
+    #itube-bar-right { grid-area: right; justify-content: flex-end; }
     #itube-bar-center {
+      grid-area: center;
       display: flex;
       align-items: center;
       gap: 10px;
-      flex: 1;
       min-width: 0;
+    }
+    #itube-seekwrap {
+      grid-area: seek;
+      width: 100%;
     }
     #itube-bar button {
       display: flex;
@@ -923,6 +1059,118 @@
     return token;
   };
 
+  const findAllContinuationTokens = (root) => {
+    const tokens = [];
+    walk(root, (node) => {
+      const t = node?.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token;
+      if (typeof t === 'string' && t) tokens.push(t);
+    });
+    return tokens;
+  };
+
+  // The comments continuation lives inside the itemSectionRenderer tagged
+  // 'comment-item-section'. Several other continuations exist on a watch
+  // page (related rail, etc.), so we cannot just take the first token found.
+  // If the section identifier is ever renamed, fall back to the last
+  // continuation on the page — comments load after everything else.
+  const findCommentsToken = (root) => {
+    const section = findNode(root, (n) => n?.itemSectionRenderer?.sectionIdentifier === 'comment-item-section')?.itemSectionRenderer;
+    if (section) {
+      const t = findContinuationToken(section);
+      if (t) return t;
+    }
+    const tokens = findAllContinuationTokens(root);
+    return tokens.length ? tokens[tokens.length - 1] : null;
+  };
+
+  // Comment view-models keep their text/author/etc in a separate entity
+  // batch, keyed by an entityKey that the commentViewModel references.
+  const commentEntityMap = (root) => {
+    const map = new Map();
+    walk(root, (node) => {
+      const muts = node?.frameworkUpdates?.entityBatchUpdate?.mutations;
+      if (!Array.isArray(muts)) return;
+      for (const m of muts) {
+        const payload = m?.payload?.commentEntityPayload;
+        const key = m?.entityKey || payload?.key;
+        if (payload && key) map.set(key, payload);
+      }
+    });
+    return map;
+  };
+
+  const getCommentAvatar = (legacy, author) => (
+    (Array.isArray(legacy?.authorThumbnail?.thumbnails) && legacy.authorThumbnail.thumbnails.length
+      ? legacy.authorThumbnail.thumbnails[legacy.authorThumbnail.thumbnails.length - 1]?.url
+      : null)
+    || author?.avatarThumbnailUrl
+    || author?.avatar?.thumbnails?.[0]?.url
+    || null
+  );
+
+  // Tolerant comment extractor: handles the legacy commentThreadRenderer →
+  // comment.commentRenderer shape AND the newer commentViewModel shape,
+  // whose actual data lives in the entity batch (see commentEntityMap).
+  const extractComment = (thread, entityMap) => {
+    const legacy = thread?.comment?.commentRenderer || thread?.commentRenderer;
+    if (legacy) {
+      const text = (legacy.contentText?.runs || []).map((r) => r?.text || '').join('') || legacy.contentText?.simpleText || '';
+      const replyToken = findContinuationToken(thread?.replies);
+      const replyCount = Number(legacy.replyCount) || (replyToken ? 1 : 0);
+      return {
+        id: legacy.commentId || null,
+        author: legacy.authorText?.simpleText || legacy.authorText?.runs?.[0]?.text || '',
+        avatar: getCommentAvatar(legacy, null),
+        text,
+        published: legacy.publishedTimeText?.runs?.[0]?.text || legacy.publishedTimeText?.simpleText || '',
+        likes: legacy.voteCount?.simpleText || legacy.voteCount?.accessibility?.accessibilityData?.label || '',
+        replyCount,
+        replyToken,
+      };
+    }
+    const vm = thread?.commentViewModel;
+    if (!vm) return null;
+    const key = vm.commentKey || vm.key || vm.commentId;
+    const payload = key ? entityMap.get(key) : null;
+    const props = payload?.properties || vm.properties;
+    if (!props) return null;
+    const author = payload?.author || vm.author;
+    const toolbar = payload?.toolbar || vm.toolbar;
+    const replyToken = findContinuationToken(thread?.replies);
+    const replyCount = Number(toolbar?.replyCount) || Number(props.replyCount) || (replyToken ? 1 : 0);
+    return {
+      id: props.commentId || payload?.key || key || null,
+      author: author?.displayName || '',
+      avatar: getCommentAvatar(null, author),
+      text: props.content?.content || '',
+      published: props.publishedTime || '',
+      likes: toolbar?.likeCountA11y || toolbar?.likeCountNotliked || toolbar?.likeCountLiked || '',
+      replyCount,
+      replyToken,
+    };
+  };
+
+  const extractComments = (root, entityMap, seen) => {
+    const out = [];
+    walk(root, (node) => {
+      let thread = null;
+      if (node.commentThreadRenderer) thread = node.commentThreadRenderer;
+      else if (node.commentRenderer || node.commentViewModel) thread = node;
+      else return;
+      const c = extractComment(thread, entityMap);
+      if (!c || !c.id || seen.has(c.id)) return;
+      seen.add(c.id);
+      out.push(c);
+    });
+    return out;
+  };
+
+  const getCommentsCount = (root) => {
+    const t = findNode(root, (n) => n?.commentsHeaderRenderer)?.commentsHeaderRenderer?.countText;
+    if (!t) return null;
+    return t.simpleText || (Array.isArray(t.runs) ? t.runs.map((r) => r?.text || '').join('') : null);
+  };
+
   const fmt = (s) => {
     if (!isFinite(s)) return 'LIVE';
     s = Math.max(0, Math.floor(s));
@@ -1037,6 +1285,81 @@
     }
     a.append(thumbWrap, body);
     return a;
+  };
+
+  const createCommentRow = (item) => {
+    const row = document.createElement('div');
+    row.className = 'comment-row';
+    const avatar = document.createElement('img');
+    avatar.className = 'comment-avatar';
+    avatar.addEventListener('load', () => avatar.classList.add('in'), { once: true });
+    avatar.addEventListener('error', () => avatar.classList.add('in'), { once: true });
+    avatar.setAttribute('loading', 'lazy');
+    avatar.setAttribute('decoding', 'async');
+    if (item.avatar) avatar.src = item.avatar;
+
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'comment-body';
+
+    const head = document.createElement('div');
+    head.className = 'comment-head';
+    const author = document.createElement('span');
+    author.className = 'comment-author';
+    author.textContent = item.author || '';
+    const time = document.createElement('span');
+    time.className = 'comment-time';
+    time.textContent = item.published || '';
+    head.append(author, time);
+
+    const text = document.createElement('div');
+    text.className = 'comment-text';
+    text.textContent = item.text || '';
+
+    const showMore = document.createElement('button');
+    showMore.className = 'comment-showmore';
+    showMore.textContent = 'Show more';
+    showMore.addEventListener('click', () => {
+      const expanded = text.classList.toggle('expanded');
+      showMore.textContent = expanded ? 'Show less' : 'Show more';
+    });
+    requestAnimationFrame(() => {
+      if (text.scrollHeight > text.clientHeight + 1) showMore.style.display = '';
+    });
+
+    const likes = document.createElement('div');
+    likes.className = 'comment-likes';
+    likes.textContent = item.likes || '';
+
+    bodyEl.append(head, text, showMore, likes);
+
+    if (item.replyToken) {
+      const repliesBtn = document.createElement('button');
+      repliesBtn.className = 'comment-replies-btn';
+      const n = Number(item.replyCount);
+      repliesBtn.textContent = n > 1
+        ? n + ' replies'
+        : (n === 1 ? '1 reply' : 'View replies');
+      let loaded = false;
+      repliesBtn.addEventListener('click', async () => {
+        if (loaded) return;
+        loaded = true;
+        repliesBtn.textContent = 'Loading…';
+        const res = await innertube('next', { continuation: item.replyToken });
+        if (!res) { repliesBtn.remove(); return; }
+        const entityMap = commentEntityMap(res);
+        const replies = extractComments(res, entityMap, new Set()).slice(0, MAX_REPLIES);
+        repliesBtn.remove();
+        if (!replies.length) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'comment-replies';
+        for (const r of replies) wrap.appendChild(createCommentRow(r));
+        bodyEl.appendChild(wrap);
+      });
+      bodyEl.appendChild(repliesBtn);
+    }
+
+    row.append(avatar, bodyEl);
+    return row;
   };
 
   const root = document.createElement('div');
@@ -1648,10 +1971,10 @@
       return r;
     };
     menu.append(row('Speed', speed), row('Quality', quality), row('Captions', cc), row('Autoplay', auto));
-    left.append(prev, play, next);
-    center.append(timeCur, seekwrap, timeDur, live);
-    right.append(mute, vol, more, pip, fs);
-    bar.append(left, center, right, menu);
+    left.append(prev, play, next, timeCur);
+    center.append(live);
+    right.append(timeDur, mute, vol, more, pip, fs);
+    bar.append(seekwrap, left, center, right, menu);
     stage.appendChild(bar);
     return {
       bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol,
@@ -1693,7 +2016,22 @@
       more.textContent = expanded ? 'less' : 'more';
     });
 
-    watchLeft.append(stage, title, channelRow, desc, more);
+    const commentsPanel = document.createElement('div');
+    commentsPanel.className = 'comments';
+    const commentsHeader = document.createElement('h2');
+    commentsHeader.className = 'comments-header';
+    const commentsList = document.createElement('div');
+    commentsList.className = 'comments-list';
+    const commentsSpinner = document.createElement('div');
+    commentsSpinner.className = 'comments-spinner';
+    commentsSpinner.textContent = 'Loading…';
+    const commentsMore = document.createElement('button');
+    commentsMore.className = 'comments-more';
+    commentsMore.textContent = 'Show more comments';
+    commentsMore.style.display = 'none';
+    commentsPanel.append(commentsHeader, commentsList, commentsSpinner, commentsMore);
+
+    watchLeft.append(stage, title, channelRow, desc, more, commentsPanel);
     watch.append(watchLeft, watchRight);
 
     view.replaceChildren(watch);
@@ -1724,6 +2062,68 @@
       for (const item of related) watchRight.appendChild(createCompactCard(item));
     };
     renderMeta();
+
+    let commentsToken = null;
+    let commentsSeen = new Set();
+    let commentsShown = 0;
+    let commentsLoading = false;
+
+    const showCommentsOff = () => {
+      commentsHeader.textContent = 'Comments';
+      const empty = document.createElement('div');
+      empty.className = 'comments-empty';
+      empty.textContent = 'Comments are turned off.';
+      commentsList.replaceChildren(empty);
+    };
+
+    const fetchComments = async (initial) => {
+      if (commentsLoading || !commentsToken || commentsShown >= MAX_COMMENTS) return;
+      commentsLoading = true;
+      commentsSpinner.classList.add('show');
+      commentsMore.style.display = 'none';
+      try {
+        const res = await innertube('next', { continuation: commentsToken });
+        if (!res) return;
+        if (initial) {
+          const count = getCommentsCount(res);
+          commentsHeader.textContent = count || 'Comments';
+        }
+        const entityMap = commentEntityMap(res);
+        const items = extractComments(res, entityMap, commentsSeen);
+        commentsToken = findCommentsToken(res);
+        const page = initial ? COMMENTS_PAGE : (MAX_COMMENTS - commentsShown);
+        const room = Math.min(page, MAX_COMMENTS - commentsShown);
+        const batch = items.slice(0, Math.max(0, room));
+        for (const item of batch) commentsList.appendChild(createCommentRow(item));
+        commentsShown += batch.length;
+        if (initial && commentsShown === 0 && !commentsToken) {
+          showCommentsOff();
+          return;
+        }
+        commentsMore.style.display = (commentsToken && commentsShown < MAX_COMMENTS) ? '' : 'none';
+      } finally {
+        commentsLoading = false;
+        commentsSpinner.classList.remove('show');
+      }
+    };
+    commentsMore.addEventListener('click', () => fetchComments(false));
+
+    const resetComments = () => {
+      commentsList.replaceChildren();
+      commentsHeader.textContent = '';
+      commentsSpinner.classList.remove('show');
+      commentsMore.style.display = 'none';
+      commentsSeen = new Set();
+      commentsShown = 0;
+      commentsLoading = false;
+      commentsToken = findCommentsToken(window.ytInitialData);
+      if (!commentsToken) {
+        showCommentsOff();
+        return;
+      }
+      fetchComments(true);
+    };
+    resetComments();
 
     let chapterSecs = parseChapters(window.ytInitialData);
     let storyboard = null;
@@ -1932,6 +2332,7 @@
       chapterSecs = parseChapters(data);
       renderMeta();
       renderTicks();
+      resetComments();
     };
     window.addEventListener('yt-navigate-finish', onNavigateFinish);
 
