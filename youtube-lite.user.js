@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Lite — fast, simple rendering
 // @namespace    yt-us
-// @version      2.6.1
+// @version      2.7.0
 // @description  Strips YouTube's heavy UI, deep DOM pruning, custom liquid-glass video player with full YouTube integration.
 // @updateURL    https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
@@ -35,6 +35,8 @@
   const HIDE_CHIP_BAR = true;
   const MINIMAL_SIDEBAR = true;
   const ITUBE_LOGO = true;
+  const LEAN_CARDS = true;
+  const LEAN_SIDEBAR = true;
 
   const shortsToWatch = () => {
     const m = location.pathname.match(/^\/shorts\/([\w-]{5,})/);
@@ -167,6 +169,12 @@
     PRUNE_PLAYER_OVERLAYS && '.ytp-iv-video-content',
   ].filter(Boolean).join(',');
 
+  const CARD_JUNK = [
+    LEAN_CARDS && 'ytd-rich-item-renderer yt-decorated-avatar-view-model',
+    LEAN_CARDS && 'ytd-rich-item-renderer yt-touch-feedback-shape',
+    LEAN_CARDS && 'ytd-rich-item-renderer yt-thumbnail-overlay-toggle-button-view-model',
+  ].filter(Boolean).join(',');
+
   const CSS = `
     *, *::before, *::after {
       animation: none !important;
@@ -179,7 +187,7 @@
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
     }
-    ytd-rich-item-renderer { content-visibility: auto; contain-intrinsic-size: 0 240px; }
+    ytd-rich-item-renderer { content-visibility: auto; contain-intrinsic-size: 0 230px; }
     ytd-comment-thread-renderer { content-visibility: auto; contain-intrinsic-size: 0 120px; }
     #related yt-lockup-view-model,
     #related ytd-compact-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 100px; }
@@ -319,7 +327,18 @@
       letter-spacing: -.02em; color: #f2f3f5;
     }
     ${HIDE_CHIP_BAR ? `
-    ytd-feed-filter-chip-bar-renderer { display: none !important; }
+    ytd-feed-filter-chip-bar-renderer,
+    ytd-rich-grid-renderer #header,
+    ytd-rich-grid-renderer #chips-wrapper { display: none !important; }
+    ` : ''}
+    ${LEAN_CARDS ? `
+    ytd-rich-item-renderer .ytLockupViewModelMetadata { padding: 10px 4px 4px !important; }
+    ytd-rich-item-renderer .ytLockupMetadataViewModelAvatar { display: none !important; }
+    ytd-rich-item-renderer .ytLockupMetadataViewModelHost,
+    ytd-rich-item-renderer yt-lockup-metadata-view-model { display: block !important; }
+    ytd-rich-item-renderer button.ytSpecButtonShapeNextHost[aria-label="More actions"] { opacity: 0 !important; }
+    ytd-rich-item-renderer:hover button.ytSpecButtonShapeNextHost[aria-label="More actions"],
+    ytd-rich-item-renderer button.ytSpecButtonShapeNextHost[aria-label="More actions"]:focus-visible { opacity: 1 !important; }
     ` : ''}
     ytd-thumbnail-overlay-resume-playback-renderer #progress,
     .ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment { background: #0a84ff !important; }
@@ -378,8 +397,16 @@
     ${CLEAN_SIDEBAR ? `
     ytd-guide-renderer, tp-yt-app-drawer #contentContainer { background: transparent !important; }
     ytd-guide-renderer #footer { display: none !important; }
+    ${LEAN_SIDEBAR ? `
+    ytd-guide-collapsible-entry-renderer,
+    ytd-guide-entry-renderer #newness-dot,
+    ytd-guide-entry-renderer yt-icon-badge-shape,
+    ytd-guide-section-renderer #guide-section-title yt-icon,
+    ytd-guide-collapsible-section-entry-renderer { display: none !important; }
+    ` : ''}
     ${MINIMAL_SIDEBAR ? `
-    ytd-guide-section-renderer:nth-of-type(n+4) { display: none !important; }
+    ytd-guide-signin-promo-renderer, #guide-links-primary, #guide-links-secondary,
+    ytd-guide-renderer #footer { display: none !important; }
     ` : ''}
     ytd-guide-section-renderer {
       padding: 10px 0 !important;
@@ -674,6 +701,22 @@
     }
   };
 
+  const GUIDE_DROP = /^\/(premium|music|movies|gaming|live|fashion|sport|learning|podcasts|feed\/storefront|reporthistory|account)|^https?:\/\/(music|kids|tv)\.youtube\.com|^https?:\/\/(www\.)?youtubekids\.com/i;
+
+  const pruneGuide = () => {
+    for (const s of document.querySelectorAll('ytd-guide-section-renderer:not([data-ytl])')) {
+      const links = [...s.querySelectorAll('a[href]')];
+      if (!links.length) continue;
+      s.setAttribute('data-ytl', '1');
+      const title = s.querySelector('#guide-section-title');
+      if (title && (title.textContent || '').trim()) {
+        s.remove();
+        continue;
+      }
+      if (links.every((a) => GUIDE_DROP.test(a.getAttribute('href') || ''))) s.remove();
+    }
+  };
+
   const ICON_BY_LABEL = {
     home: 'home', subscriptions: 'subs', history: 'history', playlists: 'playlist',
     'watch later': 'later', 'liked videos': 'liked', 'your videos': 'videos',
@@ -739,8 +782,15 @@
     if (FORCE_DARK) forceDark();
     mountStyle();
     for (const n of document.querySelectorAll(KILL)) n.remove();
+    if (LEAN_CARDS && CARD_JUNK) {
+      for (const n of document.querySelectorAll(CARD_JUNK)) n.remove();
+      for (const b of document.querySelectorAll('ytd-rich-item-renderer yt-thumbnail-badge-view-model')) {
+        if (!b.closest('yt-thumbnail-bottom-overlay-view-model')) b.remove();
+      }
+    }
     if (PRUNE_HIDDEN_PANELS) prunePanels();
     if (REMOVE_SHORTS) pruneShorts();
+    if (MINIMAL_SIDEBAR) pruneGuide();
     if (NATIVE_ICONS) swapIcons();
     if (ITUBE_LOGO && GLASS_UI) brandLogo();
     capList('#related ytd-item-section-renderer #contents', RELATED_TAGS, MAX_RELATED);
