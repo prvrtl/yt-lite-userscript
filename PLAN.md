@@ -23,7 +23,13 @@ extension for the App Store.
       the chrome). j/l/arrows/f use the same handler path.
 - [x] Playlist next/prev buttons in glass bar (player.nextVideo()/previousVideo();
       prev hidden outside playlists; verified advancing a Mix, index 2 → 3)
-- [ ] Caption language picker (player.getOption('captions','tracklist') → select)
+- [x] Caption language picker: CC select in glass bar via toggleSubtitles +
+      setOption('captions','track'). API-verified (tracklist, track set to de-DE
+      rendered German segments, off works). PENDING: visual re-check of the final
+      sequence on a healthy session — YouTube throttled this session's media
+      requests mid-QC (infinite spinner on every video; API layer unaffected).
+      NOTE: never cycle loadModule/unloadModule('captions') — it reproducibly
+      stalls the player at readyState 0.
 - [ ] Autoplay toggle (player autonav state API)
 - [ ] Chapters: tick marks on the seek bar (from description/ytInitialData markers)
 - [ ] Seek-preview thumbnails (storyboard) — investigate cost/benefit, may skip for speed

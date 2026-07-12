@@ -304,7 +304,8 @@
         speed.appendChild(o);
       }
       const quality = el('select', 'ytl-quality');
-      const cc = el('button', 'ytl-cc', 'CC');
+      const cc = el('select', 'ytl-cc');
+      cc.appendChild(new Option('CC', ''));
       const pip = el('button', 'ytl-pip', ICONS.pip());
       const fs = el('button', 'ytl-fs', ICONS.fs());
       bar.append(prev, play, next, timeCur, seek, timeDur, mute, vol, speed, quality, cc, pip, fs);
@@ -327,7 +328,16 @@
         player.setPlaybackQualityRange?.(quality.value, quality.value);
         localStorage.setItem('yt-lite-quality', quality.value);
       });
-      cc.addEventListener('click', () => player.toggleSubtitles?.());
+      cc.addEventListener('mousedown', () => populateTracks(player));
+      cc.addEventListener('change', () => {
+        const on = player.isSubtitlesOn?.();
+        if (!cc.value) {
+          if (on) player.toggleSubtitles?.();
+          return;
+        }
+        if (!on) player.toggleSubtitles?.();
+        setTimeout(() => player.setOption?.('captions', 'track', { languageCode: cc.value }), 150);
+      });
       pip.addEventListener('click', () => {
         if (video.webkitSetPresentationMode) {
           video.webkitSetPresentationMode(video.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture');
@@ -377,6 +387,20 @@
       ui.seek.style.background = `linear-gradient(to right, rgba(255,255,255,.95) ${played}%, rgba(255,255,255,.4) ${played}%, rgba(255,255,255,.4) ${buffered}%, rgba(255,255,255,.16) ${buffered}%)`;
     };
 
+    const populateTracks = (player) => {
+      if (!ui || ui.cc.options.length > 1) return;
+      const wasOn = player.isSubtitlesOn?.();
+      if (!wasOn) player.toggleSubtitles?.();
+      const tracks = player.getOption?.('captions', 'tracklist') || [];
+      const cur = player.getOption?.('captions', 'track')?.languageCode || '';
+      ui.cc.replaceChildren(new Option('CC off', ''));
+      for (const t of tracks) {
+        const o = new Option(t.displayName, t.languageCode, false, t.languageCode === cur);
+        ui.cc.appendChild(o);
+      }
+      if (!wasOn) player.toggleSubtitles?.();
+    };
+
     const populateQuality = (player) => {
       if (!ui) return;
       const levels = player.getAvailableQualityLevels?.() || [];
@@ -408,6 +432,7 @@
         if (saved) ui.quality.value = saved;
         ui.speed.value = String(player.getPlaybackRate?.() || 1);
         ui.prev.style.display = player.getPlaylist?.()?.length ? '' : 'none';
+        ui.cc.replaceChildren(new Option('CC', ''));
       }
 
       if (wired === video) return;
