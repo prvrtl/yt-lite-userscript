@@ -308,11 +308,22 @@
       const quality = el('select', 'ytl-quality');
       const cc = el('select', 'ytl-cc');
       cc.appendChild(new Option('CC', ''));
+      const auto = el('button', 'ytl-auto', 'Auto');
       const pip = el('button', 'ytl-pip', ICONS.pip());
       const fs = el('button', 'ytl-fs', ICONS.fs());
-      bar.append(prev, play, next, timeCur, seek, timeDur, mute, vol, speed, quality, cc, pip, fs);
+      bar.append(prev, play, next, timeCur, seek, timeDur, mute, vol, speed, quality, cc, auto, pip, fs);
       player.appendChild(bar);
-      ui = { bar, prev, next, play, timeCur, seek, timeDur, mute, vol, speed, quality, cc, pip, fs, scrubbing: false };
+      ui = { bar, prev, next, play, timeCur, seek, timeDur, mute, vol, speed, quality, cc, auto, pip, fs, scrubbing: false };
+      ui.syncAuto = () => {
+        const b = document.querySelector('#movie_player .ytp-autonav-toggle-button');
+        auto.style.display = b ? '' : 'none';
+        auto.style.opacity = b?.getAttribute('aria-checked') === 'true' ? '1' : '.45';
+      };
+      auto.addEventListener('click', () => {
+        document.querySelector('#movie_player .ytp-autonav-toggle-button')?.click();
+        setTimeout(ui.syncAuto, 300);
+      });
+      ui.syncAuto();
 
       prev.addEventListener('click', () => player.previousVideo?.());
       next.addEventListener('click', () => player.nextVideo?.());
@@ -450,6 +461,7 @@
         ui.speed.value = String(player.getPlaybackRate?.() || 1);
         ui.prev.style.display = player.getPlaylist?.()?.length ? '' : 'none';
         ui.cc.replaceChildren(new Option('CC', ''));
+        ui.syncAuto?.();
       }
 
       if (wired === video) return;

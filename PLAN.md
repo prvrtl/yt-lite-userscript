@@ -36,7 +36,8 @@ extension for the App Store.
       always bind via EventTarget.prototype.addEventListener.call(player, ...).
       Bar render cost vs stock YT chrome: 33 nodes vs 161; show/hide is one
       opacity/visibility flip vs YT's class-churn over the whole chrome subtree.
-- [ ] Autoplay toggle (player autonav state API)
+- [x] Autoplay toggle: "Auto" button proxies YT's hidden .ytp-autonav-toggle-button
+      (keeps YT persistence/server sync; dimmed when off). Verified round-trip.
 - [ ] Chapters: tick marks on the seek bar (from description/ytInitialData markers)
 - [ ] Seek-preview thumbnails (storyboard) — investigate cost/benefit, may skip for speed
 - [ ] Live streams: LIVE badge, DVR seek behavior, hide duration
