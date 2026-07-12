@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Lite — fast, simple rendering
 // @namespace    yt-us
-// @version      2.6.0
+// @version      2.6.1
 // @description  Strips YouTube's heavy UI, deep DOM pruning, custom liquid-glass video player with full YouTube integration.
 // @updateURL    https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
@@ -636,7 +636,12 @@
   const style = document.createElement('style');
   style.id = 'yt-lite-style';
   style.textContent = CSS;
-  document.documentElement.appendChild(style);
+  const mountStyle = () => {
+    const root = document.documentElement;
+    if (!root) return setTimeout(mountStyle, 0);
+    if (style.parentNode !== root) root.appendChild(style);
+  };
+  mountStyle();
 
   let flagTries = 0;
   const patchFlags = () => {
@@ -718,7 +723,11 @@
     }
   };
 
-  if (FORCE_DARK) document.documentElement.setAttribute('dark', '');
+  const forceDark = () => {
+    const root = document.documentElement;
+    if (root && !root.hasAttribute('dark')) root.setAttribute('dark', '');
+  };
+  if (FORCE_DARK) forceDark();
 
   const idle = window.requestIdleCallback
     ? (cb) => window.requestIdleCallback(cb, { timeout: 1200 })
@@ -727,9 +736,8 @@
   const sweep = () => {
     sweepScheduled = false;
     if (REDIRECT_SHORTS && shortsToWatch()) return;
-    if (FORCE_DARK && !document.documentElement.hasAttribute('dark')) {
-      document.documentElement.setAttribute('dark', '');
-    }
+    if (FORCE_DARK) forceDark();
+    mountStyle();
     for (const n of document.querySelectorAll(KILL)) n.remove();
     if (PRUNE_HIDDEN_PANELS) prunePanels();
     if (REMOVE_SHORTS) pruneShorts();
@@ -1128,8 +1136,10 @@
   };
 
   const start = () => {
-    new MutationObserver(scheduleSweep)
-      .observe(document.documentElement, { childList: true, subtree: true });
+    const root = document.documentElement;
+    if (!root) return setTimeout(start, 0);
+    mountStyle();
+    new MutationObserver(scheduleSweep).observe(root, { childList: true, subtree: true });
     scheduleSweep();
     if (GLASS_PLAYER) startGlassPlayer();
   };

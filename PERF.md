@@ -1,74 +1,82 @@
 # iTube — performance, measured
 
-Numbers here are measured, not estimated. Where a claim could not be verified,
-it says so. Anything not listed has not been measured and must not be claimed.
+Measured, not estimated. Where something is not proven, it says so.
 
 ## Method
 
-Chrome (same machine, same session, same account), a real logged-in YouTube.
-For each surface the SAME page in the SAME tab is measured twice: once stock,
-then again after applying iTube's shipped CSS and its DOM work (KILL list,
-panel pruning, related/comment caps). Measuring both halves in one tab removes
-machine, network and account variance.
+Playwright (Chromium, headed, focused window — so `requestAnimationFrame` is not
+throttled), viewport 1512x900, logged out. The script is injected via
+`addInitScript`, i.e. at **document-start** — the same moment a userscript
+manager runs it, so cold-load effects are real and not simulated.
 
-Style+layout cost is measured by forcing a full style recalc and layout
-(`classList.toggle` on `<html>`, then read `document.body.offsetHeight`) and
-timing it — 20 iterations per run, 5 runs, reporting the median of the run
-medians. Single-run numbers are worthless here: the first attempt showed a
-"4.1ms p95" that vanished under repetition. It was GC noise.
+Each surface is loaded twice per run — once stock, once with iTube — in a fresh
+browser context. 3 runs each; the table reports the **median across runs**. After
+load, the page is scrolled (8 x 900px) to make comments and related populate,
+then a scripted scroll of 150 rAF frames records real frame intervals.
 
-## Results — watch page
+Reproduce: `scratchpad/bench.js` (Playwright).
+
+## Watch page
 
 | Metric | Stock | iTube | Change |
 |---|---|---|---|
-| DOM nodes | 3,647 | 2,364 | **−35%** |
-| JS heap | 86 MB | 82 MB | −4 MB |
-| Full style recalc + layout (median) | 0.2 ms | 0.3 ms | +0.1 ms |
+| DOM nodes | 19,928 | 5,599 | **−72%** |
+| JS heap | 123 MB | 109 MB | **−11%** |
+| First contentful paint | 1,244 ms | 924 ms | **−26%** |
+| DOM content loaded | 1,721 ms | 1,578 ms | −8% |
+| Frame time, median | 7.0 ms | 6.9 ms | ~0 |
+| **Frame time, p95** | **14.5 ms** | **7.7 ms** | **−47%** |
+| Janky frames (>16.7 ms) of 147 | 3 | 1 | −67% |
+| Long tasks | 12 | 8 | −33% |
+| Long-task time, total | 1,481 ms | 1,118 ms | **−25%** |
 
-Earlier, on a healthy (non-throttled) session, the same watch page measured
-**10,631 → 3,202 nodes (−70%)**. The 3,647 baseline above is a *partially
-loaded* page — this session was rate-limited by YouTube, so comments and
-related never fully populated. The −35% is therefore a floor, not a ceiling:
-the more YouTube loads, the more iTube removes (comments and related are the
-capped lists).
+The p95 frame time is the number that matters for feel. The median is the same
+in both (both hit the frame budget most of the time); it's the *bad* frames —
+the ones you actually notice — that halve. Main-thread blocking drops by a
+quarter.
 
-Player chrome: YouTube's control bar is **161 nodes**; iTube's glass bar is
-**33**. Showing/hiding it is one opacity+visibility flip, versus YouTube's
-class churn across the whole chrome subtree.
+## Home page
+
+| Metric | Stock | iTube | Change |
+|---|---|---|---|
+| DOM nodes | 2,987 | 2,093 | −30% |
+| JS heap | 68 MB | 67 MB | −1% |
+| First contentful paint | 396 ms | 380 ms | −4% |
+| Frame time, p95 | 7.7 ms | 7.7 ms | 0 |
+| Long-task time | 686 ms | 622 ms | −9% |
+
+**Honest read: the home page is not the win.** It is already light, it already
+hits frame budget, and iTube changes little there beyond node count. The gains
+are on the watch page, which is where the weight (comments, related, player
+chrome) actually lives.
 
 ## What is NOT true
 
-**iTube's stylesheet does not make style recalc faster.** It costs about
-+0.1 ms per full recalc — within noise, but it is not a win, and it was worth
-checking: the sheet leans on universal selectors (`* { box-shadow: none }`,
-`ytd-app *:not(...)` for the font, plus two `:has()` rules). Isolating each of
-those rules and re-measuring showed no measurable cost from any of them on a
-page of this size (all variants 0.2–0.3 ms). So they are affordable — but the
-speed story is not "our CSS is cheaper to match."
+**The stylesheet is not what makes it fast.** It costs about +0.1 ms per full
+style recalc — within noise. The universal `*` rules, the `ytd-app *:not(...)`
+font rule and the two `:has()` rules were each isolated and re-measured; none is
+measurably expensive. The speed comes from work that never happens, not from
+cheaper selector matching.
 
-**Scroll smoothness / frame rate is UNMEASURED.** `requestAnimationFrame` is
-throttled in a background tab, so frame timing could not be captured in this
-harness. Any claim about "no stutter" or FPS is unsupported until measured in
-Safari with the Web Inspector timeline, on a focused window.
+**Never trust a single run.** An earlier one-shot measurement produced a "4.1 ms
+p95 regression" that vanished entirely under repetition. It was GC noise.
 
-## Where the speed actually comes from
+## Where the speed comes from
 
-Not from cheaper CSS matching. From work that never happens:
-
-- **35–70% fewer DOM nodes** to lay out, paint and keep alive.
-- **Zero hover-preview `<video>` elements.** Stock YouTube spawns a real video
-  element (and its media buffers) per hovered thumbnail; iTube deletes them on
-  spawn. Verified: 4s of hovering → 0 video elements.
-- **No animations, transitions, shadows or backdrop blur** on large surfaces —
-  they are killed globally, so there is nothing to composite each frame.
-- **Off-screen content skips layout entirely** via `content-visibility: auto`
-  on feed items, comments, related rows and guide sections.
-- **Bounded lists.** Related, comments and replies are capped, so a long
+- **72% fewer DOM nodes** to lay out, paint and keep alive.
+- **No hover-preview `<video>` elements.** Stock spawns a real video element and
+  its media buffers per hovered thumbnail; iTube deletes them on spawn.
+- **No animations, transitions, shadows or large-surface blur** — nothing to
+  composite per frame.
+- **Off-screen content skips layout** (`content-visibility: auto`).
+- **Bounded lists** — related, comments and replies are capped, so a long
   session cannot grow the tab without limit.
 
-## Open
+## Caveats
 
-- [ ] Frame timing during scroll, measured in Safari (focused window).
-- [ ] Cold-load timing (LCP / long tasks) with the script at `document-start`,
-      which is how it actually runs — the harness above injects post-load, so
-      it cannot see load-time effects.
+- Chromium, not Safari. Safari is the target; these numbers are a proxy. The DOM
+  and script work are identical across both, but frame timing is engine-specific.
+- Logged out. A logged-in feed is heavier, so the node reduction is likely a
+  floor.
+- WebKit-specific behaviour (`webkitPresentationMode` PiP, native fullscreen)
+  still needs manual spot checks in Safari.
