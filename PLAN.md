@@ -43,7 +43,11 @@ extension for the App Store.
       Verified: 35-chapter video → 34 ticks (0:00 skipped), monotonic positions.
       SPA-nav refresh implemented via yt-navigate-finish; spot-check in Safari.
 - [ ] Seek-preview thumbnails (storyboard) — investigate cost/benefit, may skip for speed
-- [ ] Live streams: LIVE badge, DVR seek behavior, hide duration
+- [x] Live streams: LIVE badge (red at live head, dimmed when behind; click =
+      seekToLiveHead), duration hidden, DVR scrubbing kept. Live detection via
+      getVideoData().isLive. Note: live duration is FINITE (growing DVR window),
+      so isFinite checks do NOT detect liveness; raw DVR seeks snap to segment
+      boundaries (same as stock).
 - [ ] Premieres: verify bar doesn't break on waiting-room player
 - [ ] Stats-for-nerds entry (right-click menu still works — verify and document)
 - [ ] Restore access to features hidden with the chrome: report/loop/context-menu items

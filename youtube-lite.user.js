@@ -175,6 +175,13 @@
       background: rgba(10, 10, 14, .55); pointer-events: none;
     }
     #ytl-vol { width: 64px; flex: none; }
+    #ytl-live { width: auto !important; border-radius: 999px !important; padding: 0 10px !important; font-weight: 600; }
+    #ytl-live::before {
+      content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+      background: #f33; margin-right: 5px;
+    }
+    #ytl-live.ytl-behind { opacity: .55; }
+    #ytl-live.ytl-behind::before { background: #999; }
     ` : ''}
 
     ${GLASS_UI ? `
@@ -358,9 +365,15 @@
       const fs = el('button', 'ytl-fs', ICONS.fs());
       const seekwrap = el('div', 'ytl-seekwrap');
       seekwrap.appendChild(seek);
-      bar.append(prev, play, next, timeCur, seekwrap, timeDur, mute, vol, speed, quality, cc, auto, pip, fs);
+      const live = el('button', 'ytl-live', 'LIVE');
+      live.style.display = 'none';
+      bar.append(prev, play, next, timeCur, seekwrap, timeDur, live, mute, vol, speed, quality, cc, auto, pip, fs);
       player.appendChild(bar);
-      ui = { bar, prev, next, play, timeCur, seek, seekwrap, timeDur, mute, vol, speed, quality, cc, auto, pip, fs, scrubbing: false };
+      ui = { bar, prev, next, play, timeCur, seek, seekwrap, timeDur, live, mute, vol, speed, quality, cc, auto, pip, fs, scrubbing: false, isLive: false };
+      live.addEventListener('click', () => {
+        if (player.seekToLiveHead) player.seekToLiveHead();
+        else if (isFinite(video.duration)) video.currentTime = video.duration - 2;
+      });
       ui.syncAuto = () => {
         const b = document.querySelector('#movie_player .ytp-autonav-toggle-button');
         auto.style.display = b ? '' : 'none';
@@ -437,6 +450,9 @@
         if (!ui.scrubbing && isFinite(video.duration) && video.duration > 0) {
           ui.seek.value = Math.round(video.currentTime / video.duration * 1000);
         }
+        if (ui.isLive) {
+          ui.live.classList.toggle('ytl-behind', video.duration - video.currentTime > 12);
+        }
         paintSeek(video);
       });
       video.addEventListener('durationchange', () => {
@@ -512,6 +528,9 @@
         ui.prev.style.display = player.getPlaylist?.()?.length ? '' : 'none';
         ui.cc.replaceChildren(new Option('CC', ''));
         ui.syncAuto?.();
+        ui.isLive = !!player.getVideoData?.()?.isLive;
+        ui.live.style.display = ui.isLive ? '' : 'none';
+        ui.timeDur.style.display = ui.isLive ? 'none' : '';
         renderTicks();
       }
 
