@@ -79,7 +79,11 @@ extension for the App Store.
       skip offscreen layout). Channel pages reuse the rich-grid rules.
       Spot-check in Safari: caption-snippet rows under search results rendered
       light when dark was forced post-render (document-start forcing should fix).
-- [ ] Dialogs/menus (ytd-popup-container) glass restyle
+- [x] Dialogs/menus glass restyle: menu popups, dialogs, sheets get dark glass
+      (blur OK — small surfaces), rounded dropdown clipping, item hover pills,
+      inner spec-layer backgrounds forced transparent. Computed styles verified;
+      full visual pass PENDING re-check (session was image-throttled during QC) —
+      re-verify in Safari.
 - [ ] Light theme variant (currently dark-only)
 
 ### M4 — Performance proof

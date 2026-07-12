@@ -266,6 +266,27 @@
     ytd-video-renderer:hover, ytd-channel-renderer:hover, ytd-playlist-video-renderer:hover {
       background: rgba(255, 255, 255, .05) !important;
     }
+    ytd-menu-popup-renderer,
+    tp-yt-paper-dialog,
+    yt-sheet-view-model,
+    yt-contextual-sheet-layout,
+    ytd-multi-page-menu-renderer {
+      background: rgba(24, 24, 30, .82) !important;
+      backdrop-filter: blur(20px) saturate(1.6) !important;
+      -webkit-backdrop-filter: blur(20px) saturate(1.6) !important;
+      border: 1px solid rgba(255, 255, 255, .14) !important;
+      border-radius: 16px !important;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 12px 40px rgba(0, 0, 0, .5) !important;
+    }
+    ytd-popup-container tp-yt-iron-dropdown { border-radius: 16px !important; overflow: hidden; }
+    ytd-menu-popup-renderer tp-yt-paper-listbox,
+    ytd-menu-popup-renderer yt-list-view-model,
+    tp-yt-paper-dialog > *:first-child {
+      background: transparent !important;
+    }
+    ytd-menu-service-item-renderer:hover, ytd-menu-navigation-item-renderer:hover {
+      background: rgba(255, 255, 255, .09) !important;
+    }
     ` : ''}
   `;
 
