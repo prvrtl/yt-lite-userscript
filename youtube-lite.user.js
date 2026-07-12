@@ -129,7 +129,7 @@
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
     }
-    ytd-rich-item-renderer { content-visibility: auto; contain-intrinsic-size: 0 267px; }
+    ytd-rich-item-renderer { content-visibility: auto; contain-intrinsic-size: 0 255px; }
     ytd-comment-thread-renderer { content-visibility: auto; contain-intrinsic-size: 0 120px; }
     #related yt-lockup-view-model,
     #related ytd-compact-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 100px; }
@@ -406,7 +406,9 @@
     ytd-rich-item-renderer yt-thumbnail-view-model img,
     ytd-rich-item-renderer ytd-thumbnail img,
     ytd-rich-item-renderer .ytThumbnailViewModelImage { border-radius: 0 !important; }
-    ytd-rich-item-renderer a.ytLockupViewModelContentImage { width: 100% !important; }
+    ytd-rich-item-renderer a.ytLockupViewModelContentImage {
+      width: 100% !important; padding-bottom: 0 !important;
+    }
     ytd-rich-item-renderer .ytLockupViewModelMetadata,
     ytd-rich-item-renderer #details { padding: 12px !important; }
     ytd-rich-item-renderer:hover { background: rgba(255, 255, 255, .05); }
