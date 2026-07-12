@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Lite — fast, simple rendering
 // @namespace    yt-us
-// @version      2.8.0
+// @version      2.9.0
 // @description  Strips YouTube's heavy UI, deep DOM pruning, custom liquid-glass video player with full YouTube integration.
 // @updateURL    https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
 // @downloadURL  https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/youtube-lite.user.js
@@ -37,6 +37,7 @@
   const ITUBE_LOGO = true;
   const LEAN_CARDS = true;
   const LEAN_SIDEBAR = true;
+  const LAZY_THUMBS = true;
 
   const shortsToWatch = () => {
     const m = location.pathname.match(/^\/shorts\/([\w-]{5,})/);
@@ -187,11 +188,21 @@
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
     }
-    ytd-rich-item-renderer { content-visibility: auto; contain-intrinsic-size: 0 230px; }
-    ytd-comment-thread-renderer { content-visibility: auto; contain-intrinsic-size: 0 120px; }
+    ytd-rich-item-renderer {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 245px;
+      contain: layout paint style;
+    }
+    ytd-rich-item-renderer yt-thumbnail-view-model,
+    ytd-rich-item-renderer .ytThumbnailViewModelImage,
+    ytd-rich-item-renderer img[data-ytl-img] {
+      aspect-ratio: 16 / 9 !important;
+      height: auto !important;
+    }
+    ytd-comment-thread-renderer { content-visibility: auto; contain-intrinsic-size: auto 120px; }
     #related yt-lockup-view-model,
-    #related ytd-compact-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 100px; }
-    ytd-video-renderer, ytd-playlist-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 140px; }
+    #related ytd-compact-video-renderer { content-visibility: auto; contain-intrinsic-size: auto 100px; }
+    ytd-video-renderer, ytd-playlist-video-renderer { content-visibility: auto; contain-intrinsic-size: auto 140px; }
     ${DISABLE_AMBIENT_MODE ? '#cinematics,' : ''}
     ${DISABLE_HOVER_PREVIEWS ? 'ytd-video-preview, yt-thumbnail-view-model video, a#thumbnail video, ytd-thumbnail-overlay-loading-preview-renderer,' : ''}
     ${HIDE_SHORTS_SHELVES ? 'ytd-rich-section-renderer, ytd-reel-shelf-renderer,' : ''}
@@ -203,6 +214,8 @@
     tp-yt-paper-tooltip,
     yt-interaction,
     yt-touch-feedback-shape { display: none !important; }
+    .video-skeleton, .text-shell, .skeleton-bg-color, .watch-skeleton,
+    .masthead-skeleton-icon, ytd-ghost-grid-renderer { display: none !important; }
 
     ${GLASS_PLAYER ? `
     #movie_player .ytp-chrome-top,
@@ -343,6 +356,17 @@
     ytd-rich-item-renderer button.ytSpecButtonShapeNextHost[aria-label="More actions"] { opacity: 0 !important; }
     ytd-rich-item-renderer:hover button.ytSpecButtonShapeNextHost[aria-label="More actions"],
     ytd-rich-item-renderer button.ytSpecButtonShapeNextHost[aria-label="More actions"]:focus-visible { opacity: 1 !important; }
+    ` : ''}
+    ${LAZY_THUMBS ? `
+    ytd-rich-item-renderer img[data-ytl-img],
+    ytd-video-renderer img[data-ytl-img],
+    #related img[data-ytl-img] { opacity: 0 !important; }
+    ytd-rich-item-renderer img[data-ytl-img].ytl-in,
+    ytd-video-renderer img[data-ytl-img].ytl-in,
+    #related img[data-ytl-img].ytl-in {
+      opacity: 1 !important;
+      transition: opacity .18s ease-out !important;
+    }
     ` : ''}
     ytd-thumbnail-overlay-resume-playback-renderer #progress,
     .ytThumbnailOverlayProgressBarHostWatchedProgressBarSegment { background: #0a84ff !important; }
@@ -552,7 +576,7 @@
     ytd-mini-guide-entry-renderer[active] {
       background: rgba(10, 132, 255, .16) !important; border-radius: 10px !important;
     }
-    ytd-guide-section-renderer { content-visibility: auto; contain-intrinsic-size: 0 280px; }
+    ytd-guide-section-renderer { content-visibility: auto; contain-intrinsic-size: auto 280px; }
     .yt-spec-button-shape-next--tonal:active, .ytSpecButtonShapeNextTonal:active {
       background: rgba(255, 255, 255, .14) !important;
     }
@@ -566,12 +590,12 @@
       overflow: hidden;
     }
     ytd-playlist-panel-renderer#playlist .header { background: transparent !important; }
-    #playlist ytd-playlist-panel-video-renderer { content-visibility: auto; contain-intrinsic-size: 0 80px; }
+    #playlist ytd-playlist-panel-video-renderer { content-visibility: auto; contain-intrinsic-size: auto 80px; }
     #playlist ytd-playlist-panel-video-renderer:hover { background: rgba(255, 255, 255, .06) !important; }
     #related ytd-item-section-renderer #contents { display: flex; flex-direction: column; gap: 8px !important; }
     #playlist ytd-playlist-panel-video-renderer { padding: 2px 4px !important; border-radius: 12px !important; }
     ytd-playlist-panel-renderer#playlist #header { padding: 10px 14px !important; }
-    ytd-comment-view-model { content-visibility: auto; contain-intrinsic-size: 0 90px; }
+    ytd-comment-view-model { content-visibility: auto; contain-intrinsic-size: auto 90px; }
     html:not([dark]), html:not([dark]) ytd-app {
       --yt-sys-color-baseline--base-background: #f6f7f9 !important;
       --yt-sys-color-baseline--raised-background: #ffffff !important;
@@ -773,6 +797,20 @@
     }
   };
 
+  const lazyImages = () => {
+    for (const img of document.querySelectorAll('ytd-rich-item-renderer img:not([data-ytl-img]), ytd-video-renderer img:not([data-ytl-img]), #related img:not([data-ytl-img])')) {
+      img.setAttribute('data-ytl-img', '1');
+      img.setAttribute('loading', 'lazy');
+      img.setAttribute('decoding', 'async');
+      if (img.complete && img.naturalWidth > 0) {
+        img.classList.add('ytl-in');
+      } else {
+        img.addEventListener('load', () => img.classList.add('ytl-in'), { once: true });
+        img.addEventListener('error', () => img.classList.add('ytl-in'), { once: true });
+      }
+    }
+  };
+
   const brandLogo = () => {
     const logo = document.querySelector('ytd-topbar-logo-renderer a#logo:not([data-ytl])');
     if (!logo) return;
@@ -806,8 +844,17 @@
     ? (cb) => window.requestIdleCallback(cb, { timeout: 1200 })
     : (cb) => setTimeout(cb, 200);
   let sweepScheduled = false;
+  let lastScroll = 0;
+  let swept = false;
+  addEventListener('scroll', () => { lastScroll = Date.now(); }, { passive: true, capture: true });
   const sweep = () => {
     sweepScheduled = false;
+    if (swept && Date.now() - lastScroll < 200) {
+      sweepScheduled = true;
+      setTimeout(sweep, 200);
+      return;
+    }
+    swept = true;
     if (REDIRECT_SHORTS && shortsToWatch()) return;
     if (FORCE_DARK) forceDark();
     mountStyle();
@@ -821,6 +868,7 @@
     if (PRUNE_HIDDEN_PANELS) prunePanels();
     if (REMOVE_SHORTS) pruneShorts();
     if (MINIMAL_SIDEBAR) pruneGuide();
+    if (LAZY_THUMBS) lazyImages();
     if (NATIVE_ICONS) swapIcons();
     if (ITUBE_LOGO && GLASS_UI) brandLogo();
     capList('#related ytd-item-section-renderer #contents', RELATED_TAGS, MAX_RELATED);
