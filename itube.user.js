@@ -218,7 +218,7 @@
     }
     #itube .search-icon {
       position: absolute;
-      left: 12px;
+      left: 14px;
       top: 50%;
       transform: translateY(-50%);
       color: var(--muted);
@@ -231,7 +231,7 @@
       background: var(--surface);
       border: 1px solid var(--hairline);
       color: var(--text);
-      padding: 0 14px 0 34px;
+      padding: 0 16px 0 40px;
       font-size: 14px;
       outline: none;
       box-sizing: border-box;
@@ -248,6 +248,7 @@
       justify-content: flex-end;
     }
     #itube .hd-icon-btn {
+      padding: 0;
       width: 28px;
       height: 28px;
       border-radius: 50%;
@@ -549,10 +550,15 @@
       top: 76px;
       max-height: calc(100vh - 96px);
       overflow-y: auto;
+      overflow-x: hidden;
       overscroll-behavior: contain;
       display: flex;
       flex-direction: column;
       gap: 10px;
+    }
+    #itube .watch-right > * {
+      max-width: 100%;
+      box-sizing: border-box;
     }
     #itube .watch-right::-webkit-scrollbar {
       width: 6px;
@@ -764,7 +770,7 @@
       padding: 0;
     }
     #itube .comments {
-      margin-top: 28px;
+      margin-top: 24px;
     }
     #itube .comments-toggle {
       display: flex;
@@ -1046,7 +1052,7 @@
       grid-column: 1 / -1;
       color: var(--muted);
       text-align: center;
-      padding: 60px 0;
+      padding: 48px 0;
       font-size: 14px;
     }
     #itube .ch-header {
@@ -3327,8 +3333,9 @@
       const dur = video?.duration;
       for (const t of ui.seekwrap.querySelectorAll('.itube-tick')) t.remove();
       if (!isFinite(dur) || !dur || chapterSecs.length < 2) return;
+      if (chapterSecs[chapterSecs.length - 1] > dur) return;
       for (const s of chapterSecs) {
-        if (!s) continue;
+        if (!s || s >= dur) continue;
         const t = document.createElement('div');
         t.className = 'itube-tick';
         t.style.left = (s / dur * 100) + '%';
