@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         iTube
 // @namespace    yt-us
-// @version      3.3.0
+// @version      3.4.0
 // @description  YouTube rebuilt as a native-feeling app. Our UI, YouTube's data.
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -14,8 +14,13 @@
   'use strict';
 
   const CHANNEL_PATH_RE = /^\/(?:@[^/]+|channel\/[^/]+|c\/[^/]+)(?:\/.*)?$/;
-
-  if (location.pathname !== '/' && location.pathname !== '/watch' && location.pathname !== '/results' && !CHANNEL_PATH_RE.test(location.pathname)) return;
+  const FEED_BROWSE = {
+    '/feed/subscriptions': { browseId: 'FEsubscriptions', heading: 'Subscriptions' },
+    '/feed/history': { browseId: 'FEhistory', heading: 'Watch history' },
+    '/feed/library': { browseId: 'FElibrary', heading: 'Library' },
+    '/feed/playlists': { browseId: 'FEplaylists', heading: 'Playlists' },
+    '/feed/trending': { browseId: 'FEtrending', heading: 'Trending' },
+  };
 
   const SVGNS = 'http://www.w3.org/2000/svg';
   const icon = (nodes) => {
@@ -73,6 +78,13 @@
       ['circle', { cx: '8', cy: '8', r: '1.5', fill: 'currentColor' }],
       ['circle', { cx: '13', cy: '8', r: '1.5', fill: 'currentColor' }],
     ]),
+    chevron: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M4.5 6.2 8 9.7l3.5-3.5' }],
+    ]),
+    explore: () => icon([
+      ['circle', { cx: '8', cy: '8', r: '5.9', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
+      ['path', { fill: 'currentColor', d: 'M10.6 5.4 9.1 9.1 5.4 10.6 6.9 6.9z' }],
+    ]),
   };
 
   const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -120,29 +132,91 @@
       border-bottom: 1px solid var(--hairline);
       z-index: 1;
     }
-    #itube .wordmark {
-      font-weight: 600;
-      font-size: 19px;
-      letter-spacing: -.02em;
-      flex: 0 0 auto;
-      color: var(--text);
-      text-decoration: none;
+    #itube .hd-left {
+      flex: 0 0 96px;
     }
-    #itube .search {
+    #itube .search-wrap {
+      position: relative;
       flex: 1 1 auto;
       max-width: 560px;
       margin: 0 auto;
+    }
+    #itube .search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+    }
+    #itube .search {
+      width: 100%;
       height: 34px;
-      border-radius: 17px;
+      border-radius: 10px;
       background: var(--surface);
       border: 1px solid var(--hairline);
       color: var(--text);
-      padding: 0 16px;
+      padding: 0 14px 0 34px;
       font-size: 14px;
       outline: none;
+      box-sizing: border-box;
     }
     #itube .search:focus {
       border: 2px solid var(--accent);
+    }
+    #itube .hd-right {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 96px;
+      justify-content: flex-end;
+    }
+    #itube .hd-icon-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: none;
+      background: none;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    #itube .hd-icon-btn:hover {
+      background: var(--surface);
+    }
+    #itube .hd-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--raised);
+      flex: none;
+    }
+    #itube .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 38px;
+      margin-bottom: 12px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    #itube .brand-tile {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+    }
+    #itube .brand-word {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -.01em;
     }
     #itube .body {
       display: flex;
@@ -179,9 +253,77 @@
     #itube .nav-row.active span {
       color: var(--accent);
     }
+    #itube .nav-section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin: 16px 10px 6px;
+    }
+    #itube .nav-chan {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 32px;
+      padding: 0 10px;
+      border-radius: 10px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+    }
+    #itube .nav-chan-avatar {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--raised);
+      flex: none;
+    }
     #itube .content {
       flex: 1;
       min-width: 0;
+    }
+    #itube .section-heading {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -.01em;
+      margin: 0 0 16px;
+    }
+    #itube .page-heading {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -.02em;
+      margin: 0 0 20px;
+    }
+    #itube .search-label {
+      font-size: 13px;
+      color: var(--dim);
+      margin-bottom: 2px;
+    }
+    #itube .search-query {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -.02em;
+      margin: 0 0 20px;
+    }
+    #itube .unhandled {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 120px 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    #itube .unhandled-home {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 10px;
+      padding: 8px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
     }
     #itube .grid {
       display: grid;
@@ -214,6 +356,15 @@
       content-visibility: auto;
       contain-intrinsic-size: auto 250px;
       contain: layout paint style;
+      padding: 8px;
+      margin: -8px;
+      border-radius: 14px;
+    }
+    #itube .c:hover {
+      background: rgba(255, 255, 255, .04);
+    }
+    #itube .c:hover .c-thumb img {
+      filter: brightness(1.06);
     }
     #itube .c-thumb {
       aspect-ratio: 16 / 9;
@@ -221,10 +372,6 @@
       overflow: hidden;
       background: var(--raised);
       position: relative;
-    }
-    #itube .c:hover .c-thumb {
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
     }
     #itube .c-thumb img {
       width: 100%;
@@ -270,21 +417,34 @@
       font-variant-numeric: tabular-nums;
     }
     #itube .watch {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(0,1fr) 380px;
       gap: 24px;
+      align-items: start;
       max-width: 1600px;
       margin: 0 auto;
       padding: 24px;
     }
     #itube .watch-left {
-      flex: 1;
       min-width: 0;
     }
     #itube .watch-right {
-      flex: 0 0 380px;
+      position: sticky;
+      top: 76px;
+      max-height: calc(100vh - 96px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
       display: flex;
       flex-direction: column;
       gap: 10px;
+    }
+    #itube .watch-right::-webkit-scrollbar {
+      width: 6px;
+    }
+    #itube .watch-right::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, .15);
+      border-radius: 3px;
     }
     #itube-stage {
       position: relative;
@@ -295,10 +455,14 @@
       width: 100%;
     }
     #itube-stage video {
-      width: 100%;
-      height: 100%;
-      display: block;
-      object-fit: contain;
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      display: block !important;
+      object-fit: contain !important;
+      max-width: none !important;
     }
     #itube .watch-title {
       margin: 16px 0 0;
@@ -356,11 +520,37 @@
     #itube .comments {
       margin-top: 28px;
     }
-    #itube .comments-header {
+    #itube .comments-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      background: none;
+      border: none;
+      color: var(--text);
       font-size: 16px;
       font-weight: 600;
       letter-spacing: -.01em;
-      margin: 0 0 4px;
+      padding: 0;
+      cursor: pointer;
+      text-align: left;
+    }
+    #itube .comments-toggle:disabled {
+      cursor: default;
+      color: var(--muted);
+    }
+    #itube .comments-toggle svg {
+      flex: none;
+      color: var(--muted);
+    }
+    #itube .comments-toggle svg.open {
+      transform: rotate(180deg);
+    }
+    #itube .comments-body {
+      margin-top: 12px;
+    }
+    #itube .comments-body.collapsed {
+      display: none;
     }
     #itube .comments-list {
       display: flex;
@@ -554,19 +744,29 @@
       content-visibility: auto;
       contain-intrinsic-size: auto 138px;
       contain: layout paint style;
+      padding: 8px;
+      margin: -8px;
+      border-radius: 14px;
+    }
+    #itube .row:hover {
+      background: rgba(255, 255, 255, .04);
+    }
+    #itube .row:hover .row-thumb img {
+      filter: brightness(1.06);
+    }
+    #itube .c:focus-visible .c-thumb,
+    #itube .row:focus-visible .row-thumb {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
     }
     #itube .row-thumb {
       width: 246px;
       height: 138px;
       flex: 0 0 246px;
-      border-radius: var(--r-md);
+      border-radius: 12px;
       overflow: hidden;
       background: var(--raised);
       position: relative;
-    }
-    #itube .row:hover .row-thumb {
-      outline: 2px solid var(--accent);
-      outline-offset: 2px;
     }
     #itube .row-thumb img {
       width: 100%;
@@ -1367,10 +1567,15 @@
 
   const header = document.createElement('header');
   header.className = 'hd';
-  const wordmark = document.createElement('a');
-  wordmark.className = 'wordmark';
-  wordmark.href = '/';
-  wordmark.textContent = 'iTube';
+  const hdLeft = document.createElement('div');
+  hdLeft.className = 'hd-left';
+  const searchWrap = document.createElement('div');
+  searchWrap.className = 'search-wrap';
+  const searchIcon = icon([
+    ['circle', { cx: '6.2', cy: '6.2', r: '4.4', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
+    ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M9.6 9.6 13 13' }],
+  ]);
+  searchIcon.classList.add('search-icon');
   const search = document.createElement('input');
   search.type = 'text';
   search.className = 'search';
@@ -1380,12 +1585,46 @@
     const q = search.value.trim();
     if (q) location.href = '/results?search_query=' + encodeURIComponent(q);
   });
-  header.append(wordmark, search);
+  searchWrap.append(searchIcon, search);
+  const hdRight = document.createElement('div');
+  hdRight.className = 'hd-right';
+  const bell = document.createElement('button');
+  bell.className = 'hd-icon-btn';
+  bell.type = 'button';
+  bell.setAttribute('aria-label', 'Notifications');
+  bell.appendChild(icon([
+    ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round', d: 'M4 6.5a4 4 0 0 1 8 0v3l1.3 2H2.7l1.3-2z' }],
+    ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M6.5 13.5a1.6 1.6 0 0 0 3 0' }],
+  ]));
+  const avatar = document.createElement('div');
+  avatar.className = 'hd-avatar';
+  hdRight.append(bell, avatar);
+  header.append(hdLeft, searchWrap, hdRight);
 
   const nav = document.createElement('nav');
   nav.className = 'sidebar';
+  const brand = document.createElement('a');
+  brand.className = 'brand';
+  brand.href = '/';
+  const brandTile = document.createElement('div');
+  brandTile.className = 'brand-tile';
+  const triangle = document.createElementNS(SVGNS, 'svg');
+  triangle.setAttribute('viewBox', '0 0 16 16');
+  triangle.setAttribute('width', '13');
+  triangle.setAttribute('height', '13');
+  const tri = document.createElementNS(SVGNS, 'path');
+  tri.setAttribute('fill', '#fff');
+  tri.setAttribute('d', 'M4 2.5v11l9-5.5z');
+  triangle.appendChild(tri);
+  brandTile.appendChild(triangle);
+  const brandWord = document.createElement('span');
+  brandWord.className = 'brand-word';
+  brandWord.textContent = 'iTube';
+  brand.append(brandTile, brandWord);
+  nav.appendChild(brand);
   const NAV_ITEMS = [
     { key: 'home', label: 'Home', href: '/' },
+    { key: 'explore', label: 'Explore', href: '/feed/trending' },
     { key: 'subs', label: 'Subscriptions', href: '/feed/subscriptions' },
     { key: 'later', label: 'Watch later', href: '/playlist?list=WL' },
     { key: 'history', label: 'History', href: '/feed/history' },
@@ -1401,8 +1640,66 @@
     nav.appendChild(row);
     navRows[item.key] = row;
   }
+  const guideChannels = () => {
+    const data = window.ytInitialData;
+    const out = [];
+    const seenIds = new Set();
+    walk(data, (node) => {
+      const g = node?.guideEntryRenderer;
+      if (!g) return;
+      const browseId = g.navigationEndpoint?.browseEndpoint?.browseId;
+      if (typeof browseId !== 'string' || !browseId.startsWith('UC') || seenIds.has(browseId)) return;
+      const title = g.formattedTitle?.simpleText || g.formattedTitle?.runs?.[0]?.text || g.title?.simpleText;
+      const thumbs = g.thumbnail?.thumbnails;
+      const avatarUrl = Array.isArray(thumbs) && thumbs.length ? thumbs[thumbs.length - 1]?.url : null;
+      if (!title || !avatarUrl) return;
+      seenIds.add(browseId);
+      out.push({ browseId, title, avatar: avatarUrl });
+    });
+    return out;
+  };
+  const subsSection = document.createElement('div');
+  subsSection.className = 'nav-subs';
+  nav.appendChild(subsSection);
+  const renderGuideChannels = () => {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', renderGuideChannels, { once: true });
+      return;
+    }
+    const channels = guideChannels();
+    if (!channels.length) { subsSection.replaceChildren(); return; }
+    const label = document.createElement('div');
+    label.className = 'nav-section-label';
+    label.textContent = 'SUBSCRIPTIONS';
+    const rows = [label];
+    for (const ch of channels) {
+      const row = document.createElement('a');
+      row.className = 'nav-chan';
+      row.href = '/channel/' + encodeURIComponent(ch.browseId);
+      const av = document.createElement('img');
+      av.className = 'nav-chan-avatar';
+      av.src = ch.avatar;
+      av.setAttribute('loading', 'lazy');
+      const name = document.createElement('span');
+      name.textContent = ch.title;
+      row.append(av, name);
+      rows.push(row);
+    }
+    subsSection.replaceChildren(...rows);
+  };
+  renderGuideChannels();
   const syncNav = () => {
-    navRows.home.classList.toggle('active', location.pathname === '/');
+    for (const item of NAV_ITEMS) {
+      const row = navRows[item.key];
+      if (!row) continue;
+      let active = false;
+      try {
+        const url = new URL(item.href || '/', location.origin);
+        active = location.pathname === url.pathname
+          && (url.search === '' || new URLSearchParams(location.search).get('list') === new URLSearchParams(url.search).get('list'));
+      } catch (e) {}
+      row.classList.toggle('active', active);
+    }
   };
 
   const content = document.createElement('div');
@@ -1517,7 +1814,10 @@
       continuationToken = findContinuationToken(data);
     };
 
-    view.replaceChildren(grid, spinner);
+    const heading = document.createElement('h2');
+    heading.className = 'section-heading';
+    heading.textContent = 'Recommended';
+    view.replaceChildren(heading, grid, spinner);
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', renderInitial, { once: true });
     } else {
@@ -1619,7 +1919,17 @@
     }, { rootMargin: '600px' });
     io.observe(sentinel);
 
-    view.replaceChildren(list, spinner);
+    if (query) {
+      const label = document.createElement('div');
+      label.className = 'search-label';
+      label.textContent = 'Results for';
+      const queryHeading = document.createElement('h1');
+      queryHeading.className = 'search-query';
+      queryHeading.textContent = query;
+      view.replaceChildren(label, queryHeading, list, spinner);
+    } else {
+      view.replaceChildren(list, spinner);
+    }
 
     const runInitial = async () => {
       if (!query) {
@@ -1871,16 +2181,169 @@
     return () => { io.disconnect(); };
   };
 
+  const mountFeed = (browseId, heading) => {
+    const seen = new Set();
+
+    const headingEl = document.createElement('h1');
+    headingEl.className = 'page-heading';
+    headingEl.textContent = heading;
+
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner';
+    spinner.textContent = 'Loading…';
+    const sentinel = document.createElement('div');
+    sentinel.className = 'sentinel';
+    grid.append(sentinel);
+
+    const showEmpty = (msg) => {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = msg;
+      view.replaceChildren(headingEl, empty);
+    };
+
+    let appendScheduled = false;
+    let pendingItems = null;
+    const tryAppend = () => {
+      appendScheduled = false;
+      if (Date.now() - lastScroll < 200) {
+        appendScheduled = true;
+        setTimeout(tryAppend, 200);
+        return;
+      }
+      const items = pendingItems;
+      pendingItems = null;
+      if (items) appendCards(items);
+    };
+    const scheduleAppend = (items) => {
+      pendingItems = pendingItems ? pendingItems.concat(items) : items;
+      if (appendScheduled) return;
+      appendScheduled = true;
+      idle(tryAppend);
+    };
+
+    const MAX_CARDS = 200;
+    const capGrid = () => {
+      const cards = grid.querySelectorAll('.c');
+      const excess = cards.length - MAX_CARDS;
+      if (excess <= 0) return;
+      const heightBefore = grid.getBoundingClientRect().height;
+      for (let i = 0; i < excess; i++) {
+        cards[i].remove();
+      }
+      const heightAfter = grid.getBoundingClientRect().height;
+      const removedHeight = heightBefore - heightAfter;
+      let spacer = grid.querySelector('.spacer');
+      if (!spacer) {
+        spacer = document.createElement('div');
+        spacer.className = 'spacer';
+        grid.insertBefore(spacer, grid.firstChild);
+      }
+      const current = parseFloat(spacer.style.height) || 0;
+      spacer.style.height = (current + removedHeight) + 'px';
+    };
+
+    const appendCards = (items) => {
+      for (const item of items) {
+        grid.insertBefore(createCard(item), sentinel);
+      }
+      capGrid();
+    };
+
+    let continuationToken = null;
+    let loading = false;
+    const loadMore = async () => {
+      if (loading || !continuationToken) return;
+      loading = true;
+      spinner.classList.add('show');
+      try {
+        const res = await innertube('browse', { continuation: continuationToken });
+        if (!res) return;
+        const items = extractVideos(res, seen);
+        continuationToken = findContinuationToken(res);
+        scheduleAppend(items);
+      } finally {
+        loading = false;
+        spinner.classList.remove('show');
+      }
+    };
+
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) loadMore();
+    }, { rootMargin: '600px' });
+    io.observe(sentinel);
+
+    const setPlaylistTitle = (res) => {
+      try {
+        const node = findNode(res, (n) => n?.playlistHeaderRenderer)?.playlistHeaderRenderer;
+        const title = node?.title?.runs?.[0]?.text || node?.title?.simpleText || node?.title?.content;
+        if (title) headingEl.textContent = title;
+      } catch (e) {}
+    };
+
+    const runInitial = async () => {
+      view.replaceChildren(headingEl, grid, spinner);
+      loading = true;
+      spinner.classList.add('show');
+      try {
+        const res = await innertube('browse', { browseId });
+        if (!res) {
+          showEmpty('Nothing here yet.');
+          return;
+        }
+        if (browseId.startsWith('VL')) setPlaylistTitle(res);
+        const items = extractVideos(res, seen);
+        continuationToken = findContinuationToken(res);
+        if (items.length === 0 && !continuationToken) {
+          showEmpty('Nothing here yet.');
+          return;
+        }
+        for (const item of items) grid.insertBefore(createCard(item), sentinel);
+      } finally {
+        loading = false;
+        spinner.classList.remove('show');
+      }
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', runInitial, { once: true });
+    } else {
+      runInitial();
+    }
+
+    return () => { io.disconnect(); };
+  };
+
+  const mountUnhandled = () => {
+    const wrap = document.createElement('div');
+    wrap.className = 'unhandled';
+    const msg = document.createElement('div');
+    msg.textContent = "This page isn't available in iTube yet.";
+    const home = document.createElement('a');
+    home.className = 'unhandled-home';
+    home.href = '/';
+    home.textContent = 'Home';
+    wrap.append(msg, home);
+    view.replaceChildren(wrap);
+    return () => {};
+  };
+
   const player = () => document.getElementById('movie_player');
 
   const adoptVideo = (stage) => {
     const v = document.querySelector('#movie_player video');
     if (!v || v.parentElement === stage) return;
     stage.insertBefore(v, stage.firstChild);
-    v.style.width = '100%';
-    v.style.height = '100%';
-    v.style.display = 'block';
-    v.style.objectFit = 'contain';
+  };
+
+  const fit = (v) => {
+    if (v.style.width !== '100%') v.style.width = '100%';
+    if (v.style.height !== '100%') v.style.height = '100%';
+    if (v.style.left !== '0px') v.style.left = '0px';
+    if (v.style.top !== '0px') v.style.top = '0px';
+    if (v.style.position !== 'absolute') v.style.position = 'absolute';
+    if (v.style.objectFit !== 'contain') v.style.objectFit = 'contain';
   };
 
   const parseChapters = (data) => {
@@ -2018,8 +2481,14 @@
 
     const commentsPanel = document.createElement('div');
     commentsPanel.className = 'comments';
-    const commentsHeader = document.createElement('h2');
-    commentsHeader.className = 'comments-header';
+    const commentsToggle = document.createElement('button');
+    commentsToggle.className = 'comments-toggle';
+    const commentsChevron = ICONS.chevron();
+    const commentsLabel = document.createElement('span');
+    commentsLabel.textContent = 'Comments';
+    commentsToggle.append(commentsChevron, commentsLabel);
+    const commentsBody = document.createElement('div');
+    commentsBody.className = 'comments-body collapsed';
     const commentsList = document.createElement('div');
     commentsList.className = 'comments-list';
     const commentsSpinner = document.createElement('div');
@@ -2029,7 +2498,8 @@
     commentsMore.className = 'comments-more';
     commentsMore.textContent = 'Show more comments';
     commentsMore.style.display = 'none';
-    commentsPanel.append(commentsHeader, commentsList, commentsSpinner, commentsMore);
+    commentsBody.append(commentsList, commentsSpinner, commentsMore);
+    commentsPanel.append(commentsToggle, commentsBody);
 
     watchLeft.append(stage, title, channelRow, desc, more, commentsPanel);
     watch.append(watchLeft, watchRight);
@@ -2057,7 +2527,7 @@
         : (secondary?.description?.runs || []).map((r) => r?.text || '').join('');
       desc.textContent = [viewsText, dateText].filter(Boolean).join(' · ') + (descRuns ? '\n\n' + descRuns : '') || details?.shortDescription || '';
 
-      const related = extractVideos(data, new Set());
+      const related = extractVideos(data, new Set()).slice(0, 20);
       watchRight.replaceChildren();
       for (const item of related) watchRight.appendChild(createCompactCard(item));
     };
@@ -2067,9 +2537,15 @@
     let commentsSeen = new Set();
     let commentsShown = 0;
     let commentsLoading = false;
+    let commentsFetched = false;
+    let commentsExpanded = false;
+
+    const setChevron = () => {
+      commentsChevron.classList.toggle('open', commentsExpanded);
+    };
 
     const showCommentsOff = () => {
-      commentsHeader.textContent = 'Comments';
+      commentsLabel.textContent = 'Comments';
       const empty = document.createElement('div');
       empty.className = 'comments-empty';
       empty.textContent = 'Comments are turned off.';
@@ -2086,7 +2562,7 @@
         if (!res) return;
         if (initial) {
           const count = getCommentsCount(res);
-          commentsHeader.textContent = count || 'Comments';
+          commentsLabel.textContent = count || 'Comments';
         }
         const entityMap = commentEntityMap(res);
         const items = extractComments(res, entityMap, commentsSeen);
@@ -2110,19 +2586,30 @@
 
     const resetComments = () => {
       commentsList.replaceChildren();
-      commentsHeader.textContent = '';
       commentsSpinner.classList.remove('show');
       commentsMore.style.display = 'none';
       commentsSeen = new Set();
       commentsShown = 0;
       commentsLoading = false;
+      commentsFetched = false;
+      commentsExpanded = false;
+      commentsBody.classList.add('collapsed');
+      setChevron();
       commentsToken = findCommentsToken(window.ytInitialData);
-      if (!commentsToken) {
-        showCommentsOff();
-        return;
-      }
-      fetchComments(true);
+      const count = getCommentsCount(window.ytInitialData);
+      commentsLabel.textContent = count || 'Comments';
+      commentsToggle.disabled = !commentsToken;
     };
+    commentsToggle.addEventListener('click', () => {
+      if (commentsToggle.disabled) return;
+      commentsExpanded = !commentsExpanded;
+      commentsBody.classList.toggle('collapsed', !commentsExpanded);
+      setChevron();
+      if (commentsExpanded && !commentsFetched) {
+        commentsFetched = true;
+        fetchComments(true);
+      }
+    });
     resetComments();
 
     let chapterSecs = parseChapters(window.ytInitialData);
@@ -2343,6 +2830,7 @@
       if (video.hasAttribute('controls')) video.removeAttribute('controls');
       if (video.disablePictureInPicture) video.disablePictureInPicture = false;
       adoptVideo(stage);
+      fit(video);
       if (!ui) {
         ui = buildBar(stage);
         wireBar(p, video);
@@ -2414,7 +2902,7 @@
 
     const onKeydown = (e) => {
       const target = e.target;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || (target.tagName === 'BUTTON' && !target.closest('#itube-bar')))) return;
       const video = wired;
       if (!video) return;
       switch (e.key) {
@@ -2472,14 +2960,24 @@
   let cleanup = null;
   let currentKey = null;
   const route = () => {
+    renderGuideChannels();
     const path = location.pathname;
-    let type = null;
+    const shorts = path.match(/^\/shorts\/([^/?]+)/);
+    if (shorts) { location.replace('/watch?v=' + encodeURIComponent(shorts[1])); return; }
+
+    let type = null, browseId = null, heading = null;
     if (path === '/watch') type = 'watch';
     else if (path === '/') type = 'home';
     else if (path === '/results') type = 'search';
     else if (CHANNEL_PATH_RE.test(path)) type = 'channel';
-    if (!type) { syncNav(); return; }
-    const key = type === 'search' ? path + location.search : path;
+    else if (FEED_BROWSE[path]) { type = 'feed'; browseId = FEED_BROWSE[path].browseId; heading = FEED_BROWSE[path].heading; }
+    else if (path === '/playlist') {
+      const listId = new URLSearchParams(location.search).get('list');
+      if (listId) { type = 'feed'; browseId = 'VL' + listId; heading = 'Playlist'; }
+    }
+    if (!type) type = 'unhandled';
+
+    const key = (type === 'search' || type === 'feed') ? path + location.search : path;
     if (key === currentKey) { syncNav(); return; }
     if (cleanup) { cleanup(); cleanup = null; }
     currentKey = key;
@@ -2487,7 +2985,9 @@
     cleanup = type === 'watch' ? mountWatch()
       : type === 'home' ? mountHome()
       : type === 'search' ? mountSearch()
-      : mountChannel();
+      : type === 'channel' ? mountChannel()
+      : type === 'feed' ? mountFeed(browseId, heading)
+      : mountUnhandled();
   };
 
   window.addEventListener('yt-navigate-finish', route);
