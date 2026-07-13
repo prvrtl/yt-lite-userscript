@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      3.7.0
+// @version      3.8.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -1142,6 +1142,34 @@
       opacity: 1;
       visibility: visible;
       pointer-events: auto;
+    }
+    #itube-cue {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 64px;
+      height: 64px;
+      border-radius: 18px;
+      background: rgba(18, 18, 24, .55);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      z-index: 25;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    #itube-cue.show {
+      opacity: 1;
+      visibility: visible;
+    }
+    #itube-cue svg {
+      width: 28px;
+      height: 28px;
     }
     #itube-bar-left,
     #itube-bar-right {
@@ -3005,6 +3033,7 @@
     const live = el('button', 'itube-live', 'LIVE');
     live.style.display = 'none';
     const more = el('button', 'itube-more', ICONS.more());
+    const cue = el('div', 'itube-cue');
     const menu = el('div', 'itube-menu');
     const left = el('div', 'itube-bar-left');
     const center = el('div', 'itube-bar-center');
@@ -3022,9 +3051,10 @@
     right.append(timeDur, mute, vol, more, pip, fs);
     bar.append(seekwrap, left, center, right, menu);
     stage.appendChild(bar);
+    stage.appendChild(cue);
     return {
       bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol,
-      speed, quality, cc, auto, pip, fs, more, menu, left, right, scrubbing: false, isLive: false,
+      speed, quality, cc, auto, pip, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
     };
   };
 
@@ -3445,6 +3475,53 @@
     let wired = null;
     let lastVideoId = null;
 
+    const toggleFullscreen = () => {
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      } else {
+        (stage.requestFullscreen || stage.webkitRequestFullscreen).call(stage);
+      }
+    };
+
+    const togglePiP = (video) => {
+      if (video.webkitSetPresentationMode) {
+        video.webkitSetPresentationMode(video.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture');
+      } else if (document.pictureInPictureElement) {
+        document.exitPictureInPicture();
+      } else {
+        video.requestPictureInPicture?.();
+      }
+    };
+
+    let cueTimer = null;
+    const showCue = (kind) => {
+      if (!ui) return;
+      ui.cue.replaceChildren(kind === 'play' ? ICONS.play() : ICONS.pause());
+      ui.cue.classList.add('show');
+      clearTimeout(cueTimer);
+      cueTimer = setTimeout(() => ui.cue.classList.remove('show'), 500);
+    };
+
+    let clickTimer = null;
+    stage.addEventListener('click', (e) => {
+      if (e.target.closest('#itube-bar') || e.target.closest('#itube-menu')) return;
+      if (clickTimer) return;
+      clickTimer = setTimeout(() => {
+        clickTimer = null;
+        const v = document.querySelector('#itube-stage video');
+        if (v) {
+          v.paused ? v.play() : v.pause();
+          showCue(v.paused ? 'pause' : 'play');
+        }
+      }, 220);
+    });
+    stage.addEventListener('dblclick', (e) => {
+      if (e.target.closest('#itube-bar') || e.target.closest('#itube-menu')) return;
+      clearTimeout(clickTimer);
+      clickTimer = null;
+      toggleFullscreen();
+    });
+
     const renderTicks = () => {
       if (!ui) return;
       const video = wired;
@@ -3586,22 +3663,8 @@
         if (!on) p.toggleSubtitles?.();
         setTimeout(() => p.setOption?.('captions', 'track', { languageCode: ui.cc.value }), 150);
       });
-      ui.pip.addEventListener('click', () => {
-        if (video.webkitSetPresentationMode) {
-          video.webkitSetPresentationMode(video.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture');
-        } else if (document.pictureInPictureElement) {
-          document.exitPictureInPicture();
-        } else {
-          video.requestPictureInPicture?.();
-        }
-      });
-      ui.fs.addEventListener('click', () => {
-        if (document.fullscreenElement || document.webkitFullscreenElement) {
-          (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-        } else {
-          (stage.requestFullscreen || stage.webkitRequestFullscreen).call(stage);
-        }
-      });
+      ui.pip.addEventListener('click', () => togglePiP(video));
+      ui.fs.addEventListener('click', () => toggleFullscreen());
 
       let hideTimer = null;
       const showBar = () => {
@@ -3729,7 +3792,7 @@
 
     const onKeydown = (e) => {
       const target = e.target;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || (target.tagName === 'BUTTON' && !target.closest('#itube-bar')))) return;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable || (target.tagName === 'BUTTON' && !target.closest('#itube-bar')))) return;
       const video = wired;
       if (!video) return;
       switch (e.key) {
@@ -3737,17 +3800,22 @@
         case 'k':
           e.preventDefault();
           video.paused ? video.play() : video.pause();
+          showCue(video.paused ? 'pause' : 'play');
           break;
         case 'j':
+          e.preventDefault();
           video.currentTime = Math.max(0, video.currentTime - 10);
           break;
         case 'l':
+          e.preventDefault();
           if (isFinite(video.duration)) video.currentTime = Math.min(video.duration, video.currentTime + 10);
           break;
         case 'ArrowLeft':
+          e.preventDefault();
           video.currentTime = Math.max(0, video.currentTime - 5);
           break;
         case 'ArrowRight':
+          e.preventDefault();
           if (isFinite(video.duration)) video.currentTime = Math.min(video.duration, video.currentTime + 5);
           break;
         case 'ArrowUp':
@@ -3764,13 +3832,51 @@
           video.muted = !video.muted;
           break;
         case 'f':
-          ui?.fs.click();
+          toggleFullscreen();
           break;
         case 'c': {
           const p = player();
           p?.toggleSubtitles?.();
           break;
         }
+        case 'i':
+          togglePiP(video);
+          break;
+        case '0': case '1': case '2': case '3': case '4':
+        case '5': case '6': case '7': case '8': case '9':
+          if (isFinite(video.duration)) video.currentTime = video.duration * (Number(e.key) / 10);
+          break;
+        case ',':
+          if (video.paused) video.currentTime = Math.max(0, video.currentTime - 1 / 30);
+          break;
+        case '.':
+          if (video.paused && isFinite(video.duration)) video.currentTime = Math.min(video.duration, video.currentTime + 1 / 30);
+          break;
+        case '<': {
+          const p = player();
+          const cur = p?.getPlaybackRate?.() ?? 1;
+          const idx = SPEEDS.indexOf(cur);
+          const next = SPEEDS[Math.max(0, (idx === -1 ? SPEEDS.indexOf(1) : idx) - 1)];
+          p?.setPlaybackRate?.(next);
+          if (ui) ui.speed.value = String(next);
+          break;
+        }
+        case '>': {
+          const p = player();
+          const cur = p?.getPlaybackRate?.() ?? 1;
+          const idx = SPEEDS.indexOf(cur);
+          const next = SPEEDS[Math.min(SPEEDS.length - 1, (idx === -1 ? SPEEDS.indexOf(1) : idx) + 1)];
+          p?.setPlaybackRate?.(next);
+          if (ui) ui.speed.value = String(next);
+          break;
+        }
+        case '/':
+          e.preventDefault();
+          search.focus();
+          break;
+        case 'Escape':
+          if (ui && ui.menu.style.display === 'block') ui.menu.style.display = 'none';
+          break;
         default:
           break;
       }
