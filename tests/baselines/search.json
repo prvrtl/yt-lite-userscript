@@ -19,20 +19,20 @@
     },
     ".row:first-child": {
       "x": 216,
-      "y": 132,
+      "y": 180,
       "w": 1184,
       "h": 156
     },
     ".row-thumb:first-child": {
       "x": 224,
-      "y": 140,
+      "y": 188,
       "w": 248,
       "h": 140
     }
   },
   "counts": {
     "c": 0,
-    "row": 18,
+    "row": 13,
     "commentRow": 0
   }
 }

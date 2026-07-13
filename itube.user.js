@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.0.0
+// @version      4.1.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -404,6 +404,24 @@
       letter-spacing: -.02em;
       margin: 0 0 20px;
     }
+    #itube .search-filters {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 16px;
+    }
+    #itube .search-filter-select {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 32px;
+      padding: 0 12px;
+      border-radius: var(--r-pill);
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      color: var(--text);
+      font: 500 13px -apple-system, system-ui, sans-serif;
+      cursor: pointer;
+    }
     #itube .unhandled {
       display: flex;
       flex-direction: column;
@@ -552,7 +570,9 @@
       flex-direction: column;
       gap: 10px;
     }
-    #itube .watch-right > * {
+    #itube .watch-right > *,
+    #itube .queue-wrap > *,
+    #itube .related-wrap > * {
       max-width: 100%;
       box-sizing: border-box;
     }
@@ -562,6 +582,57 @@
     #itube .watch-right::-webkit-scrollbar-thumb {
       background: rgba(255, 255, 255, .15);
       border-radius: 3px;
+    }
+    #itube .queue-wrap,
+    #itube .related-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #itube .queue-wrap:empty,
+    #itube .related-wrap:empty {
+      display: none;
+    }
+    #itube .queue-panel {
+      background: var(--surface);
+      border-radius: var(--r-md);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #itube .queue-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    #itube .queue-title {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -.01em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #itube .queue-count {
+      flex: none;
+      font-size: 12.5px;
+      color: var(--dim);
+      font-variant-numeric: tabular-nums;
+    }
+    #itube .queue-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 360px;
+      overflow-y: auto;
+    }
+    #itube .queue-item.current {
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+    #itube .queue-item.current .rc-title {
+      color: var(--accent);
     }
     #itube-stage {
       position: relative;
@@ -768,11 +839,17 @@
     #itube .comments {
       margin-top: 24px;
     }
+    #itube .comments-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
     #itube .comments-toggle {
       display: flex;
       align-items: center;
       gap: 8px;
-      width: 100%;
+      flex: 1;
+      min-width: 0;
       background: none;
       border: none;
       color: var(--text);
@@ -793,6 +870,27 @@
     }
     #itube .comments-toggle svg.open {
       transform: rotate(180deg);
+    }
+    #itube .comments-sort {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      flex: none;
+    }
+    #itube .comments-sort-btn {
+      height: 28px;
+      padding: 0 12px;
+      border-radius: var(--r-pill);
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      color: var(--muted);
+      font: 500 12.5px -apple-system, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    #itube .comments-sort-btn.active {
+      background: rgba(10, 132, 255, .16);
+      border-color: transparent;
+      color: var(--accent);
     }
     #itube .comments-body {
       margin-top: 12px;
@@ -1349,6 +1447,10 @@
       background: rgba(255, 255, 255, .12);
       font: 500 11px -apple-system, system-ui, sans-serif;
     }
+    #itube-menu #itube-auto.active {
+      background: rgba(10, 132, 255, .3);
+      color: #fff;
+    }
     ytd-app {
       position: fixed !important;
       left: -99999px !important;
@@ -1696,6 +1798,30 @@
     return out;
   };
 
+  const extractPlaylistPanel = (root) => {
+    const wrap = findNode(root, (n) => n?.playlist?.playlistId && Array.isArray(n?.playlist?.contents))?.playlist;
+    if (!wrap) return null;
+    const items = [];
+    for (const c of wrap.contents) {
+      const r = c?.playlistPanelVideoRenderer;
+      if (!r || typeof r.videoId !== 'string') continue;
+      items.push({
+        id: r.videoId,
+        title: getTitle(r) || '',
+        channel: getChannel(r) || '',
+        thumb: getThumb(r),
+        duration: r.lengthText?.simpleText
+          || (Array.isArray(r.lengthText?.runs) ? r.lengthText.runs.map((x) => x?.text || '').join('') : ''),
+      });
+    }
+    if (!items.length) return null;
+    const title = typeof wrap.title === 'string' ? wrap.title
+      : (wrap.titleText?.simpleText
+        || (Array.isArray(wrap.titleText?.runs) ? wrap.titleText.runs.map((r) => r?.text || '').join('') : ''))
+      || '';
+    return { id: wrap.playlistId, title, items };
+  };
+
   const findContinuationToken = (root) => {
     let token = null;
     walk(root, (node) => {
@@ -1738,6 +1864,25 @@
     }
     const tokens = findAllContinuationTokens(root);
     return tokens.length ? tokens[tokens.length - 1] : null;
+  };
+
+  const shortSortLabel = (title) => {
+    const t = (title || '').toLowerCase();
+    if (t.includes('top') || t.includes('beliebt')) return 'Top';
+    if (t.includes('new') || t.includes('neu')) return 'Newest';
+    return title;
+  };
+
+  const findCommentsSortOptions = (root) => {
+    const node = findNode(root, (n) => n?.sortFilterSubMenuRenderer)?.sortFilterSubMenuRenderer;
+    const items = node?.subMenuItems;
+    if (!Array.isArray(items)) return [];
+    return items
+      .map((it) => ({
+        label: shortSortLabel(it?.title),
+        token: it?.serviceEndpoint?.continuationCommand?.token || null,
+      }))
+      .filter((o) => o.label && o.token);
   };
 
   // Comment view-models keep their text/author/etc in a separate entity
@@ -1785,7 +1930,7 @@
         replyToken,
       };
     }
-    const vm = thread?.commentViewModel;
+    const vm = thread?.commentViewModel?.commentViewModel || thread?.commentViewModel || thread?.comment?.commentViewModel;
     if (!vm) return null;
     const key = vm.commentKey || vm.key || vm.commentId;
     const payload = key ? entityMap.get(key) : null;
@@ -2386,26 +2531,78 @@
     return list.cleanup;
   };
 
+  const SEARCH_SORT_OPTIONS = [
+    ['', 'Sort by: Relevance'],
+    ['CAISAhAB', 'Sort by: Upload date'],
+    ['CAMSAhAB', 'Sort by: View count'],
+    ['CAESAhAB', 'Sort by: Rating'],
+  ];
+  const SEARCH_DATE_OPTIONS = [
+    ['', 'Upload date: Any'],
+    ['EgQIARAB', 'Upload date: Last hour'],
+    ['EgQIAhAB', 'Upload date: Today'],
+    ['EgQIAxAB', 'Upload date: This week'],
+    ['EgQIBBAB', 'Upload date: This month'],
+    ['EgQIBRAB', 'Upload date: This year'],
+  ];
+  const SEARCH_DURATION_OPTIONS = [
+    ['', 'Duration: Any'],
+    ['EgQQARgB', 'Duration: Under 4 min'],
+    ['EgQQARgD', 'Duration: 4-20 min'],
+    ['EgQQARgC', 'Duration: Over 20 min'],
+  ];
+
   const mountSearch = () => {
     const query = new URLSearchParams(location.search).get('search_query') || '';
     search.value = query;
+
+    let activeFilter = null;
+
+    const fetchSearch = async (seen) => {
+      if (!query) return { items: [], token: null, message: 'Type something to search.' };
+      const body = activeFilter ? { query, params: activeFilter.value } : { query };
+      const res = await innertube('search', body);
+      if (!res) return { items: [], token: null, message: 'Something went wrong.' };
+      return { items: extractVideos(res, seen), token: findContinuationToken(res), message: 'No results for "' + query + '"' };
+    };
 
     const list = createListView({
       itemClass: 'row',
       containerClass: 'list',
       renderItem: createRowCard,
-      fetchInitial: async (seen) => {
-        if (!query) return { items: [], token: null, message: 'Type something to search.' };
-        const res = await innertube('search', { query });
-        if (!res) return { items: [], token: null, message: 'Something went wrong.' };
-        return { items: extractVideos(res, seen), token: findContinuationToken(res), message: 'No results for "' + query + '"' };
-      },
+      fetchInitial: fetchSearch,
       fetchMore: async (token, seen) => {
         const res = await innertube('search', { continuation: token });
         if (!res) return null;
         return { items: extractVideos(res, seen), token: findContinuationToken(res) };
       },
     });
+
+    const makeFilterSelect = (options) => {
+      const sel = document.createElement('select');
+      sel.className = 'search-filter-select';
+      for (const [value, label] of options) sel.appendChild(new Option(label, value));
+      return sel;
+    };
+    const sortSelect = makeFilterSelect(SEARCH_SORT_OPTIONS);
+    const dateSelect = makeFilterSelect(SEARCH_DATE_OPTIONS);
+    const durSelect = makeFilterSelect(SEARCH_DURATION_OPTIONS);
+    const filterRow = document.createElement('div');
+    filterRow.className = 'search-filters';
+    filterRow.append(sortSelect, dateSelect, durSelect);
+
+    const onFilterChange = (select) => {
+      if (select.value === '') {
+        if (activeFilter?.select === select) activeFilter = null;
+      } else {
+        activeFilter = { select, value: select.value };
+        for (const s of [sortSelect, dateSelect, durSelect]) if (s !== select) s.value = '';
+      }
+      list.load(fetchSearch);
+    };
+    sortSelect.addEventListener('change', () => onFilterChange(sortSelect));
+    dateSelect.addEventListener('change', () => onFilterChange(dateSelect));
+    durSelect.addEventListener('change', () => onFilterChange(durSelect));
 
     if (query) {
       const label = document.createElement('div');
@@ -2414,7 +2611,7 @@
       const queryHeading = document.createElement('h1');
       queryHeading.className = 'search-query';
       queryHeading.textContent = query;
-      view.replaceChildren(label, queryHeading, list.container, list.spinner);
+      view.replaceChildren(label, queryHeading, filterRow, list.container, list.spinner);
     } else {
       view.replaceChildren(list.container, list.spinner);
     }
@@ -2905,6 +3102,11 @@
     watchLeft.className = 'watch-left';
     const watchRight = document.createElement('div');
     watchRight.className = 'watch-right';
+    const queueWrap = document.createElement('div');
+    queueWrap.className = 'queue-wrap';
+    const relatedWrap = document.createElement('div');
+    relatedWrap.className = 'related-wrap';
+    watchRight.append(queueWrap, relatedWrap);
 
     const title = document.createElement('h1');
     title.className = 'watch-title';
@@ -3098,7 +3300,12 @@
 
     const commentsPanel = document.createElement('div');
     commentsPanel.className = 'comments';
+    const commentsHeader = document.createElement('div');
+    commentsHeader.className = 'comments-header';
     const { btn: commentsToggle, icon: commentsChevron, label: commentsLabel } = pillButton(ICONS.chevron, 'Comments', 'comments-toggle');
+    const commentsSort = document.createElement('div');
+    commentsSort.className = 'comments-sort';
+    commentsHeader.append(commentsToggle, commentsSort);
     const commentsBody = document.createElement('div');
     commentsBody.className = 'comments-body collapsed';
     const commentsList = document.createElement('div');
@@ -3111,7 +3318,7 @@
     commentsMore.textContent = 'Show more comments';
     commentsMore.style.display = 'none';
     commentsBody.append(commentsList, commentsSpinner, commentsMore);
-    commentsPanel.append(commentsToggle, commentsBody);
+    commentsPanel.append(commentsHeader, commentsBody);
 
     watchLeft.append(stage, title, meta, commentsPanel);
     watch.append(watchLeft, watchRight);
@@ -3196,10 +3403,60 @@
       });
 
       const related = extractVideos(data, new Set()).slice(0, 20);
-      watchRight.replaceChildren();
-      for (const item of related) watchRight.appendChild(createCompactCard(item));
+      firstRelatedId = related[0]?.id || null;
+      relatedWrap.replaceChildren();
+      for (const item of related) relatedWrap.appendChild(createCompactCard(item));
     };
+
+    let currentPlaylist = null;
+    let firstRelatedId = null;
+
+    const renderQueuePanel = (videoId) => {
+      queueWrap.replaceChildren();
+      if (!currentPlaylist) return;
+      const panel = document.createElement('div');
+      panel.className = 'queue-panel';
+      const qHeader = document.createElement('div');
+      qHeader.className = 'queue-header';
+      const qTitle = document.createElement('div');
+      qTitle.className = 'queue-title';
+      qTitle.textContent = currentPlaylist.title || 'Playlist';
+      const qCount = document.createElement('div');
+      qCount.className = 'queue-count';
+      const idx = currentPlaylist.items.findIndex((it) => it.id === videoId);
+      qCount.textContent = (idx === -1 ? 1 : idx + 1) + ' / ' + currentPlaylist.items.length;
+      qHeader.append(qTitle, qCount);
+      panel.appendChild(qHeader);
+      const qList = document.createElement('div');
+      qList.className = 'queue-list';
+      for (const item of currentPlaylist.items) {
+        const card = createCompactCard(item);
+        card.classList.add('queue-item');
+        card.href = '/watch?v=' + encodeURIComponent(item.id) + '&list=' + encodeURIComponent(currentPlaylist.id);
+        if (item.id === videoId) card.classList.add('current');
+        qList.appendChild(card);
+      }
+      panel.appendChild(qList);
+      queueWrap.appendChild(panel);
+    };
+
+    const updateQueue = async (videoId) => {
+      const listId = new URLSearchParams(location.search).get('list');
+      if (!listId) {
+        currentPlaylist = null;
+        renderQueuePanel(videoId);
+        return;
+      }
+      if (!currentPlaylist || currentPlaylist.id !== listId) {
+        const res = await innertube('next', { videoId, playlistId: listId });
+        const panel = res ? extractPlaylistPanel(res) : null;
+        currentPlaylist = panel ? { id: listId, title: panel.title, items: panel.items } : null;
+      }
+      renderQueuePanel(videoId);
+    };
+
     renderMeta();
+    updateQueue(resolveVideoId());
 
     let commentsToken = null;
     let commentsSeen = new Set();
@@ -3252,6 +3509,30 @@
     };
     commentsMore.addEventListener('click', () => fetchComments(false));
 
+    let sortOptions = [];
+    let activeSortIndex = 0;
+    const renderSortPills = () => {
+      commentsSort.replaceChildren();
+      if (!sortOptions.length) { commentsSort.style.display = 'none'; return; }
+      commentsSort.style.display = 'flex';
+      sortOptions.forEach((opt, i) => {
+        const { btn } = pillButton(null, opt.label, 'comments-sort-btn');
+        btn.classList.toggle('active', i === activeSortIndex);
+        btn.addEventListener('click', () => {
+          if (i === activeSortIndex || commentsLoading) return;
+          activeSortIndex = i;
+          renderSortPills();
+          commentsList.replaceChildren();
+          commentsSeen = new Set();
+          commentsShown = 0;
+          commentsToken = opt.token;
+          commentsFetched = true;
+          fetchComments(true);
+        });
+        commentsSort.appendChild(btn);
+      });
+    };
+
     const resetComments = (data = window.ytInitialData) => {
       commentsList.replaceChildren();
       commentsSpinner.classList.remove('show');
@@ -3267,6 +3548,9 @@
       const count = getCommentsCount(data);
       commentsLabel.textContent = count || 'Comments';
       commentsToggle.disabled = !commentsToken;
+      sortOptions = findCommentsSortOptions(data);
+      activeSortIndex = 0;
+      renderSortPills();
     };
     commentsToggle.addEventListener('click', () => {
       if (commentsToggle.disabled) return;
@@ -3285,6 +3569,7 @@
     let ui = null;
     let wired = null;
     let lastVideoId = null;
+    let autoplayEnabled = localStorage.getItem('itube-autoplay') !== '0';
 
     const toggleFullscreen = () => {
       const active = document.fullscreenElement || document.webkitFullscreenElement;
@@ -3432,14 +3717,14 @@
         else if (isFinite(video.duration)) video.currentTime = video.duration - 2;
       });
       ui.syncAuto = () => {
-        const b = document.querySelector('#movie_player .ytp-autonav-toggle-button');
-        const r = ui.auto.closest('.itube-menu-row');
-        if (r) r.style.display = b ? 'flex' : 'none';
-        ui.auto.style.opacity = b?.getAttribute('aria-checked') === 'true' ? '1' : '.45';
+        ui.auto.classList.toggle('active', autoplayEnabled);
+        ui.auto.setAttribute('aria-pressed', String(autoplayEnabled));
       };
       ui.auto.addEventListener('click', () => {
-        document.querySelector('#movie_player .ytp-autonav-toggle-button')?.click();
-        setTimeout(ui.syncAuto, 300);
+        autoplayEnabled = !autoplayEnabled;
+        localStorage.setItem('itube-autoplay', autoplayEnabled ? '1' : '0');
+        ui.syncAuto();
+        showOSD(ICONS.next, autoplayEnabled ? 'Autoplay on' : 'Autoplay off');
       });
       ui.syncAuto();
 
@@ -3526,6 +3811,7 @@
       renderMeta(data);
       renderTicks();
       resetComments(data);
+      updateQueue(resolveVideoId());
     };
     window.addEventListener('yt-navigate-finish', onNavigateFinish);
 
@@ -3569,6 +3855,23 @@
 
       if (wired === video) return;
       wired = video;
+
+      video.addEventListener('ended', () => {
+        if (!autoplayEnabled) return;
+        const curId = p.getVideoData?.()?.video_id;
+        let nextId = null;
+        let listId = null;
+        if (currentPlaylist) {
+          const idx = currentPlaylist.items.findIndex((it) => it.id === curId);
+          if (idx !== -1 && idx + 1 < currentPlaylist.items.length) {
+            nextId = currentPlaylist.items[idx + 1].id;
+            listId = currentPlaylist.id;
+          }
+        } else {
+          nextId = firstRelatedId;
+        }
+        if (nextId && watchNav(nextId, listId)) watchApi?.renderWatchFor(nextId);
+      });
 
       let saveTimer = null;
       const storedMuted = localStorage.getItem('itube-muted') === '1';
@@ -3720,6 +4023,7 @@
       renderMeta(data);
       renderTicks();
       resetComments(data);
+      updateQueue(videoId);
       content.scrollTop = 0;
     };
     watchApi = { renderWatchFor };
@@ -3732,10 +4036,13 @@
     };
   };
 
-  const watchNav = (videoId) => {
+  const watchNav = (videoId, listId) => {
     const pl = player();
     if (!pl || typeof pl.loadVideoById !== 'function') return false;
-    history.pushState({}, '', '/watch?v=' + videoId);
+    const href = listId
+      ? '/watch?v=' + videoId + '&list=' + encodeURIComponent(listId)
+      : '/watch?v=' + videoId;
+    history.pushState({}, '', href);
     pl.loadVideoById(videoId);
     return true;
   };
@@ -3786,7 +4093,8 @@
     if (a.origin !== location.origin) return;
     if (a.pathname === '/watch') {
       const videoId = new URLSearchParams(a.search).get('v');
-      if (videoId && location.pathname === '/watch' && watchNav(videoId)) {
+      const listId = new URLSearchParams(a.search).get('list');
+      if (videoId && location.pathname === '/watch' && watchNav(videoId, listId)) {
         e.preventDefault();
         watchApi?.renderWatchFor(videoId);
       }
