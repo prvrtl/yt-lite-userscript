@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         iTube
 // @namespace    yt-us
-// @version      3.5.0
+// @version      3.6.0
 // @description  YouTube rebuilt as a native-feeling app. Our UI, YouTube's data.
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -501,19 +501,31 @@
       font-weight: 600;
       letter-spacing: -.02em;
     }
+    #itube .watch-meta {
+      margin-top: 14px;
+      background: var(--surface);
+      border-radius: var(--r-md);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
     #itube .watch-channel {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-top: 14px;
+      gap: 12px;
     }
     #itube .watch-avatar {
-      width: 36px;
-      height: 36px;
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
       object-fit: cover;
       background: var(--raised);
       flex: none;
+    }
+    #itube .watch-channel-info {
+      flex: 1;
+      min-width: 0;
     }
     #itube .watch-channel-name {
       font-size: 14px;
@@ -524,25 +536,39 @@
       color: var(--dim);
       margin-top: 2px;
     }
-    #itube .watch-desc {
-      margin-top: 14px;
-      background: var(--surface);
-      border-radius: var(--r-md);
-      padding: 12px;
+    #itube .watch-meta-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, .08);
+    }
+    #itube .watch-stats {
+      font-size: 13px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    #itube .watch-description {
       font-size: 14px;
       line-height: 1.5;
       color: var(--text);
       white-space: pre-wrap;
-    }
-    #itube .watch-desc.collapsed {
-      max-height: calc(1.5em * 3 + 4px);
+      overflow-wrap: anywhere;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
       overflow: hidden;
     }
-    #itube .watch-more {
-      margin-top: 8px;
+    #itube .watch-description.expanded {
+      display: block;
+      -webkit-line-clamp: unset;
+      overflow: visible;
+    }
+    #itube .watch-desc-link {
+      color: var(--accent);
+    }
+    #itube .watch-desc-toggle {
+      align-self: flex-start;
       background: none;
       border: none;
-      color: var(--muted);
+      color: var(--accent);
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
@@ -1157,13 +1183,33 @@
   mountStyle();
 
   const cfg = () => window.ytcfg?.data_;
+
+  const sapisidHash = async () => {
+    const m = document.cookie.match(/(?:^|;\s*)(?:__Secure-3PAPISID|SAPISID)=([^;]+)/);
+    if (!m) return null;
+    const ts = Math.floor(Date.now() / 1000);
+    const origin = 'https://www.youtube.com';
+    const data = ts + ' ' + m[1] + ' ' + origin;
+    const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(data));
+    const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    return 'SAPISIDHASH ' + ts + '_' + hex;
+  };
+
   const innertube = async (endpoint, body) => {
     const c = cfg();
     if (!c?.INNERTUBE_API_KEY) return null;
     try {
+      const headers = {
+        'content-type': 'application/json',
+        'x-origin': 'https://www.youtube.com',
+        'x-goog-authuser': '0',
+      };
+      const auth = await sapisidHash();
+      if (auth) headers.authorization = auth;
       const res = await fetch('/youtubei/v1/' + endpoint + '?key=' + c.INNERTUBE_API_KEY + '&prettyPrint=false', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        headers,
         body: JSON.stringify({ context: c.INNERTUBE_CONTEXT, ...body }),
       });
       if (!res.ok) return null;
@@ -1776,7 +1822,6 @@
   nav.appendChild(brand);
   const NAV_ITEMS = [
     { key: 'home', label: 'Home', href: '/' },
-    { key: 'explore', label: 'Explore', href: '/feed/trending' },
     { key: 'subs', label: 'Subscriptions', href: '/feed/subscriptions' },
     { key: 'later', label: 'Watch later', href: '/playlist?list=WL' },
     { key: 'history', label: 'History', href: '/feed/history' },
@@ -2433,7 +2478,9 @@
     return () => { io.disconnect(); };
   };
 
-  const mountFeed = (browseId, heading) => {
+  const mountFeed = (browseIds, heading, opts = {}) => {
+    const ids = Array.isArray(browseIds) ? browseIds : [browseIds];
+    const useInitialData = !!opts.useInitialData;
     const seen = new Set();
 
     const headingEl = document.createElement('h1');
@@ -2535,24 +2582,44 @@
       } catch (e) {}
     };
 
+    const fetchFromApi = async () => {
+      for (const id of ids) {
+        const res = await innertube('browse', { browseId: id });
+        if (!res) continue;
+        if (id.startsWith('VL')) setPlaylistTitle(res);
+        const items = extractVideos(res, seen);
+        const token = findContinuationToken(res);
+        if (items.length || token) return { items, token };
+      }
+      return null;
+    };
+
     const runInitial = async () => {
       view.replaceChildren(headingEl, grid, spinner);
       loading = true;
       spinner.classList.add('show');
       try {
-        const res = await innertube('browse', { browseId });
-        if (!res) {
+        if (useInitialData) {
+          const pageData = window.ytInitialData;
+          const initialItems = pageData ? extractVideos(pageData, seen) : [];
+          if (initialItems.length) {
+            if (ids[0].startsWith('VL')) setPlaylistTitle(pageData);
+            continuationToken = findContinuationToken(pageData);
+            for (const item of initialItems) grid.insertBefore(createCard(item), sentinel);
+            return;
+          }
+        }
+        const result = await fetchFromApi();
+        if (!result) {
           showEmpty('Nothing here yet.');
           return;
         }
-        if (browseId.startsWith('VL')) setPlaylistTitle(res);
-        const items = extractVideos(res, seen);
-        continuationToken = findContinuationToken(res);
-        if (items.length === 0 && !continuationToken) {
+        continuationToken = result.token;
+        if (result.items.length === 0 && !continuationToken) {
           showEmpty('Nothing here yet.');
           return;
         }
-        for (const item of items) grid.insertBefore(createCard(item), sentinel);
+        for (const item of result.items) grid.insertBefore(createCard(item), sentinel);
       } finally {
         loading = false;
         spinner.classList.remove('show');
@@ -2708,28 +2775,38 @@
 
     const title = document.createElement('h1');
     title.className = 'watch-title';
+    const meta = document.createElement('div');
+    meta.className = 'watch-meta';
     const channelRow = document.createElement('div');
     channelRow.className = 'watch-channel';
     const avatar = document.createElement('img');
     avatar.className = 'watch-avatar';
-    const channelMeta = document.createElement('div');
+    const channelInfo = document.createElement('div');
+    channelInfo.className = 'watch-channel-info';
     const channelName = document.createElement('div');
     channelName.className = 'watch-channel-name';
     const subs = document.createElement('div');
     subs.className = 'watch-subs';
-    channelMeta.append(channelName, subs);
-    channelRow.append(avatar, channelMeta);
+    channelInfo.append(channelName, subs);
+    channelRow.append(avatar, channelInfo);
+    const metaDivider = document.createElement('div');
+    metaDivider.className = 'watch-meta-divider';
+    const stats = document.createElement('div');
+    stats.className = 'watch-stats';
     const desc = document.createElement('div');
-    desc.className = 'watch-desc collapsed';
-    const more = document.createElement('button');
-    more.className = 'watch-more';
-    more.textContent = 'more';
-    let expanded = false;
-    more.addEventListener('click', () => {
-      expanded = !expanded;
-      desc.classList.toggle('collapsed', !expanded);
-      more.textContent = expanded ? 'less' : 'more';
+    desc.className = 'watch-description';
+    const descToggle = document.createElement('button');
+    descToggle.type = 'button';
+    descToggle.className = 'watch-desc-toggle';
+    descToggle.textContent = 'Show more';
+    descToggle.style.display = 'none';
+    let descExpanded = false;
+    descToggle.addEventListener('click', () => {
+      descExpanded = !descExpanded;
+      desc.classList.toggle('expanded', descExpanded);
+      descToggle.textContent = descExpanded ? 'Show less' : 'Show more';
     });
+    meta.append(channelRow, metaDivider, stats, desc, descToggle);
 
     const commentsPanel = document.createElement('div');
     commentsPanel.className = 'comments';
@@ -2753,10 +2830,60 @@
     commentsBody.append(commentsList, commentsSpinner, commentsMore);
     commentsPanel.append(commentsToggle, commentsBody);
 
-    watchLeft.append(stage, title, channelRow, desc, more, commentsPanel);
+    watchLeft.append(stage, title, meta, commentsPanel);
     watch.append(watchLeft, watchRight);
 
     view.replaceChildren(watch);
+
+    const buildDescriptionSegments = (secondary) => {
+      try {
+        const attributed = secondary?.attributedDescription;
+        if (attributed?.content) {
+          const content = attributed.content;
+          const commandRuns = (attributed.commandRuns || [])
+            .filter((r) => typeof r?.startIndex === 'number' && typeof r?.length === 'number' && r?.onTap?.innertubeCommand)
+            .sort((a, b) => a.startIndex - b.startIndex);
+          const segments = [];
+          let cursor = 0;
+          for (const run of commandRuns) {
+            if (run.startIndex > cursor) segments.push({ text: content.slice(cursor, run.startIndex) });
+            const url = run.onTap.innertubeCommand?.commandMetadata?.webCommandMetadata?.url || null;
+            segments.push({ text: content.slice(run.startIndex, run.startIndex + run.length), url });
+            cursor = run.startIndex + run.length;
+          }
+          if (cursor < content.length) segments.push({ text: content.slice(cursor) });
+          return segments;
+        }
+        const runsArr = secondary?.description?.runs;
+        if (Array.isArray(runsArr) && runsArr.length) {
+          return runsArr.map((r) => ({
+            text: r?.text || '',
+            url: r?.navigationEndpoint?.commandMetadata?.webCommandMetadata?.url || null,
+          }));
+        }
+      } catch (e) {}
+      return null;
+    };
+
+    const renderDescription = (segments, fallbackText) => {
+      desc.replaceChildren();
+      if (segments && segments.length) {
+        for (const seg of segments) {
+          if (!seg.text) continue;
+          if (seg.url) {
+            const a = document.createElement('a');
+            a.className = 'watch-desc-link';
+            a.href = seg.url;
+            a.textContent = seg.text;
+            desc.appendChild(a);
+          } else {
+            desc.appendChild(document.createTextNode(seg.text));
+          }
+        }
+      } else {
+        desc.textContent = fallbackText || '';
+      }
+    };
 
     const renderMeta = () => {
       const data = window.ytInitialData;
@@ -2774,10 +2901,16 @@
       const viewsText = primary?.viewCount?.videoViewCountRenderer?.viewCount?.simpleText
         || (details?.viewCount ? details.viewCount + ' views' : '');
       const dateText = primary?.dateText?.simpleText || '';
-      const descRuns = secondary?.attributedDescription?.content
-        ? secondary.attributedDescription.content
-        : (secondary?.description?.runs || []).map((r) => r?.text || '').join('');
-      desc.textContent = [viewsText, dateText].filter(Boolean).join(' · ') + (descRuns ? '\n\n' + descRuns : '') || details?.shortDescription || '';
+      stats.textContent = [viewsText, dateText].filter(Boolean).join(' · ');
+
+      renderDescription(buildDescriptionSegments(secondary), details?.shortDescription || '');
+      descExpanded = false;
+      desc.classList.remove('expanded');
+      descToggle.textContent = 'Show more';
+      descToggle.style.display = 'none';
+      requestAnimationFrame(() => {
+        if (desc.scrollHeight > desc.clientHeight + 1) descToggle.style.display = '';
+      });
 
       const related = extractVideos(data, new Set()).slice(0, 20);
       watchRight.replaceChildren();
@@ -3217,15 +3350,16 @@
     const shorts = path.match(/^\/shorts\/([^/?]+)/);
     if (shorts) { location.replace('/watch?v=' + encodeURIComponent(shorts[1])); return; }
 
-    let type = null, browseId = null, heading = null;
+    let type = null, browseId = null, heading = null, useInitialData = false;
     if (path === '/watch') type = 'watch';
     else if (path === '/') type = 'home';
     else if (path === '/results') type = 'search';
     else if (CHANNEL_PATH_RE.test(path)) type = 'channel';
-    else if (FEED_BROWSE[path]) { type = 'feed'; browseId = FEED_BROWSE[path].browseId; heading = FEED_BROWSE[path].heading; }
+    else if (path === '/feed/explore') { type = 'feed'; browseId = ['FEexplore', 'FEtrending']; heading = 'Explore'; }
+    else if (FEED_BROWSE[path]) { type = 'feed'; browseId = FEED_BROWSE[path].browseId; heading = FEED_BROWSE[path].heading; useInitialData = true; }
     else if (path === '/playlist') {
       const listId = new URLSearchParams(location.search).get('list');
-      if (listId) { type = 'feed'; browseId = 'VL' + listId; heading = 'Playlist'; }
+      if (listId) { type = 'feed'; browseId = 'VL' + listId; heading = 'Playlist'; useInitialData = true; }
     }
     if (!type) type = 'unhandled';
 
@@ -3238,7 +3372,7 @@
       : type === 'home' ? mountHome()
       : type === 'search' ? mountSearch()
       : type === 'channel' ? mountChannel()
-      : type === 'feed' ? mountFeed(browseId, heading)
+      : type === 'feed' ? mountFeed(browseId, heading, { useInitialData })
       : mountUnhandled();
   };
 
