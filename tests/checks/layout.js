@@ -44,7 +44,18 @@ function layoutInPage() {
     if (el.className && typeof el.className === 'string') {
       return el.tagName.toLowerCase() + '.' + el.className.trim().split(/\s+/).join('.');
     }
-    return el.tagName.toLowerCase();
+    // An anonymous <span> is useless in a violation message. Qualify it with
+    // the nearest identifiable ancestor so the report says which one.
+    const tag = el.tagName.toLowerCase();
+    let anc = el.parentElement;
+    while (anc && anc !== itube) {
+      if (anc.id) return '#' + anc.id + ' > ' + tag;
+      if (anc.className && typeof anc.className === 'string' && anc.className.trim()) {
+        return anc.tagName.toLowerCase() + '.' + anc.className.trim().split(/\s+/).join('.') + ' > ' + tag;
+      }
+      anc = anc.parentElement;
+    }
+    return tag;
   };
 
   const q = (sel) => itube.querySelector(sel);
@@ -264,36 +275,137 @@ function layoutInPage() {
     }
   }
 
-  // --- (i) LEGIBILITY: text color must differ from effective background ---
+  // --- (i) LEGIBILITY: real WCAG contrast, not string equality ---
+  // The previous version compared computed colour STRINGS for equality, which
+  // can never fire: `rgb(235, 235, 245)` is not the string `rgba(255, 255,
+  // 255, 0.05)`, so grey-on-grey at 1.2:1 sailed through. Composite the text
+  // colour (and every translucent background between it and an opaque one)
+  // and compute the actual ratio.
+  const parseColor = (str) => {
+    if (!str) return null;
+    const m = String(str).match(/rgba?\(([^)]+)\)/);
+    if (!m) return null;
+    const parts = m[1].split(/[,\s/]+/).filter(Boolean).map(Number);
+    if (parts.length < 3 || parts.slice(0, 3).some((n) => !isFinite(n))) return null;
+    const a = parts.length > 3 && isFinite(parts[3]) ? parts[3] : 1;
+    return { r: parts[0], g: parts[1], b: parts[2], a };
+  };
+  // `over` = the colour underneath. Standard source-over compositing.
+  const composite = (fg, bg) => {
+    const a = fg.a + bg.a * (1 - fg.a);
+    if (a === 0) return { r: 0, g: 0, b: 0, a: 0 };
+    return {
+      r: (fg.r * fg.a + bg.r * bg.a * (1 - fg.a)) / a,
+      g: (fg.g * fg.a + bg.g * bg.a * (1 - fg.a)) / a,
+      b: (fg.b * fg.a + bg.b * bg.a * (1 - fg.a)) / a,
+      a,
+    };
+  };
+  // Walk up compositing every translucent background until an opaque one is
+  // reached. The page ground is the document background (the app is dark), so
+  // fall back to that rather than assuming white.
+  const rootBg = parseColor(getComputedStyle(document.documentElement).backgroundColor)
+    || { r: 0, g: 0, b: 0, a: 1 };
   const effectiveBg = (el) => {
+    const stack = [];
     let node = el;
-    while (node && node !== itube.parentElement) {
-      const cs = getComputedStyle(node);
-      const bg = cs.backgroundColor;
-      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return bg;
+    while (node && node.nodeType === 1) {
+      const bg = parseColor(getComputedStyle(node).backgroundColor);
+      if (bg && bg.a > 0) {
+        stack.push(bg);
+        if (bg.a >= 1) break;
+      }
       node = node.parentElement;
     }
-    return 'rgba(0, 0, 0, 0)';
+    let acc = rootBg.a >= 1 ? rootBg : { r: 0, g: 0, b: 0, a: 1 };
+    for (let i = stack.length - 1; i >= 0; i--) acc = composite(stack[i], acc);
+    return acc;
   };
+  const luminance = ({ r, g, b }) => {
+    const chan = (v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b);
+  };
+  const contrastRatio = (a, b) => {
+    const la = luminance(a);
+    const lb = luminance(b);
+    const [hi, lo] = la > lb ? [la, lb] : [lb, la];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  let lowContrast = 0;
   for (const { el, cs } of visible) {
+    if (lowContrast >= 5) break;
     const hasText = Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.textContent.trim().length > 0);
     if (!hasText) continue;
-    const color = cs.color;
+    const fg = parseColor(cs.color);
+    if (!fg) continue;
     const bg = effectiveBg(el);
-    if (color === bg) {
-      report('legibility', `${describe(el)} text color equals effective background (${color})`);
+    // Text is itself painted over its background, so alpha-composite it too:
+    // `color: rgba(255,255,255,.5)` on black is mid-grey, not white.
+    const text = composite(fg, bg);
+    const ratio = contrastRatio(text, bg);
+    // WCAG AA: large text (>=24px, or >=18.66px bold) needs 3:1, everything
+    // else needs 4.5:1.
+    const size = parseFloat(cs.fontSize) || 16;
+    const weight = parseInt(cs.fontWeight, 10) || 400;
+    const isLarge = size >= 24 || (size >= 18.66 && weight >= 700);
+    const required = isLarge ? 3 : 4.5;
+    if (ratio < required) {
+      report('legibility', `${describe(el)} contrast ${ratio.toFixed(2)}:1 is below the required ${required}:1 (color=${cs.color} over effective background rgb(${Math.round(bg.r)}, ${Math.round(bg.g)}, ${Math.round(bg.b)}), fontSize=${cs.fontSize} weight=${cs.fontWeight})`);
+      lowContrast++;
     }
   }
 
   // --- (j) TEXT NOT CLIPPED ---
-  for (const sel of ['.c-title', '.row-title', '.watch-title', '.comment-text']) {
-    for (const el of itube.querySelectorAll(sel)) {
+  // Every one of these selectors HAS a line-clamp, so the old `if (hasClamp)
+  // continue;` skipped essentially everything it claimed to cover. A clamp is
+  // not a licence to render badly: the box must be tall enough for the lines
+  // it actually shows (no half-line sheared off at the bottom), and if the
+  // text overflows it must be showing the FULL clamp allowance — a 2-line
+  // clamp that only has room for 1.4 lines is a bug.
+  // `.rc-title` (the related rail) belongs here too: it is clamped exactly like
+  // the others, and on a watch page it is the ONLY one of these that renders in
+  // bulk — without it this check inspects almost nothing on the app's main page.
+  for (const sel of ['.c-title', '.row-title', '.rc-title', '.watch-title', '.comment-text']) {
+    for (const el of Array.from(itube.querySelectorAll(sel)).slice(0, 8)) {
       const cs = getComputedStyle(el);
       if (cs.display === 'none' || cs.visibility === 'hidden') continue;
-      const hasClamp = cs.webkitLineClamp && cs.webkitLineClamp !== 'none' && cs.webkitLineClamp !== '';
-      if (hasClamp) continue;
-      if (el.scrollHeight > el.clientHeight + 2) {
-        report('text-not-clipped', `${sel} scrollHeight=${el.scrollHeight} > clientHeight=${el.clientHeight} and no line-clamp set`);
+
+      const clampRaw = cs.webkitLineClamp;
+      const clamp = clampRaw && clampRaw !== 'none' ? parseInt(clampRaw, 10) : 0;
+      const overflows = el.scrollHeight > el.clientHeight + 2;
+
+      if (!clamp) {
+        if (overflows) {
+          report('text-not-clipped', `${sel} scrollHeight=${el.scrollHeight} > clientHeight=${el.clientHeight} and no line-clamp set`);
+        }
+        continue;
+      }
+
+      // Height available for text = content box (clientHeight already excludes
+      // borders/scrollbars, so subtract padding).
+      const padding = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+      const contentH = el.clientHeight - padding;
+      const lh = parseFloat(cs.lineHeight);
+      if (!isFinite(lh) || lh <= 0) continue; // `line-height: normal` — no reliable line metric to assert on
+      const lines = contentH / lh;
+
+      if (lines < 0.9) {
+        report('text-not-clipped', `${sel} has line-clamp:${clamp} but only ${lines.toFixed(2)} line(s) of height (contentHeight=${contentH.toFixed(1)} lineHeight=${lh}) — the text is clipped to nothing`);
+        continue;
+      }
+      // A partial line means the bottom row of glyphs is sheared in half.
+      const fractional = Math.abs(lines - Math.round(lines));
+      if (fractional > 0.15) {
+        report('text-not-clipped', `${sel} renders ${lines.toFixed(2)} lines — not a whole number, so the last line is cut mid-glyph (contentHeight=${contentH.toFixed(1)} lineHeight=${lh} clamp=${clamp})`);
+        continue;
+      }
+      // If the text is long enough to be truncated, the box must be giving it
+      // every line the clamp promised.
+      if (overflows && Math.round(lines) < clamp) {
+        report('text-not-clipped', `${sel} is truncated at ${Math.round(lines)} line(s) but line-clamp is ${clamp} — the box is shorter than the clamp it declares (contentHeight=${contentH.toFixed(1)} lineHeight=${lh})`);
       }
     }
   }
@@ -308,10 +420,20 @@ function layoutInPage() {
   // negative inline margin) must fit inside the padding box of its nearest
   // horizontal clipper. Vertical overflow is NOT checked: scrolling down a
   // scroll container is the whole point of one.
-  const chrome = document.querySelector('#itube-bar');
+  //
+  // The exemption here is deliberately NARROW: only the things that genuinely
+  // OVERLAY the video (the bar itself, the OSD cue, the overflow menu, the
+  // <video>) are out-of-flow surfaces that legitimately sit on the stage's
+  // clip boundary. Everything laid out INSIDE the bar — buttons, the seek bar,
+  // the volume slider, the quality select — is in normal flow and must obey
+  // the same rule as any other card surface. (The old version exempted every
+  // descendant of #itube-bar and #itube-stage, i.e. the entire player.)
   const stage = document.querySelector('#itube-stage');
-  const isPlayerChrome = (el) =>
-    (chrome && chrome.contains(el)) || (stage && stage.contains(el));
+  const isPlayerOverlay = (el, cs) => {
+    if (!stage || !stage.contains(el)) return false;
+    if (el.tagName === 'VIDEO') return true;
+    return cs.position === 'absolute' || cs.position === 'fixed';
+  };
 
   const paintsSurface = (cs) => {
     const bg = cs.backgroundColor;
@@ -337,7 +459,7 @@ function layoutInPage() {
   for (const { el, rect, cs } of visible) {
     if (clipped >= 3) break;
     if (cs.position === 'fixed') continue;
-    if (isPlayerChrome(el)) continue;
+    if (isPlayerOverlay(el, cs)) continue;
     if (!paintsSurface(cs)) continue;
     const clipper = clipperOf(el);
     if (!clipper) continue;
@@ -404,11 +526,130 @@ function layoutInPage() {
     if (asym >= 3) break;
   }
 
+  // --- (m) PLAYER BAR CONTROLS ARE REAL ---
+  // Every invariant above skips elements that are display:none,
+  // visibility:hidden or zero-area. #itube-bar is `visibility: hidden` until
+  // #itube-stage gets `.show`, and visibility INHERITS — so for as long as the
+  // bar was hidden, every control inside it was skipped by within-viewport,
+  // spacing-scale, legibility, text-not-clipped and inset-symmetry. The
+  // project's signature feature had zero layout coverage.
+  //
+  // runLayoutChecks() forces `.show` on before calling this, so the controls
+  // are now in `visible` and covered by everything above. This check asserts
+  // that they really are there and really are non-zero — otherwise a bar that
+  // failed to mount would once again make every invariant pass vacuously.
+  const bar = document.querySelector('#itube-bar');
+  if (stage) {
+    if (!bar) {
+      report('player-bar-controls', 'expected #itube-bar to exist on a watch page, got null');
+    } else {
+      const barCs = getComputedStyle(bar);
+      if (barCs.visibility === 'hidden' || barCs.display === 'none') {
+        report('player-bar-controls', `#itube-bar is still ${barCs.display === 'none' ? 'display:none' : 'visibility:hidden'} after #itube-stage.show was applied — the layout invariants above cannot see any control`);
+      }
+      const barRect = bar.getBoundingClientRect();
+      for (const id of ['itube-play', 'itube-seek', 'itube-vol', 'itube-more']) {
+        const ctl = document.getElementById(id);
+        if (!ctl) {
+          report('player-bar-controls', `expected #${id} to exist inside the player bar, got null`);
+          continue;
+        }
+        const ccs = getComputedStyle(ctl);
+        if (ccs.display === 'none' || ccs.visibility === 'hidden') {
+          report('player-bar-controls', `#${id} is not visible with the bar shown (display=${ccs.display} visibility=${ccs.visibility})`);
+          continue;
+        }
+        const cr = ctl.getBoundingClientRect();
+        if (cr.width <= 0 || cr.height <= 0) {
+          report('player-bar-controls', `#${id} has zero area (w=${cr.width.toFixed(1)} h=${cr.height.toFixed(1)}) — it cannot be clicked`);
+          continue;
+        }
+        if (cr.left < barRect.left - 1 || cr.right > barRect.right + 1 || cr.top < barRect.top - 1 || cr.bottom > barRect.bottom + 1) {
+          report('player-bar-controls', `#${id} escapes the player bar box: control=${JSON.stringify(rectStr(cr))} bar=${JSON.stringify(rectStr(barRect))}`);
+        }
+      }
+    }
+  }
+
+  // --- (n) VERTICAL CENTERING IN CENTERED FLEX ROWS ---
+  // `align-items: center` centers the child's MARGIN box, not its border box.
+  // So a stray margin (typically left over from a previous layout, e.g. a
+  // sidebar logo that kept `margin-bottom: 12px` after moving into the header)
+  // silently pushes the visible element off-centre by half the margin, while
+  // every property-based check still reports a perfectly centered row.
+  // That bug shipped. This asserts the RESULT: in a single-line centered flex
+  // row, each child's visual centre must coincide with the row's content-box
+  // centre.
+  const centered = [];
+  for (const { el, cs } of visible) {
+    if (cs.display !== 'flex' && cs.display !== 'inline-flex') continue;
+    if (cs.alignItems !== 'center') continue;
+    if (cs.flexWrap === 'wrap' || cs.flexWrap === 'wrap-reverse') continue;
+    if (cs.flexDirection === 'column' || cs.flexDirection === 'column-reverse') continue;
+    centered.push(el);
+  }
+
+  let offCentre = 0;
+  for (const row of centered) {
+    if (offCentre >= 3) break;
+    const rowRect = row.getBoundingClientRect();
+    const rcs = getComputedStyle(row);
+    // Centre of the CONTENT box, so the row's own padding/border don't skew it.
+    const top = rowRect.top + parseFloat(rcs.borderTopWidth) + parseFloat(rcs.paddingTop);
+    const bottom = rowRect.bottom - parseFloat(rcs.borderBottomWidth) - parseFloat(rcs.paddingBottom);
+    const rowMid = (top + bottom) / 2;
+    const rowInner = bottom - top;
+    if (!(rowInner > 0)) continue;
+
+    for (const child of row.children) {
+      const ccs = getComputedStyle(child);
+      if (ccs.display === 'none' || ccs.visibility === 'hidden') continue;
+      if (ccs.position === 'absolute' || ccs.position === 'fixed') continue;
+      // Only children that are free to be centred: one that fills (or
+      // overflows) the row has no slack, and `align-self` opts out by design.
+      if (ccs.alignSelf !== 'auto' && ccs.alignSelf !== 'center') continue;
+      const cr = child.getBoundingClientRect();
+      if (cr.width <= 0 || cr.height <= 0) continue;
+      if (cr.height >= rowInner - 1) continue;
+
+      const childMid = (cr.top + cr.bottom) / 2;
+      const delta = childMid - rowMid;
+      if (Math.abs(delta) > 1.5) {
+        offCentre++;
+        report('vertical-centering',
+          `${describe(child)} is ${delta > 0 ? 'below' : 'above'} the centre of ${describe(row)} by ${Math.abs(delta).toFixed(1)}px `
+          + `(marginTop=${ccs.marginTop} marginBottom=${ccs.marginBottom} — align-items:center centres the MARGIN box, so a stray margin offsets the visible element)`);
+        if (offCentre >= 3) break;
+      }
+    }
+  }
+
   return violations;
 }
 
+// The player bar and every control inside it are `visibility: hidden` until
+// #itube-stage carries the `show` class (it appears on mousemove and
+// auto-hides ~2.8s later). Since layoutInPage() — correctly — ignores hidden
+// elements, running it as-is means the play button, seek bar, volume slider
+// and overflow menu are never measured at all. Force the bar visible for the
+// duration of the measurement, then put the class back the way we found it.
 async function runLayoutChecks(page) {
-  return page.evaluate(layoutInPage);
+  const forced = await page.evaluate(() => {
+    const stage = document.getElementById('itube-stage');
+    if (!stage || stage.classList.contains('show')) return false;
+    stage.classList.add('show');
+    return true;
+  });
+  try {
+    return await page.evaluate(layoutInPage);
+  } finally {
+    if (forced) {
+      await page.evaluate(() => {
+        const stage = document.getElementById('itube-stage');
+        if (stage) stage.classList.remove('show');
+      });
+    }
+  }
 }
 
 module.exports = { runLayoutChecks };

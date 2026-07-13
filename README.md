@@ -1,14 +1,14 @@
 # iTube
 
-A userscript that makes YouTube fast and native-looking in Safari.
+A userscript that rebuilds YouTube as a fast, native-feeling app in Safari.
 
-YouTube ships a DOM tuned for Chrome. In Safari it carries thousands of nodes it
-never paints, a video element per hovered thumbnail, and animation on everything.
-iTube strips the page down, replaces the player chrome with a Liquid Glass bar,
-and gives back every feature it removes.
+iTube does not restyle YouTube. It renders **its own UI from YouTube's data** —
+its own feed, watch page, search, channel, comments and player bar — and borrows
+YouTube's player purely as a headless playback engine, moving the `<video>` into
+its own stage. YouTube's own interface is parked offscreen and never rendered.
 
-Single file. No build step, no dependencies, no network calls of its own, no
-tracking.
+Single file. No build step, no dependencies, no tracking. It talks to YouTube's
+own API (InnerTube) and nothing else.
 
 ## Install
 
@@ -24,53 +24,55 @@ tracking.
 1. Install [Tampermonkey](https://www.tampermonkey.net/) or Violentmonkey.
 2. Open the raw script — the manager offers to install it:
 
-   https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/refs/heads/main/youtube-lite.user.js
+   https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/refs/heads/main/itube.user.js
 
 Updates are automatic: the script carries an `@updateURL`.
 
 ## What it does
 
-**Speed.** Off-screen comments, feed items and sidebar rows skip layout entirely
-(`content-visibility`). Animations, transitions, shadows and large-surface blur
-are killed. Hover-preview video players — a real `<video>` with media buffers per
-thumbnail — are deleted the moment they spawn. Related, comments and replies are
-capped, so a long session can't grow the tab without limit.
+**Speed.** Because iTube renders its own UI, YouTube's components are never
+scrolled, hovered or brought into view — so they never lazy-render the comments,
+related rail and feed rows that make up the bulk of a watch page. The work simply
+never happens.
 
-Measured on a live watch page: **DOM nodes 10,631 → 3,202 (−70%)** on a healthy
-session; player chrome **161 → 33 nodes**. Full numbers, method, and what is
-*not* proven: [PERF.md](PERF.md).
+Measured on a live watch page, median of 3 runs: **DOM nodes 22,107 → 6,865
+(−69%)**; frame time p95 **20.6 ms → 8.0 ms**; janky frames **9 → 0**. Method,
+repro script, and the metrics deliberately *not* claimed: [PERF.md](PERF.md).
 
 **Design.** System typeface, macOS focus rings, glass surfaces, a custom icon
-set, flat cards. Dark and light. YouTube's own theme tokens are overridden, so
-surfaces the script never touches still inherit the palette.
+set, flat cards. A Liquid Glass player bar with seek preview, quality, speed,
+captions, PiP and fullscreen.
 
-**No functionality lost.** This is the hard part and it is done: quality, speed,
-caption languages, chapters, seek-preview thumbnails, playlists, autoplay, PiP,
-live streams and DVR scrubbing, stats-for-nerds, and every keyboard shortcut all
-still work.
+**No functionality lost.** This is the hard part and it is done: quality up to
+4320p, playback speed, caption languages, chapters, seek-preview thumbnails,
+playlists and queue, autoplay-next, PiP, live and DVR scrubbing, search filters,
+comments and replies, and every keyboard shortcut.
 
-**Shorts.** Removed from the sidebar, shelves, and search. A `/shorts/<id>` link
-redirects to the normal watch page, where you get a real scrubber.
+**Shorts.** A `/shorts/<id>` link redirects to the normal watch page, where you
+get a real scrubber.
 
 ## Configuration
 
-Feature flags are plain `const` booleans at the top of the file. Edit and save:
+There is no feature-flag system. A handful of caps are plain `const`s at the top
+of `itube.user.js` (`MAX_COMMENTS`, `MAX_REPLIES`, …). Edit and save.
 
-| Flag | Default | Effect |
-|---|---|---|
-| `GRID_MIN_WIDTH` | `240` | Feed density. Lower → more columns. |
-| `MAX_RELATED` / `MAX_COMMENT_THREADS` / `MAX_REPLIES` | `10` | List caps. |
-| `REMOVE_SHORTS` | `true` | Strip Shorts everywhere. |
-| `MINIMAL_SIDEBAR` | `true` | Sidebar = Home / Subscriptions / You. |
-| `HIDE_CHIP_BAR` | `true` | Remove the home genre bar. |
-| `NATIVE_ICONS` / `ITUBE_LOGO` | `true` | Replace YouTube's icons and logo. |
-| `GLASS_PLAYER` / `GLASS_UI` | `true` | The custom player bar / the skin. |
-| `FORCE_DARK` | `true` | Force dark theme. |
+## Development
+
+`itube.user.js` is the whole app. `youtube-lite.user.js` is the legacy v2.9 skin,
+kept only so existing installs keep auto-updating — don't develop against it.
+
+```
+cd tests && npm install
+cd tests && npm test          # Playwright suite, runs against live youtube.com
+cd tests && node bench.js     # the repro script behind PERF.md
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for why the app is shaped this way.
 
 ## Notes
 
-Verified against Chrome and Safari on the desktop site. YouTube changes its DOM
-often — if something stops being styled, its class names probably changed (this
-has happened twice already; both times the fix was one selector). Open an issue.
+Verified against Chrome and Safari on the desktop site. YouTube changes its data
+shapes often — if a view suddenly renders zero items, that is the first thing to
+check (see the `lockupViewModel` notes in ARCHITECTURE.md). Open an issue.
 
 Not affiliated with YouTube or Google.

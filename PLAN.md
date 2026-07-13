@@ -1,11 +1,20 @@
 # iTube — plan and quality control
 
-Goal: make YouTube dramatically faster in Safari by simplifying the DOM and
-Chrome-optimized rendering, replace Google's UI with Apple-style Liquid Glass,
-and lose zero functionality. Ship first as a userscript, later as a Safari
-extension for the App Store.
+Goal: make YouTube dramatically faster in Safari, replace Google's UI with an
+Apple-style Liquid Glass one, and lose zero functionality. Ship first as a
+userscript, later as a Safari extension for the App Store.
 
-## Milestones
+**Read this first.** Milestones M1–M4.5 below are the history of the **v2 skin**,
+which restyled and pruned YouTube's own DOM. That approach was abandoned at v3.0:
+iTube is now an **app** (`itube.user.js`) that renders its own UI from YouTube's
+data and never reuses a `ytd-*` component. Those milestones are kept as a record
+of what was learned — the "hard-won constraints" at the bottom are still binding
+— but the mechanisms they describe (the sweeper, per-card pruning,
+`content-visibility` over YouTube's nodes, the feature flags) **do not exist any
+more**. See `ARCHITECTURE.md` for the shape of the current program, and its
+Stages list for the v3/v4 milestones.
+
+## Milestones (M1–M4.5: the legacy v2 skin — see note above)
 
 ### M1 — Solid baseline (done)
 - [x] Kill animations/transitions/shadows/backdrop-filter globally
@@ -206,25 +215,30 @@ extension for the App Store.
       hasn't bound yet (non-deterministic, load-order dependent).
 
 ### M4 — Performance proof
-- [x] Baseline vs iTube numbers measured A/B in one tab; written up in PERF.md
-      with method and honest gaps. Watch page: 3,647 → 2,364 nodes (−35%) on a
-      RATE-LIMITED (partially loaded) session; −70% on a healthy one. Heap 86 →
-      82 MB.
+- [x] Baseline vs iTube measured A/B, script injected at document-start, written
+      up in PERF.md with method and honest gaps. Repro script is committed:
+      `tests/bench.js`. Watch page (v4.1.3, median of 3): 22,107 → 6,865 nodes
+      (−69%), frame p95 20.6 → 8.0 ms, janky frames 9 → 0, long-task time
+      2,382 → 982 ms.
+      NOTE: the old v2 numbers in this slot (3,647 → 2,364 nodes etc.) are
+      superseded and were measured against a different program — the skin that
+      pruned YouTube's DOM in place. v4 prunes nothing; the nodes never get
+      built. Do not mix the two.
       KEY FINDING, do not re-litigate: our CSS does NOT speed up style recalc —
-      it costs ~+0.1ms per full pass (within noise). The universal `*` kills, the
-      `ytd-app *:not(...)` font rule and the `:has()` rules were each isolated
-      and re-measured: none is measurably expensive at this page size. The speed
-      comes from work that never happens (fewer nodes, no preview <video>s, no
-      animation/compositing, content-visibility), NOT from cheaper matching.
+      it costs ~+0.1ms per full pass (within noise). The speed comes from work
+      that never happens, NOT from cheaper selector matching.
       Never trust a single run here: a "4.1ms p95" appeared once and vanished
       under 5x repetition. It was GC noise.
-- [x] No layout thrash from the sweeper: 0 mutations in a 5s idle window.
-- [ ] Frame rate during scroll — UNMEASURED. requestAnimationFrame is throttled
-      in a background tab, so the scripted-scroll harness cannot capture frame
-      timing. Must be done in Safari's Web Inspector timeline on a FOCUSED
-      window. Do not claim FPS or "no stutter" until then.
-- [ ] Cold-load timing (LCP, long tasks) with the script at document-start. The
-      post-load injection harness cannot see load-time effects at all.
+- [x] Frame rate during scroll — MEASURED. `tests/bench.js` runs headed Chromium
+      with a FOCUSED window, so requestAnimationFrame is not throttled, and
+      records real frame intervals over a 150-frame scripted scroll. p95 and
+      janky-frame counts are tight and repeatable across runs (no overlap).
+      Still Chromium, not Safari — see the caveats in PERF.md.
+- [x] Cold-load timing — DECIDED NOT TO REPORT. The script IS injected at
+      document-start now (addInitScript), so load-time effects are visible, but
+      first contentful paint is network-dominated and its per-run ranges overlap
+      completely between stock and iTube. Claiming an FCP win was noise twice
+      before; it stays retracted. Long tasks ARE reported (they are stable).
 
 ### M4.5 — Visual weight reduction (done)
 - [x] Feed/search/related cards flattened: no fill, no border, no inset sheen.
@@ -235,8 +249,14 @@ extension for the App Store.
       rate-limited (0 thumbnails loading) during the check.
 
 ### M5 — iTube branding + extension
-- [ ] Rename userscript to itube.user.js, meta/name/version reset
-- [ ] README with install instructions (Userscripts.app / Tampermonkey Safari)
+- [x] Rename userscript to itube.user.js, meta/name/version reset. `@updateURL`
+      and `@downloadURL` point at itube.user.js; currently v4.1.3.
+      `youtube-lite.user.js` (v2.9, the legacy skin) is deliberately LEFT IN
+      PLACE so existing installs keep auto-updating from their own `@updateURL`.
+      Do not delete it; do not point install instructions at it (this shipped
+      broken once — the website and README installed the legacy skin).
+- [x] README with install instructions (Userscripts.app / Tampermonkey Safari),
+      and the landing page at `docs/index.html`. Both install itube.user.js.
 - [ ] Safari Web Extension scaffold (content script = the userscript core)
 - [ ] App Store packaging notes (Xcode project, signing, review guidelines re:
       third-party site modification)
@@ -251,16 +271,22 @@ extension for the App Store.
 
 Every loop iteration must pass ALL gates before commit:
 
-1. `node --check` passes.
-2. Fresh-page injection test in Chrome on BOTH a watch page and the home page.
-3. Feature checklist (watch page): video plays, seek lands, volume drag sticks,
-   mute round-trips, quality switch takes effect, speed switch audible,
-   SPA navigation to another video keeps the bar working, comments load (capped),
-   related capped, description "...more" expands.
-4. Screenshot review: no white-on-white / broken layout, bar legible over bright
-   and dark video frames.
-5. DOM budget: watch page ≤ 6,000 nodes after settle.
-6. No console errors originating from the script (pattern: ytl|yt-lite).
+1. `node --check itube.user.js` passes.
+2. `cd tests && npm test` — the Playwright suite, against live youtube.com,
+   logged out, script injected at document-start. It covers home, search,
+   channel, watch, playlist, the unhandled route and the /shorts redirect, with
+   layout, geometry-snapshot, functional, hard-navigation, responsive and
+   console-error checks per page. A red here is either a real regression or
+   YouTube changing its payload — re-run before believing it.
+3. `cd tests && npm run test:selftest` — injects a real shipped CSS bug and
+   asserts the layout checks catch it. If this passes vacuously, the suite is
+   not trustworthy.
+4. Screenshot review (`tests/artifacts/*.png`, written by every run): no
+   white-on-white / broken layout, bar legible over bright and dark frames.
+5. `cd tests && node bench.js` if the change could plausibly affect performance.
+   Watch page settles around ~6,900 total document nodes; a large jump means
+   ytd-app started hydrating its lists again (see PERF.md).
+6. No console errors originating from the script (pattern: itube).
 7. Known-freeze regressions absent: no synchronous observer re-assertion, no
    per-event player API writes, no defineProperty traps on media elements.
 8. Commit with a plain message, no AI attribution, push.

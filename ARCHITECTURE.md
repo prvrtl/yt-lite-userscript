@@ -56,7 +56,15 @@ keep laying out to decode) and its `<video>` is adopted by our stage.
 1. **Shell + home** — app root, design system, home feed rendered from data. *(v3.0 — done)*
 2. **Watch + player** — our stage, our controls, full API sync. *(v3.1 — done: video adopted into our stage, readyState 4; seek, volume round-trip 42→42, mute, speed 1.5x, 9 quality levels, 30 caption tracks, no stall)*
 3. **Search + channel** — InnerTube-driven. *(v3.2 — done: search 26 results, channel 90 videos, both our UI)*
-4. **Comments + related** — continuations, bounded. *(v3.3 — done: 20 comments/page, cap 50, related rail. REPLIES NOT WIRED — see below)*
+4. **Comments + related** — continuations, bounded. *(v3.3 — done: 20 comments/page, cap 50, related rail)*
+5. **Routing + feeds** — a client-side router over `history.pushState` +
+   `popstate`, with per-route mount/cleanup: watch, home, search, channel, the
+   `/feed/*` browse ids, `/playlist?list=…`, and an explicit "not available
+   in iTube yet" card for anything unhandled. `/shorts/<id>` is rewritten to
+   `/watch?v=<id>`. *(v4.0 — done)*
+6. **Playback & discovery polish** — autoplay-next, the playlist queue rail,
+   comment replies, comment sort, and search filters (sort / upload date /
+   duration). *(v4.1 — done)*
 
 Each stage ships only when it is measurably faster than the skin it replaces and
 loses no function.
@@ -81,20 +89,18 @@ Channel tabs: never hardcode the `params` blob. Read the browseEndpoint params
 off the page and pick the tab by **base64-decoding** them and matching the tab
 name (`videos`, `shorts`, `streams`) — locale-independent, survives redesigns.
 
-## Known gap: comment replies
+## Comment replies (resolved — was a known gap)
 
-Reply buttons are NOT rendered. The reply continuation token is not reachable
-from the thread in the current shape: `commentThreadRenderer` has keys
-`[trackingParams, renderingPriority, isModeratedElqComment, commentViewModel,
-loggingDirectives]` — **no `replies` key at all**. A probe finds 19 `replies`
-objects elsewhere in the response, so the token exists but hangs off a structure
-we have not yet mapped.
+Replies work. Each thread with replies renders a `.comment-replies-btn` that
+fetches the reply continuation on click and appends the replies inline (capped
+at `MAX_REPLIES`).
 
-Attempting to wire it by extracting from the thread wrapper BROKE comment
-extraction entirely (20 rows -> 0). Reverted. Do not retry without first dumping
-where those 19 `replies` objects actually live.
-
-Everything else (comment text, author, avatar, time, likes, paging, caps) works.
+This was a gap for a while and the history is worth keeping, because the trap is
+still there: `commentThreadRenderer` has **no `replies` key** in the current
+shape, so extracting the token from the thread wrapper is the obvious move and
+it is wrong — the first attempt at it broke comment extraction entirely (20 rows
+-> 0). The token lives on a separate structure in the response, not on the
+thread. If replies regress, that is the distinction to re-check.
 
 ## Player bar
 

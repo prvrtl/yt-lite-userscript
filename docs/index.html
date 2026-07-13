@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>iTube — YouTube, rebuilt for Safari</title>
-<meta name="description" content="iTube — a userscript that makes YouTube fast and native-looking in Safari. 72% fewer DOM nodes, worst-case frame times halved.">
+<meta name="description" content="iTube — a userscript that makes YouTube fast and native-looking in Safari. 69% fewer DOM nodes, worst-case frame times more than halved.">
 <meta property="og:title" content="iTube — YouTube, rebuilt for Safari">
-<meta property="og:description" content="YouTube, rebuilt for Safari. 72% fewer DOM nodes. Worst-case frame times halved. Zero features lost.">
+<meta property="og:description" content="YouTube, rebuilt for Safari. 69% fewer DOM nodes. Worst-case frame times more than halved. Zero features lost.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🫧</text></svg>">
 <style>
@@ -334,7 +334,7 @@
 <header class="hero">
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <span class="badge"><span class="dot"></span><b>iTube</b> · userscript · v2.8.0</span>
+      <span class="badge"><span class="dot"></span><b>iTube</b> · userscript · v4.1.3</span>
       <h1>YouTube, rebuilt<br>for Safari.</h1>
       <p class="lede">
         YouTube ships a DOM tuned for Chrome. In Safari it hauls around thousands of nodes
@@ -342,7 +342,7 @@
         Liquid&nbsp;Glass bar, and gives back every feature it removes.
       </p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/refs/heads/main/youtube-lite.user.js">Install the script</a>
+        <a class="btn btn-primary" href="https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/refs/heads/main/itube.user.js">Install the script</a>
         <a class="btn btn-ghost" href="https://github.com/prvrtl/yt-lite-userscript">View source</a>
       </div>
     </div>
@@ -397,7 +397,7 @@
           </div>
         </div>
       </div>
-      <p class="stage-note">The player bar, rendered here with the script's own CSS. Three balanced zones, one overflow menu, 33 DOM nodes.</p>
+      <p class="stage-note">The player bar, rendered here with the script's own CSS. Three balanced zones, one overflow menu.</p>
     </div>
   </div>
 </header>
@@ -414,16 +414,16 @@
     </div>
     <div class="metrics">
       <div class="metric">
-        <span class="n"><span class="was">20,243</span><span class="arrow">→</span>5,553</span>
-        <span class="lbl">DOM nodes on a watch page — 72% removed</span>
+        <span class="n"><span class="was">22,107</span><span class="arrow">→</span>6,865</span>
+        <span class="lbl">DOM nodes on a watch page — 69% fewer</span>
       </div>
       <div class="metric">
-        <span class="n"><span class="was">17.4<i>ms</i></span><span class="arrow">→</span>7.7<i>ms</i></span>
-        <span class="lbl">Worst-case frame time while scrolling (p95) — the frames you actually feel, halved</span>
+        <span class="n"><span class="was">20.6<i>ms</i></span><span class="arrow">→</span>8.0<i>ms</i></span>
+        <span class="lbl">Worst-case frame time while scrolling (p95) — the frames you actually feel, more than halved</span>
       </div>
       <div class="metric">
-        <span class="n"><span class="was">12</span><span class="arrow">→</span>0</span>
-        <span class="lbl">Dropped frames while scrolling. Main-thread blocking drops 25%</span>
+        <span class="n"><span class="was">9</span><span class="arrow">→</span>0</span>
+        <span class="lbl">Dropped frames while scrolling. Main-thread blocking drops 59%</span>
       </div>
     </div>
     <p class="stage-note" style="margin-top: 28px; text-align: left;">
@@ -445,11 +445,11 @@
         <span class="k">Speed</span>
         <h3>The page stops fighting Safari</h3>
         <p>
-          The win is work that never happens. Off-screen comments, thumbnails and sidebar rows skip
-          layout entirely via <code>content-visibility</code>. Animations, transitions and shadows
-          are killed outright, so there is nothing to composite each frame. Hover-preview video
-          players — a real <code>&lt;video&gt;</code> element, with media buffers, per thumbnail —
-          are deleted the moment they spawn.
+          The win is work that never happens. iTube renders its own interface, so YouTube's own
+          components are never scrolled, hovered or brought into view — and never lazy-render the
+          comments, related rail and feed rows that make up the bulk of a watch page. Nothing has to
+          be pruned, because nothing gets built. Animations, transitions and shadows are gone too,
+          so there is nothing to composite each frame.
         </p>
       </div>
       <div class="card">
@@ -466,17 +466,18 @@
         <h3>You lose nothing</h3>
         <p>
           This is the hard part, and it's done. Quality, speed, caption languages, chapters,
-          seek-preview thumbnails, playlists, autoplay, PiP, live streams and DVR scrubbing,
-          stats-for-nerds, every keyboard shortcut — all of it still works.
+          seek-preview thumbnails, playlists and queue, autoplay-next, PiP, live streams and DVR
+          scrubbing, search filters, comments and replies, every keyboard shortcut — all of it
+          still works.
         </p>
       </div>
       <div class="card">
         <span class="k">Memory</span>
         <h3>The tab stops growing</h3>
         <p>
-          Comments, replies and the related sidebar are capped, so an hour-long session doesn't
-          leave you with a tab holding thousands of nodes and a dozen buffered video elements.
-          Shorts redirect to the normal watch page, where you get a real scrubber.
+          Comments and replies are capped, and YouTube's own UI never renders, so an hour-long
+          session doesn't leave you with a tab holding tens of thousands of nodes. Shorts redirect
+          to the normal watch page, where you get a real scrubber.
         </p>
       </div>
     </div>
@@ -500,7 +501,7 @@
       <span class="keep"><span class="check">✓</span>Autoplay toggle</span>
       <span class="keep"><span class="check">✓</span>Live &amp; DVR scrubbing</span>
       <span class="keep"><span class="check">✓</span>Keyboard shortcuts</span>
-      <span class="keep"><span class="check">✓</span>Stats for nerds</span>
+      <span class="keep"><span class="check">✓</span>Search filters</span>
       <span class="keep"><span class="check">✓</span>Comments &amp; replies</span>
     </div>
   </div>
@@ -511,7 +512,7 @@
     <div class="sec-head">
       <span class="eyebrow">Two minutes</span>
       <h2>Install it.</h2>
-      <p class="lede">iTube is a userscript — a single file, no build step, no tracking, no network calls of its own. It needs a userscript manager to run.</p>
+      <p class="lede">iTube is a userscript — a single file, no build step, no dependencies, no tracking. It talks to YouTube's own API and nothing else. It needs a userscript manager to run.</p>
     </div>
 
     <div class="install">
@@ -539,7 +540,7 @@
     </div>
 
     <div class="src">
-      <code id="url">https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/refs/heads/main/youtube-lite.user.js</code>
+      <code id="url">https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/refs/heads/main/itube.user.js</code>
       <button class="copy" id="copy">Copy</button>
     </div>
   </div>

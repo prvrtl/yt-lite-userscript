@@ -15,22 +15,48 @@ const {
   checkYtdAppHidden,
   checkWatchToWatchNavigation,
   checkHomeNavigation,
+  checkFeedToWatchNavigation,
+  checkShortsRedirect,
+  checkInfiniteScroll,
+  checkUnhandledPage,
+  checkUnhandledLinkRouting,
+  checkResponsive,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
+const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
 
 const PAGES = {
   home: 'https://www.youtube.com/',
   search: 'https://www.youtube.com/results?search_query=liquid+glass+design',
   channel: 'https://www.youtube.com/@mkbhd/videos',
   watch: 'https://www.youtube.com/watch?v=aircAruvnKk',
+  // A public playlist (3Blue1Brown, "Neural networks") — the /playlist route
+  // renders through the same feed mount as the sidebar's Watch later, so this
+  // covers a code path nothing else touched.
+  playlist: 'https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi',
+  // A route iTube deliberately does not implement: it must render the
+  // "isn't available in iTube yet" card and STILL keep ytd-app hidden.
+  unhandled: 'https://www.youtube.com/premium',
 };
+
+// Pages that are feeds of clickable video cards — the ones where the
+// feed -> watch hard-navigation regression can be observed.
+const FEED_PAGES = new Set(['home', 'search', 'channel', 'playlist']);
+
+// Pages with a paginated list behind an IntersectionObserver sentinel.
+const SCROLLING_PAGES = new Set(['search', 'channel']);
+
+// A regular video used for the /shorts/<id> redirect check (the redirect is
+// id-preserving, so any watchable id proves it).
+const SHORTS_REDIRECT_ID = 'aircAruvnKk';
 
 const ERROR_PATTERN = /itube|innerHTML|Trusted Types/i;
 
 function parseArgs(argv) {
-  const args = { page: null, check: null, update: false, selftest: false };
+  const args = { page: null, check: null, update: false, force: false, selftest: false };
   for (const a of argv) {
     if (a === '--update') args.update = true;
+    else if (a === '--force') args.force = true;
     else if (a === '--selftest') args.selftest = true;
     else if (a.startsWith('--page=')) args.page = a.slice('--page='.length);
     else if (a.startsWith('--check=')) args.check = a.slice('--check='.length);
@@ -44,7 +70,7 @@ function fmt(v) {
 
 // Runs every applicable check against a single page inside one browser
 // session, and returns { results: [{name, violations}], errors }.
-async function runPageChecks(context, pageName, url, { checkFilter, update }) {
+async function runPageChecks(context, pageName, url, { checkFilter, update, force }) {
   const { page, errors } = await openPage(context, url);
   await waitForApp(page, { timeout: 30000 });
 
@@ -74,23 +100,77 @@ async function runPageChecks(context, pageName, url, { checkFilter, update }) {
   }
 
   if (want('snapshot')) {
-    const snap = await takeSnapshot(page);
-    const violations = diffSnapshot(pageName, snap, { update });
+    let snap = await takeSnapshot(page);
+    let violations = diffSnapshot(pageName, snap, { update, force });
+    // COUNTS are the one part of the snapshot that is a race, not a
+    // measurement: a grid/rail keeps filling after the settle above, and under
+    // full-suite load (five pages sharing one browser, ads and video decoding
+    // in flight) the first sample can land mid-fill — which is exactly the
+    // observed flake where channel/playlist failed in a full run and passed in
+    // isolation. Geometry is stable at first paint; counts are not. So a count
+    // violation is re-sampled ONCE after a real settle before it is believed.
+    // A genuinely empty rail still fails: the floor is >= 1 and re-sampling an
+    // empty grid returns 0 again.
+    if (!update && violations.some((v) => v.check === 'snapshot-count')) {
+      const first = violations.filter((v) => v.check === 'snapshot-count').map((v) => v.detail);
+      await page.waitForTimeout(3000);
+      const resampled = await takeSnapshot(page);
+      const after = diffSnapshot(pageName, resampled, { update, force });
+      const stillFailing = after.filter((v) => v.check === 'snapshot-count');
+      console.log(`  ${pageName} / snapshot: count re-sample after settle — first pass: [${first.join(' ; ')}] -> counts now ${JSON.stringify(resampled.counts)} (${stillFailing.length} still below floor)`);
+      snap = resampled;
+      violations = after;
+    }
     await saveScreenshot(page, pageName);
     results.push({ name: 'snapshot', violations });
+  }
+
+  // Responsive runs after the passive measurements (it resizes the viewport,
+  // and restores it afterwards) but before functional, which navigates away.
+  if (want('responsive')) {
+    const violations = await checkResponsive(page);
+    results.push({ name: 'responsive', violations });
   }
 
   if (want('functional')) {
     let violations = [];
     violations = violations.concat(await checkYtdAppHidden(page));
+    if (pageName === 'unhandled') {
+      violations = violations.concat(await checkUnhandledPage(page));
+    }
     if (pageName === 'watch') {
       violations = violations.concat(await runWatchFunctional(page));
       violations = violations.concat(await checkWatchToWatchNavigation(page));
     }
+    if (SCROLLING_PAGES.has(pageName)) {
+      violations = violations.concat(await checkInfiniteScroll(page, pageName));
+    }
     if (pageName !== 'watch') {
       violations = violations.concat(await checkHomeNavigation(page));
     }
+    // Runs once (on home): clicking a route iTube doesn't implement must be a
+    // client-side route, while /redirect?q= must stay a native navigation.
+    if (pageName === 'home') {
+      violations = violations.concat(await checkUnhandledLinkRouting(page));
+    }
     results.push({ name: 'functional', violations });
+  }
+
+  // Hard-navigation is its own check so it reads as its own row in the
+  // summary table: it is the highest-value regression in the suite, and
+  // burying it inside `functional` would hide it. It runs LAST on the page
+  // because it navigates to /watch and walks the history stack.
+  if (want('hardnav') && FEED_PAGES.has(pageName)) {
+    // The preceding functional checks click "Home", so re-open the page under
+    // test rather than asserting on whatever route we happen to be sitting on.
+    // (When hardnav is the only check requested, the page is still pristine.)
+    if (checkFilter !== 'hardnav') {
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await waitForApp(page, { timeout: 30000 });
+      await page.waitForSelector('.c, .row', { timeout: 8000 }).catch(() => {});
+    }
+    const violations = await checkFeedToWatchNavigation(page, pageName);
+    results.push({ name: 'hardnav', violations });
   }
 
   if (want('errors')) {
@@ -160,7 +240,9 @@ async function main() {
 
   const context = await newContext(browser);
 
-  const pageNames = args.page ? [args.page] : Object.keys(PAGES);
+  // `--check=ads` runs only the ad checks, which own their contexts — there is
+  // no point opening every page just to run zero per-page checks on it.
+  const pageNames = args.check === 'ads' ? [] : (args.page ? [args.page] : Object.keys(PAGES));
   for (const name of pageNames) {
     if (!PAGES[name]) {
       console.error(`Unknown page "${name}". Known pages: ${Object.keys(PAGES).join(', ')}`);
@@ -176,7 +258,7 @@ async function main() {
     console.log(`\n--- ${pageName} (${url}) ---`);
     let results;
     try {
-      results = await runPageChecks(context, pageName, url, { checkFilter: args.check, update: args.update });
+      results = await runPageChecks(context, pageName, url, { checkFilter: args.check, update: args.update, force: args.force });
     } catch (err) {
       console.error(`  ERROR running checks for ${pageName}: ${err.stack || err}`);
       table.push({ page: pageName, check: 'harness', status: 'FAIL' });
@@ -191,6 +273,47 @@ async function main() {
       for (const v of violations) {
         console.log(`    page=${pageName} ${fmt(v)}`);
       }
+    }
+  }
+
+  // /shorts/<id> is not a page in PAGES: the app rewrites the URL before it
+  // renders anything, so it has no layout or baseline of its own — only the
+  // destination is worth asserting. It runs once, not per page.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log(`\n--- shorts (https://www.youtube.com/shorts/${SHORTS_REDIRECT_ID}) ---`);
+    let violations;
+    try {
+      violations = await checkShortsRedirect(context, SHORTS_REDIRECT_ID);
+    } catch (err) {
+      console.error(`  ERROR running the shorts redirect check: ${err.stack || err}`);
+      violations = [{ check: 'shorts-redirect', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'shorts', check: 'functional', status, count: violations.length });
+    console.log(`  shorts / functional: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=shorts ${fmt(v)}`);
+  }
+
+  // Ad removal runs once, in its own contexts (it seeds a known volume into
+  // localStorage before load and hooks fetch to see the raw ad payloads), and
+  // it is the one check that can legitimately be SKIPPED: YouTube may serve no
+  // ad at all on a given run. A skip is reported, never laundered into a pass.
+  if (!args.page && (!args.check || args.check === 'ads')) {
+    for (const [name, fn] of [['statemachine', checkAdStateMachine], ['video', checkVideoAds], ['feed', checkFeedAds]]) {
+      console.log(`\n--- ads / ${name} ---`);
+      let res;
+      try {
+        res = await fn(browser);
+      } catch (err) {
+        console.error(`  ERROR running the ads/${name} check: ${err.stack || err}`);
+        res = { violations: [{ check: 'ads-' + name, detail: String(err.message || err).split('\n')[0] }], skipped: false, detail: '' };
+      }
+      const status = res.violations.length ? 'FAIL' : (res.skipped ? 'SKIP' : 'PASS');
+      if (status === 'FAIL') anyFail = true;
+      table.push({ page: 'ads', check: name, status, count: res.violations.length });
+      console.log(`  ads / ${name}: ${status} — ${res.detail}`);
+      for (const v of res.violations) console.log(`    page=ads ${fmt(v)}`);
     }
   }
 
