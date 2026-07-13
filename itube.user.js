@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      3.6.0
+// @version      3.7.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -45,6 +45,7 @@
     }
     return s;
   };
+  const THUMB_D = 'M6 13h4.6c.66 0 1.22-.47 1.33-1.12l.82-4.6A1.2 1.2 0 0 0 11.58 6H8.2l.46-2.62a1.1 1.1 0 0 0-1.98-.85L4.6 6.1V12a1 1 0 0 0 1 1z';
   const ICONS = {
     home: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round', d: 'M2.2 7.2 8 2.6l5.8 4.6V13a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z' }]]),
     subs: () => icon([
@@ -94,6 +95,26 @@
     explore: () => icon([
       ['circle', { cx: '8', cy: '8', r: '5.9', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
       ['path', { fill: 'currentColor', d: 'M10.6 5.4 9.1 9.1 5.4 10.6 6.9 6.9z' }],
+    ]),
+    thumbsUp: () => icon([
+      ['rect', { x: '1.6', y: '6', width: '2.2', height: '6.4', rx: '1', fill: 'currentColor' }],
+      ['path', { fill: 'currentColor', d: THUMB_D }],
+    ]),
+    thumbsDown: () => icon([
+      ['rect', { x: '1.6', y: '6', width: '2.2', height: '6.4', rx: '1', fill: 'currentColor', transform: 'translate(0,16) scale(1,-1)' }],
+      ['path', { fill: 'currentColor', d: THUMB_D, transform: 'translate(0,16) scale(1,-1)' }],
+    ]),
+    save: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round', d: 'M4 2.6h8v10.8l-4-2.8-4 2.8z' }],
+    ]),
+    share: () => icon([
+      ['circle', { cx: '12', cy: '3.6', r: '1.7', fill: 'currentColor' }],
+      ['circle', { cx: '12', cy: '12.4', r: '1.7', fill: 'currentColor' }],
+      ['circle', { cx: '4', cy: '8', r: '1.7', fill: 'currentColor' }],
+      ['path', { stroke: 'currentColor', 'stroke-width': '1.3', fill: 'none', d: 'M5.5 7.1 10.5 4.3M5.5 8.9l5 2.8' }],
+    ]),
+    check: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M3 8.3 6.3 11.6 13 4.5' }],
     ]),
   };
 
@@ -155,7 +176,9 @@
       z-index: 1;
     }
     #itube .hd-left {
-      flex: 0 0 96px;
+      flex: 0 0 200px;
+      display: flex;
+      align-items: center;
     }
     #itube .search-wrap {
       position: relative;
@@ -534,7 +557,7 @@
       flex: none;
     }
     #itube .watch-channel-info {
-      flex: 1;
+      flex: none;
       min-width: 0;
     }
     #itube .watch-channel-name {
@@ -545,6 +568,111 @@
       font-size: 12.5px;
       color: var(--dim);
       margin-top: 2px;
+    }
+    #itube .watch-channel-spacer {
+      flex: 1;
+      min-width: 12px;
+    }
+    #itube .watch-actions {
+      display: flex;
+      align-items: center;
+      flex: none;
+      gap: 8px;
+    }
+    #itube .watch-action-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 34px;
+      padding: 0 14px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: var(--r-pill);
+      color: var(--text);
+      font: 500 13px -apple-system, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    #itube .watch-action-btn:hover {
+      background: rgba(255, 255, 255, .08);
+    }
+    #itube .watch-action-btn:disabled {
+      opacity: .4;
+      cursor: default;
+    }
+    #itube .watch-action-btn:disabled:hover {
+      background: var(--surface);
+    }
+    #itube .watch-action-btn.active {
+      background: rgba(10, 132, 255, .16);
+      border-color: transparent;
+      color: var(--accent);
+    }
+    #itube .watch-likes {
+      display: flex;
+      align-items: center;
+      height: 34px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: var(--r-pill);
+      overflow: hidden;
+    }
+    #itube .watch-like-btn,
+    #itube .watch-dislike-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 100%;
+      padding: 0 14px;
+      background: none;
+      border: none;
+      color: var(--text);
+      font: 500 13px -apple-system, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    #itube .watch-like-btn:hover,
+    #itube .watch-dislike-btn:hover {
+      background: rgba(255, 255, 255, .08);
+    }
+    #itube .watch-like-btn:disabled,
+    #itube .watch-dislike-btn:disabled {
+      opacity: .4;
+      cursor: default;
+    }
+    #itube .watch-like-btn.active,
+    #itube .watch-dislike-btn.active {
+      background: rgba(10, 132, 255, .16);
+      color: var(--accent);
+    }
+    #itube .watch-like-divider {
+      width: 1px;
+      height: 18px;
+      background: var(--hairline);
+      flex: none;
+    }
+    #itube .watch-subscribe {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 34px;
+      padding: 0 16px;
+      background: var(--accent);
+      border: none;
+      border-radius: var(--r-pill);
+      color: #fff;
+      font: 600 13px -apple-system, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    #itube .watch-subscribe:disabled {
+      opacity: .4;
+      cursor: default;
+    }
+    #itube .watch-subscribe.subscribed {
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      color: var(--text);
+    }
+    #itube .watch-subscribe.subscribed:hover {
+      background: rgba(255, 255, 255, .08);
     }
     #itube .watch-meta-divider {
       height: 1px;
@@ -934,6 +1062,15 @@
       opacity: 1;
       transition: opacity .18s ease-out;
     }
+    #itube .ch-title-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    #itube .ch-title-col {
+      flex: 1;
+      min-width: 0;
+    }
     #itube .ch-name {
       margin: 12px 0 0;
       font-size: 24px;
@@ -1278,6 +1415,78 @@
       if (last?.url) return last.url;
     }
     return null;
+  };
+
+  const resolveVideoId = () => (
+    new URLSearchParams(location.search).get('v')
+    || player()?.getVideoData?.()?.video_id
+    || null
+  );
+
+  const resolveOwnerChannelId = (data, details) => {
+    const owner = findNode(data, (n) => n?.videoOwnerRenderer)?.videoOwnerRenderer;
+    const fromOwner = owner?.navigationEndpoint?.browseEndpoint?.browseId;
+    if (fromOwner) return fromOwner;
+    return details?.channelId || null;
+  };
+
+  const readLikeState = (data) => {
+    const seg = findNode(data, (n) => n?.segmentedLikeDislikeButtonViewModel)?.segmentedLikeDislikeButtonViewModel;
+    if (seg) {
+      const likeVM = seg.likeButtonViewModel?.likeButtonViewModel?.toggleButtonViewModel?.toggleButtonViewModel;
+      const dislikeVM = seg.dislikeButtonViewModel?.dislikeButtonViewModel?.toggleButtonViewModel?.toggleButtonViewModel;
+      const liked = !!likeVM?.isToggled;
+      const disliked = !!dislikeVM?.isToggled;
+      const likeCountText = likeVM?.defaultButtonViewModel?.buttonViewModel?.title || null;
+      return { liked, disliked, likeCountText };
+    }
+    const buttons = findNode(data, (n) => Array.isArray(n?.topLevelButtons))?.topLevelButtons;
+    let liked = false;
+    let disliked = false;
+    let likeCountText = null;
+    if (Array.isArray(buttons)) {
+      for (const b of buttons) {
+        const t = b?.toggleButtonRenderer;
+        if (!t) continue;
+        const iconType = t?.icon?.iconType || '';
+        const label = t?.defaultText?.accessibility?.accessibilityData?.label || t?.defaultText?.simpleText || '';
+        const isDislike = iconType === 'DISLIKE' || /dislike/i.test(label);
+        const isLike = !isDislike && (iconType === 'LIKE' || /like/i.test(label));
+        if (isDislike) {
+          disliked = !!t.isToggled;
+        } else if (isLike) {
+          liked = !!t.isToggled;
+          likeCountText = t?.defaultText?.simpleText || null;
+        }
+      }
+    }
+    return { liked, disliked, likeCountText };
+  };
+
+  const mutationConfirmed = (res, check) => {
+    if (!res || res.error) return false;
+    let blocked = false;
+    let ok = false;
+    walk(res, (n) => {
+      if (n.openPopupAction || n.signInEndpoint || n.signalServiceEndpoint?.signal === 'CLIENT_SIGNAL') blocked = true;
+      if (check(n)) ok = true;
+    });
+    return ok && !blocked;
+  };
+
+  const subscribeConfirmed = (res, want) => mutationConfirmed(res, (n) => {
+    const u = n.updateSubscribeButtonAction;
+    return !!u && typeof u.subscribed === 'boolean' && u.subscribed === want;
+  });
+
+  const playlistEditConfirmed = (res) => !!res && !res.error && res.status === 'STATUS_SUCCEEDED';
+
+  const readSubscribedState = (data) => {
+    const legacy = findNode(data, (n) => n?.subscribeButtonRenderer)?.subscribeButtonRenderer;
+    if (legacy) return !!legacy.subscribed;
+    const vm = findNode(data, (n) => n?.subscribeButtonViewModel)?.subscribeButtonViewModel;
+    if (vm) return !!vm.subscribed;
+    return false;
   };
 
   const getDuration = (node) => {
@@ -1829,7 +2038,7 @@
   brandWord.className = 'brand-word';
   brandWord.textContent = 'iTube';
   brand.append(brandTile, brandWord);
-  nav.appendChild(brand);
+  hdLeft.appendChild(brand);
   const NAV_ITEMS = [
     { key: 'home', label: 'Home', href: '/' },
     { key: 'subs', label: 'Subscriptions', href: '/feed/subscriptions' },
@@ -1847,11 +2056,10 @@
     nav.appendChild(row);
     navRows[item.key] = row;
   }
-  const fetchGuideChannels = async () => {
-    const res = await innertube('guide', {});
+  const collectGuideChannels = (root) => {
     const out = [];
     const seenIds = new Set();
-    walk(res, (node) => {
+    walk(root, (node) => {
       const g = node?.guideEntryRenderer;
       if (!g) return;
       const browseId = g.navigationEndpoint?.browseEndpoint?.browseId;
@@ -1864,6 +2072,12 @@
       out.push({ browseId, title, avatar: avatarUrl });
     });
     return out;
+  };
+
+  const fetchGuideChannels = async () => {
+    const fromPage = collectGuideChannels(window.ytInitialGuideData);
+    if (fromPage.length) return fromPage;
+    return collectGuideChannels(await innertube('guide', {}));
   };
   const subsSection = document.createElement('div');
   subsSection.className = 'nav-subs';
@@ -2461,7 +2675,47 @@
           const meta = document.createElement('div');
           meta.className = 'ch-meta';
           meta.textContent = [handle, subCount, videoCount].filter(Boolean).join(' · ');
-          header.append(nameEl, meta);
+
+          const titleRow = document.createElement('div');
+          titleRow.className = 'ch-title-row';
+          const titleCol = document.createElement('div');
+          titleCol.className = 'ch-title-col';
+          titleCol.append(nameEl, meta);
+
+          const chSubscribeBtn = document.createElement('button');
+          chSubscribeBtn.type = 'button';
+          chSubscribeBtn.className = 'watch-subscribe';
+          const chSubscribeLabel = document.createElement('span');
+          let chSubscribed = readSubscribedState(res);
+          let chSubscribeBusy = false;
+          const setChSubscribeUI = () => {
+            chSubscribeBtn.replaceChildren();
+            if (chSubscribed) chSubscribeBtn.appendChild(ICONS.check());
+            chSubscribeBtn.appendChild(chSubscribeLabel);
+            chSubscribeBtn.classList.toggle('subscribed', chSubscribed);
+            chSubscribeBtn.setAttribute('aria-pressed', String(chSubscribed));
+            chSubscribeLabel.textContent = chSubscribed ? 'Subscribed' : 'Subscribe';
+          };
+          chSubscribeBtn.disabled = !browseId;
+          setChSubscribeUI();
+          chSubscribeBtn.addEventListener('click', async () => {
+            if (chSubscribeBtn.disabled || chSubscribeBusy || !browseId) return;
+            chSubscribeBusy = true;
+            const prevSubscribed = chSubscribed;
+            chSubscribed = !prevSubscribed;
+            setChSubscribeUI();
+            const subRes = chSubscribed
+              ? await innertube('subscription/subscribe', { channelIds: [browseId], params: 'EgIIAg%3D%3D' })
+              : await innertube('subscription/unsubscribe', { channelIds: [browseId], params: 'CgIIAg%3D%3D' });
+            if (!subscribeConfirmed(subRes, chSubscribed)) {
+              chSubscribed = prevSubscribed;
+              setChSubscribeUI();
+            }
+            chSubscribeBusy = false;
+          });
+
+          titleRow.append(titleCol, chSubscribeBtn);
+          header.appendChild(titleRow);
 
           const tabsEl = document.createElement('div');
           tabsEl.className = 'ch-tabs';
@@ -2798,7 +3052,184 @@
     const subs = document.createElement('div');
     subs.className = 'watch-subs';
     channelInfo.append(channelName, subs);
-    channelRow.append(avatar, channelInfo);
+    const channelSpacer = document.createElement('div');
+    channelSpacer.className = 'watch-channel-spacer';
+
+    const actions = document.createElement('div');
+    actions.className = 'watch-actions';
+
+    const likes = document.createElement('div');
+    likes.className = 'watch-likes';
+    const likeBtn = document.createElement('button');
+    likeBtn.type = 'button';
+    likeBtn.className = 'watch-like-btn';
+    const likeLabel = document.createElement('span');
+    likeBtn.append(ICONS.thumbsUp(), likeLabel);
+    const likeDivider = document.createElement('div');
+    likeDivider.className = 'watch-like-divider';
+    const dislikeBtn = document.createElement('button');
+    dislikeBtn.type = 'button';
+    dislikeBtn.className = 'watch-dislike-btn';
+    dislikeBtn.appendChild(ICONS.thumbsDown());
+    likes.append(likeBtn, likeDivider, dislikeBtn);
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'watch-action-btn';
+    const saveLabel = document.createElement('span');
+    saveBtn.append(ICONS.save(), saveLabel);
+
+    const shareBtn = document.createElement('button');
+    shareBtn.type = 'button';
+    shareBtn.className = 'watch-action-btn';
+    const shareLabel = document.createElement('span');
+    shareLabel.textContent = 'Share';
+    shareBtn.append(ICONS.share(), shareLabel);
+
+    const subscribeBtn = document.createElement('button');
+    subscribeBtn.type = 'button';
+    subscribeBtn.className = 'watch-subscribe';
+    const subscribeLabel = document.createElement('span');
+    subscribeBtn.append(subscribeLabel);
+
+    actions.append(likes, saveBtn, shareBtn, subscribeBtn);
+    channelRow.append(avatar, channelInfo, channelSpacer, actions);
+
+    let actionsVideoId = null;
+    let actionsChannelId = null;
+    let liked = false;
+    let disliked = false;
+    let saved = false;
+    let subscribed = false;
+    let likeBusy = false;
+    let saveBusy = false;
+    let subscribeBusy = false;
+    let shareBusy = false;
+
+    const setLikeUI = () => {
+      likeBtn.classList.toggle('active', liked);
+      likeBtn.setAttribute('aria-pressed', String(liked));
+      dislikeBtn.classList.toggle('active', disliked);
+      dislikeBtn.setAttribute('aria-pressed', String(disliked));
+    };
+    const setSaveUI = () => {
+      saveBtn.classList.toggle('active', saved);
+      saveBtn.setAttribute('aria-pressed', String(saved));
+      saveLabel.textContent = saved ? 'Saved' : 'Save';
+    };
+    const setSubscribeUI = () => {
+      subscribeBtn.replaceChildren();
+      if (subscribed) subscribeBtn.appendChild(ICONS.check());
+      subscribeBtn.appendChild(subscribeLabel);
+      subscribeBtn.classList.toggle('subscribed', subscribed);
+      subscribeBtn.setAttribute('aria-pressed', String(subscribed));
+      subscribeLabel.textContent = subscribed ? 'Subscribed' : 'Subscribe';
+    };
+
+    likeBtn.addEventListener('click', async () => {
+      if (likeBtn.disabled || likeBusy || !actionsVideoId) return;
+      likeBusy = true;
+      const prevLiked = liked;
+      const prevDisliked = disliked;
+      liked = !prevLiked;
+      if (liked) disliked = false;
+      setLikeUI();
+      const res = await innertube(prevLiked ? 'like/removelike' : 'like/like', { target: { videoId: actionsVideoId } });
+      if (!res) {
+        liked = prevLiked;
+        disliked = prevDisliked;
+        setLikeUI();
+      }
+      likeBusy = false;
+    });
+
+    dislikeBtn.addEventListener('click', async () => {
+      if (dislikeBtn.disabled || likeBusy || !actionsVideoId) return;
+      likeBusy = true;
+      const prevLiked = liked;
+      const prevDisliked = disliked;
+      disliked = !prevDisliked;
+      if (disliked) liked = false;
+      setLikeUI();
+      const res = await innertube(prevDisliked ? 'like/removelike' : 'like/dislike', { target: { videoId: actionsVideoId } });
+      if (!res) {
+        liked = prevLiked;
+        disliked = prevDisliked;
+        setLikeUI();
+      }
+      likeBusy = false;
+    });
+
+    saveBtn.addEventListener('click', async () => {
+      if (saveBtn.disabled || saveBusy || !actionsVideoId) return;
+      saveBusy = true;
+      const prevSaved = saved;
+      saved = !prevSaved;
+      setSaveUI();
+      const action = saved
+        ? { action: 'ACTION_ADD_VIDEO', addedVideoId: actionsVideoId }
+        : { action: 'ACTION_REMOVE_VIDEO_BY_VIDEO_ID', removedVideoId: actionsVideoId };
+      const res = await innertube('browse/edit_playlist', { playlistId: 'WL', actions: [action] });
+      if (!playlistEditConfirmed(res)) {
+        saved = prevSaved;
+        setSaveUI();
+      }
+      saveBusy = false;
+    });
+
+    shareBtn.addEventListener('click', async () => {
+      if (shareBtn.disabled || shareBusy || !actionsVideoId) return;
+      shareBusy = true;
+      try {
+        await navigator.clipboard.writeText('https://www.youtube.com/watch?v=' + actionsVideoId);
+        shareLabel.textContent = 'Copied';
+        setTimeout(() => { shareLabel.textContent = 'Share'; }, 1500);
+      } catch (e) {
+        // leave label untouched on failure
+      } finally {
+        shareBusy = false;
+      }
+    });
+
+    subscribeBtn.addEventListener('click', async () => {
+      if (subscribeBtn.disabled || subscribeBusy || !actionsChannelId) return;
+      subscribeBusy = true;
+      const prevSubscribed = subscribed;
+      subscribed = !prevSubscribed;
+      setSubscribeUI();
+      const res = subscribed
+        ? await innertube('subscription/subscribe', { channelIds: [actionsChannelId], params: 'EgIIAg%3D%3D' })
+        : await innertube('subscription/unsubscribe', { channelIds: [actionsChannelId], params: 'CgIIAg%3D%3D' });
+      if (!subscribeConfirmed(res, subscribed)) {
+        subscribed = prevSubscribed;
+        setSubscribeUI();
+      }
+      subscribeBusy = false;
+    });
+
+    const refreshActions = (data, details) => {
+      actionsVideoId = resolveVideoId();
+      actionsChannelId = resolveOwnerChannelId(data, details);
+
+      const likeState = readLikeState(data);
+      liked = likeState.liked;
+      disliked = likeState.disliked;
+      likeLabel.textContent = likeState.likeCountText || '';
+      setLikeUI();
+
+      saved = false;
+      setSaveUI();
+
+      subscribed = readSubscribedState(data);
+      setSubscribeUI();
+
+      likeBtn.disabled = !actionsVideoId;
+      dislikeBtn.disabled = !actionsVideoId;
+      saveBtn.disabled = !actionsVideoId;
+      shareBtn.disabled = !actionsVideoId;
+      subscribeBtn.disabled = !actionsChannelId;
+    };
+
     const metaDivider = document.createElement('div');
     metaDivider.className = 'watch-meta-divider';
     const stats = document.createElement('div');
@@ -2908,6 +3339,7 @@
         || '';
       const avatarUrl = getThumb(owner);
       if (avatarUrl) avatar.src = avatarUrl;
+      refreshActions(data, details);
       const viewsText = primary?.viewCount?.videoViewCountRenderer?.viewCount?.simpleText
         || (details?.viewCount ? details.viewCount + ' views' : '');
       const dateText = primary?.dateText?.simpleText || '';
