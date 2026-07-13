@@ -379,8 +379,7 @@
       padding: 24px;
     }
     #itube .content > * {
-      max-width: 1720px;
-      margin: 0 auto;
+      width: 100%;
     }
     #itube .section-heading {
       font-size: 18px;
@@ -535,12 +534,9 @@
     }
     #itube .watch {
       display: grid;
-      grid-template-columns: minmax(0,1fr) 380px;
+      grid-template-columns: minmax(0, 1fr) clamp(340px, 24vw, 460px);
       gap: 24px;
       align-items: start;
-      max-width: 1600px;
-      margin: 0 auto;
-      padding: 24px;
     }
     #itube .watch-left {
       min-width: 0;
@@ -1710,6 +1706,16 @@
     return token;
   };
 
+  const findAnyContinuationToken = (root) => {
+    let token = null;
+    walk(root, (node) => {
+      if (token) return;
+      const t = node?.continuationCommand?.token;
+      if (typeof t === 'string' && t) token = t;
+    });
+    return token;
+  };
+
   const findAllContinuationTokens = (root) => {
     const tokens = [];
     walk(root, (node) => {
@@ -1766,7 +1772,7 @@
     const legacy = thread?.comment?.commentRenderer || thread?.commentRenderer;
     if (legacy) {
       const text = (legacy.contentText?.runs || []).map((r) => r?.text || '').join('') || legacy.contentText?.simpleText || '';
-      const replyToken = findContinuationToken(thread?.replies);
+      const replyToken = findContinuationToken(thread?.replies) || findAnyContinuationToken(thread?.replies);
       const replyCount = Number(legacy.replyCount) || (replyToken ? 1 : 0);
       return {
         id: legacy.commentId || null,
@@ -1787,7 +1793,7 @@
     if (!props) return null;
     const author = payload?.author || vm.author;
     const toolbar = payload?.toolbar || vm.toolbar;
-    const replyToken = findContinuationToken(thread?.replies);
+    const replyToken = findContinuationToken(thread?.replies) || findAnyContinuationToken(thread?.replies);
     const replyCount = Number(toolbar?.replyCount) || Number(props.replyCount) || (replyToken ? 1 : 0);
     return {
       id: props.commentId || payload?.key || key || null,
@@ -2045,7 +2051,11 @@
   search.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     const q = search.value.trim();
-    if (q) location.href = '/results?search_query=' + encodeURIComponent(q);
+    if (!q) return;
+    e.preventDefault();
+    search.blur();
+    history.pushState({}, '', '/results?search_query=' + encodeURIComponent(q));
+    spaRoute();
   });
   searchWrap.append(searchIcon, search);
   const hdRight = document.createElement('div');
