@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.1.1
+// @version      4.1.2
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -318,6 +318,7 @@
       align-items: center;
       gap: 12px;
       height: 40px;
+      flex: none;
       padding: 0 12px;
       border-radius: var(--r-xs);
       color: var(--text);
@@ -339,6 +340,7 @@
       color: var(--accent);
     }
     #itube .nav-section-label {
+      flex: none;
       font-size: 11px;
       font-weight: 600;
       letter-spacing: .08em;
@@ -351,6 +353,7 @@
       align-items: center;
       gap: 10px;
       min-height: 32px;
+      flex: none;
       padding: 4px 12px;
       border-radius: var(--r-xs);
       color: var(--text);
@@ -566,8 +569,8 @@
     }
     #itube .watch-right {
       position: sticky;
-      top: 76px;
-      max-height: calc(100vh - 96px);
+      top: 0;
+      max-height: calc(100vh - 100px);
       overflow-y: auto;
       overflow-x: hidden;
       overscroll-behavior: contain;
@@ -2800,6 +2803,7 @@
       const nameEl = document.createElement('h1');
       nameEl.className = 'ch-name';
       nameEl.textContent = name || '';
+      if (name) setTitle(name);
       const meta = document.createElement('div');
       meta.className = 'ch-meta';
       meta.textContent = [handle, subCount, videoCount].filter(Boolean).join(' · ');
@@ -3385,6 +3389,11 @@
       const primary = findNode(data, (n) => n?.videoPrimaryInfoRenderer)?.videoPrimaryInfoRenderer;
       const secondary = findNode(data, (n) => n?.videoSecondaryInfoRenderer)?.videoSecondaryInfoRenderer;
       title.textContent = getTitle(primary) || details?.title || '';
+    if (title.textContent) {
+      const t = title.textContent;
+      setTitle(t);
+      setTimeout(() => { if (title.textContent === t) setTitle(t); }, 1500);
+    }
       const owner = secondary?.owner?.videoOwnerRenderer;
       channelName.textContent = owner?.title?.runs?.[0]?.text || details?.author || '';
       subs.textContent = owner?.subscriberCountText?.simpleText
@@ -4055,6 +4064,10 @@
   let cleanup = null;
   let currentKey = null;
   let watchApi = null;
+  const setTitle = (name) => {
+    document.title = name ? name + ' — iTube' : 'iTube';
+  };
+
   const route = () => {
     renderGuideChannels();
     const path = location.pathname;
@@ -4080,6 +4093,12 @@
     currentKey = key;
     syncNav();
     content.scrollTop = 0;
+    setTitle(type === 'search'
+      ? new URLSearchParams(location.search).get('search_query')
+      : type === 'feed' ? heading
+        : type === 'home' ? null
+          : type === 'watch' ? null
+            : null);
     cleanup = type === 'watch' ? mountWatch()
       : type === 'home' ? mountHome()
       : type === 'search' ? mountSearch()

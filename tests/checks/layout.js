@@ -86,6 +86,50 @@ function layoutInPage() {
     }
   }
 
+  // --- SIGNED-IN SIDEBAR: rows must not compress when the list overflows ---
+  // The test session is LOGGED OUT, so the subscriptions list is empty and the
+  // sidebar never overflows. A real signed-in user has 20+ channels, which
+  // overflowed the flex column and shrank every nav row from 40px to 17px —
+  // a bug invisible to a logged-out run. Simulate the signed-in state.
+  const sidebarEl = q('.sidebar');
+  if (sidebarEl) {
+    const heightsBefore = [...document.querySelectorAll('.nav-row')]
+      .map((r) => Math.round(r.getBoundingClientRect().height));
+
+    const injected = [];
+    for (let i = 0; i < 30; i++) {
+      const a = document.createElement('a');
+      a.className = 'nav-chan';
+      a.href = '/';
+      const img = document.createElement('img');
+      img.className = 'nav-chan-avatar';
+      const span = document.createElement('span');
+      span.textContent = 'Simulated Subscription Channel ' + i;
+      a.append(img, span);
+      sidebarEl.appendChild(a);
+      injected.push(a);
+    }
+
+    const overflows = sidebarEl.scrollHeight > sidebarEl.clientHeight;
+    const heightsAfter = [...document.querySelectorAll('.nav-row')]
+      .map((r) => Math.round(r.getBoundingClientRect().height));
+    const chanWraps = [...document.querySelectorAll('.nav-chan span')]
+      .some((s) => s.getBoundingClientRect().height > 24);
+
+    for (const el of injected) el.remove();
+
+    if (overflows) {
+      const squashed = heightsAfter.some((h, i) => h < (heightsBefore[i] || 40) - 1);
+      if (squashed) {
+        report('sidebar-overflow-signed-in',
+          `nav rows compressed when the sidebar overflows: ${heightsBefore[0]}px -> ${heightsAfter[0]}px (flex children must not shrink)`);
+      }
+      if (chanWraps) {
+        report('sidebar-overflow-signed-in', 'subscription names wrap to multiple lines (must truncate with ellipsis)');
+      }
+    }
+  }
+
   // --- (d) NO OVERLAP of major regions ---
   const intersects = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
   if (sidebarRect && contentRect && intersects(sidebarRect, contentRect)) {
