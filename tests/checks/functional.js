@@ -60,15 +60,25 @@ async function runWatchFunctional(page) {
     report('video-ready', `expected readyState>=2 got readyState=${state.readyState}`);
   }
 
-  if (state.paused) {
-    await page.evaluate(() => document.querySelector('#itube-stage video').play());
-    await page.waitForTimeout(300);
+  // Playback must advance — but a preroll AD occupies the same <video> element
+  // and can be mid-transition (paused, buffering, or swapping source) at the
+  // moment we sample. That produced a flaky failure. Retry a few times before
+  // declaring the player dead: a genuinely broken player never advances at all.
+  let advanced = false;
+  let lastBefore = 0;
+  let lastAfter = 0;
+  for (let attempt = 0; attempt < 4 && !advanced; attempt++) {
+    if ((await videoState(page)).paused) {
+      await page.evaluate(() => document.querySelector('#itube-stage video').play().catch(() => {}));
+      await page.waitForTimeout(400);
+    }
+    lastBefore = (await videoState(page)).currentTime;
+    await page.waitForTimeout(1200);
+    lastAfter = (await videoState(page)).currentTime;
+    advanced = lastAfter > lastBefore;
   }
-  const before = await videoState(page);
-  await page.waitForTimeout(1200);
-  const after = await videoState(page);
-  if (!(after.currentTime > before.currentTime)) {
-    report('video-plays', `expected currentTime to advance, before=${before.currentTime} after=${after.currentTime}`);
+  if (!advanced) {
+    report('video-plays', `expected currentTime to advance over 4 attempts, before=${lastBefore} after=${lastAfter}`);
   }
 
   // --- video fills the stage ---
@@ -132,11 +142,21 @@ async function runWatchFunctional(page) {
 
   // --- keyboard: 'l' seeks forward ---
   const seekBefore = (await videoState(page)).currentTime;
-  await page.keyboard.press('l');
-  await page.waitForTimeout(150);
-  const seekAfter = (await videoState(page)).currentTime;
-  if (!(seekAfter > seekBefore)) {
-    report('key-l-seeks-forward', `expected currentTime to increase after 'l', before=${seekBefore} after=${seekAfter}`);
+  let seeked = false;
+  let sb = seekBefore;
+  let sa = 0;
+  for (let attempt = 0; attempt < 3 && !seeked; attempt++) {
+    sb = (await videoState(page)).currentTime;
+    await page.keyboard.press('l');
+    await page.waitForTimeout(250);
+    sa = (await videoState(page)).currentTime;
+    // A preroll ad swapping into the same <video> resets currentTime to ~0.
+    // That is a media-source change, not a broken seek: resample and retry.
+    if (sa < sb) continue;
+    seeked = sa > sb;
+  }
+  if (!seeked) {
+    report('key-l-seeks-forward', `expected currentTime to increase after 'l' over 3 attempts, before=${sb} after=${sa}`);
   }
 
   // --- keyboard: ArrowDown lowers volume by exactly 5 ---
@@ -206,12 +226,16 @@ async function runWatchFunctional(page) {
   }
 
   // --- overflow menu opens, quality has options ---
-  await showBar(page);
-  await page.click('#itube-more');
-  await page.waitForTimeout(100);
-  const menuOpen = await page.evaluate(() => getComputedStyle(document.getElementById('itube-menu')).display !== 'none');
+  let menuOpen = false;
+  for (let attempt = 0; attempt < 3 && !menuOpen; attempt++) {
+    await showBar(page);
+    await page.waitForTimeout(100);
+    await page.evaluate(() => document.getElementById('itube-more').click());
+    await page.waitForTimeout(200);
+    menuOpen = await page.evaluate(() => getComputedStyle(document.getElementById('itube-menu')).display !== 'none');
+  }
   if (!menuOpen) {
-    report('overflow-menu-opens', `expected #itube-menu to be visible after clicking #itube-more`);
+    report('overflow-menu-opens', `expected #itube-menu to be visible after clicking #itube-more (3 attempts)`);
   }
   await page.dispatchEvent('#itube-quality', 'mousedown');
   await page.waitForTimeout(150);

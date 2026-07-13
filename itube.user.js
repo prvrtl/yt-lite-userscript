@@ -306,7 +306,7 @@
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 4px;
       height: 100%;
       overflow-y: auto;
       overflow-x: hidden;
@@ -317,12 +317,12 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      height: 38px;
-      padding: 0 10px;
+      height: 40px;
+      padding: 0 12px;
       border-radius: var(--r-xs);
       color: var(--text);
       text-decoration: none;
-      font-size: 13.5px;
+      font-size: 14px;
     }
     #itube .nav-row:hover {
       background: var(--hover);
@@ -344,25 +344,30 @@
       letter-spacing: .08em;
       text-transform: uppercase;
       color: var(--dim);
-      margin: 16px 10px 6px;
+      margin: 20px 12px 8px;
     }
     #itube .nav-chan {
       display: flex;
       align-items: center;
       gap: 10px;
-      height: 32px;
-      padding: 0 10px;
+      min-height: 32px;
+      padding: 4px 12px;
       border-radius: var(--r-xs);
       color: var(--text);
       text-decoration: none;
       font-size: 13px;
     }
+    #itube .nav-chan span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     #itube .nav-chan:hover {
       background: var(--hover);
     }
     #itube .nav-chan-avatar {
-      width: 22px;
-      height: 22px;
+      width: 24px;
+      height: 24px;
       border-radius: 50%;
       object-fit: cover;
       background: var(--raised);
