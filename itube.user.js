@@ -295,23 +295,22 @@
     }
     #itube .body {
       display: flex;
-      gap: 24px;
-      max-width: 1720px;
-      margin: 0 auto;
-      padding: 24px;
+      width: 100%;
       height: calc(100vh - 52px);
       box-sizing: border-box;
     }
     #itube .sidebar {
       width: 200px;
       flex: none;
+      box-sizing: border-box;
       display: flex;
       flex-direction: column;
       gap: 2px;
       height: 100%;
       overflow-y: auto;
+      overflow-x: hidden;
       overscroll-behavior: contain;
-      padding-bottom: 16px;
+      padding: 12px 8px 16px 12px;
     }
     #itube .nav-row {
       display: flex;
@@ -372,8 +371,15 @@
       flex: 1;
       min-width: 0;
       height: 100%;
+      box-sizing: border-box;
       overflow-y: auto;
+      overflow-x: hidden;
       overscroll-behavior: contain;
+      padding: 24px;
+    }
+    #itube .content > * {
+      max-width: 1720px;
+      margin: 0 auto;
     }
     #itube .section-heading {
       font-size: 18px;
