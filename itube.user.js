@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         iTube
 // @namespace    yt-us
-// @version      3.4.0
+// @version      3.5.0
 // @description  YouTube rebuilt as a native-feeling app. Our UI, YouTube's data.
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -114,9 +114,21 @@
       --accent: #0a84ff;
       --hairline: rgba(255, 255, 255, .11);
       --surface: rgba(255, 255, 255, .045);
-      --r-sm: 10px;
+      --hover: rgba(255, 255, 255, .045);
+      --r-xs: 8px;
+      --r-sm: 12px;
       --r-md: 14px;
-      --r-lg: 20px;
+      --r-lg: 18px;
+      --r-pill: 999px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, .18) transparent;
+    }
+    #itube a:focus-visible:not(.c):not(.row),
+    #itube button:focus-visible,
+    #itube input:focus-visible,
+    #itube select:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
     }
     #itube .hd {
       position: sticky;
@@ -152,7 +164,7 @@
     #itube .search {
       width: 100%;
       height: 34px;
-      border-radius: 10px;
+      border-radius: var(--r-xs);
       background: var(--surface);
       border: 1px solid var(--hairline);
       color: var(--text);
@@ -237,10 +249,13 @@
       gap: 12px;
       height: 38px;
       padding: 0 10px;
-      border-radius: 10px;
+      border-radius: var(--r-xs);
       color: var(--text);
       text-decoration: none;
       font-size: 13.5px;
+    }
+    #itube .nav-row:hover {
+      background: var(--hover);
     }
     #itube .nav-row svg {
       flex: 0 0 auto;
@@ -267,10 +282,13 @@
       gap: 10px;
       height: 32px;
       padding: 0 10px;
-      border-radius: 10px;
+      border-radius: var(--r-xs);
       color: var(--text);
       text-decoration: none;
       font-size: 13px;
+    }
+    #itube .nav-chan:hover {
+      background: var(--hover);
     }
     #itube .nav-chan-avatar {
       width: 22px;
@@ -361,14 +379,14 @@
       border-radius: 14px;
     }
     #itube .c:hover {
-      background: rgba(255, 255, 255, .04);
+      background: var(--hover);
     }
     #itube .c:hover .c-thumb img {
       filter: brightness(1.06);
     }
     #itube .c-thumb {
       aspect-ratio: 16 / 9;
-      border-radius: var(--r-md);
+      border-radius: var(--r-sm);
       overflow: hidden;
       background: var(--raised);
       position: relative;
@@ -383,6 +401,18 @@
     #itube .c-thumb img.in {
       opacity: 1;
       transition: opacity .18s ease-out;
+    }
+    #itube .c-progress {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 3px;
+      background: rgba(255, 255, 255, .25);
+    }
+    #itube .c-progress-fill {
+      height: 100%;
+      background: var(--accent);
     }
     #itube .c-dur {
       position: absolute;
@@ -435,6 +465,7 @@
       overflow-y: auto;
       overscroll-behavior: contain;
       scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, .18) transparent;
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -498,7 +529,7 @@
       background: var(--surface);
       border-radius: var(--r-md);
       padding: 12px;
-      font-size: 13.5px;
+      font-size: 14px;
       line-height: 1.5;
       color: var(--text);
       white-space: pre-wrap;
@@ -676,6 +707,12 @@
       gap: 10px;
       text-decoration: none;
       color: var(--text);
+      padding: 6px;
+      margin: -6px;
+      border-radius: var(--r-sm);
+    }
+    #itube .rc:hover {
+      background: var(--hover);
     }
     #itube .rc-thumb {
       flex: 0 0 168px;
@@ -749,7 +786,7 @@
       border-radius: 14px;
     }
     #itube .row:hover {
-      background: rgba(255, 255, 255, .04);
+      background: var(--hover);
     }
     #itube .row:hover .row-thumb img {
       filter: brightness(1.06);
@@ -837,10 +874,9 @@
     #itube .ch-banner {
       display: block;
       width: 100%;
-      aspect-ratio: 6 / 1;
+      height: 160px;
       object-fit: cover;
-      border-radius: var(--r-lg);
-      margin-bottom: 16px;
+      border-radius: var(--r-md);
       opacity: 0;
     }
     #itube .ch-banner.in {
@@ -850,10 +886,13 @@
     #itube .ch-avatar {
       width: 80px;
       height: 80px;
-      border-radius: 50%;
+      border-radius: var(--r-lg);
       object-fit: cover;
       background: var(--raised);
+      border: 3px solid var(--ink);
+      margin-top: -24px;
       opacity: 0;
+      position: relative;
     }
     #itube .ch-avatar.in {
       opacity: 1;
@@ -869,6 +908,36 @@
       margin-top: 4px;
       font-size: 13px;
       color: var(--muted);
+    }
+    #itube .ch-tabs {
+      display: flex;
+      gap: 20px;
+      margin-top: 20px;
+      border-bottom: 1px solid var(--hairline);
+    }
+    #itube .ch-tab {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 500;
+      padding: 0 2px 10px;
+      cursor: pointer;
+      position: relative;
+    }
+    #itube .ch-tab.active {
+      color: var(--text);
+      font-weight: 600;
+    }
+    #itube .ch-tab.active::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -1px;
+      height: 2px;
+      background: var(--accent);
+      border-radius: var(--r-pill);
     }
     #itube-bar {
       position: absolute;
@@ -1249,6 +1318,78 @@
     return out;
   };
 
+  const getResumePercent = (node) => {
+    const overlays = node?.thumbnailOverlays;
+    if (Array.isArray(overlays)) {
+      for (const o of overlays) {
+        const p = o?.thumbnailOverlayResumePlaybackRenderer?.percentDurationWatched;
+        if (typeof p === 'number') return p;
+      }
+    }
+    return null;
+  };
+
+  const extractResumeItems = (root, seen) => {
+    const out = [];
+    walk(root, (node) => {
+      if (typeof node.videoId !== 'string' || !node.videoId || seen.has(node.videoId)) return;
+      const percent = getResumePercent(node);
+      if (percent == null) return;
+      const title = getTitle(node);
+      if (!title) return;
+      const thumb = getThumb(node);
+      if (!thumb) return;
+      seen.add(node.videoId);
+      out.push({
+        id: node.videoId,
+        title,
+        channel: getChannel(node),
+        thumb,
+        duration: getDuration(node),
+        views: getViews(node),
+        published: getPublished(node),
+        snippet: getSnippet(node),
+        percent,
+      });
+    });
+    return out;
+  };
+
+  const extractPlaylists = (root, seen) => {
+    const out = [];
+    walk(root, (node) => {
+      const lk = node.lockupViewModel;
+      if (lk && lk.contentType === 'LOCKUP_CONTENT_TYPE_PLAYLIST') {
+        const id = lk.contentId;
+        if (typeof id !== 'string' || !id || seen.has(id)) return;
+        const meta = lk.metadata?.lockupMetadataViewModel;
+        const title = meta?.title?.content;
+        const img = lk.contentImage?.thumbnailViewModel || lk.contentImage?.collectionThumbnailViewModel?.primaryThumbnail?.thumbnailViewModel;
+        const sources = img?.image?.sources || [];
+        const thumb = sources.length ? sources[sources.length - 1].url : null;
+        if (!title || !thumb) return;
+        seen.add(id);
+        out.push({ id, type: 'playlist', title, channel: '', thumb, duration: '', views: '', published: '', snippet: '' });
+        return;
+      }
+      const legacy = node.playlistRenderer || node.gridPlaylistRenderer || node.compactPlaylistRenderer;
+      if (!legacy) return;
+      const id = legacy.playlistId;
+      if (typeof id !== 'string' || !id || seen.has(id)) return;
+      const title = getTitle(legacy);
+      if (!title) return;
+      const thumb = getThumb(legacy) || getThumb(legacy.thumbnailRenderer?.playlistVideoThumbnailRenderer);
+      if (!thumb) return;
+      const count = legacy.videoCount
+        || (Array.isArray(legacy.videoCountText?.runs) ? legacy.videoCountText.runs.map((r) => r?.text || '').join('') : null)
+        || legacy.videoCountText?.simpleText
+        || null;
+      seen.add(id);
+      out.push({ id, type: 'playlist', title, channel: '', thumb, duration: '', views: count ? count + ' videos' : '', published: '', snippet: '' });
+    });
+    return out;
+  };
+
   const findContinuationToken = (root) => {
     let token = null;
     walk(root, (node) => {
@@ -1382,7 +1523,9 @@
   const createCard = (item) => {
     const a = document.createElement('a');
     a.className = 'c';
-    a.href = '/watch?v=' + encodeURIComponent(item.id);
+    a.href = item.type === 'playlist'
+      ? '/playlist?list=' + encodeURIComponent(item.id)
+      : '/watch?v=' + encodeURIComponent(item.id);
     const thumbWrap = document.createElement('div');
     thumbWrap.className = 'c-thumb';
     const img = document.createElement('img');
@@ -1397,6 +1540,15 @@
       dur.className = 'c-dur';
       dur.textContent = item.duration;
       thumbWrap.appendChild(dur);
+    }
+    if (typeof item.percent === 'number') {
+      const bar = document.createElement('div');
+      bar.className = 'c-progress';
+      const fill = document.createElement('div');
+      fill.className = 'c-progress-fill';
+      fill.style.width = Math.max(0, Math.min(100, item.percent)) + '%';
+      bar.appendChild(fill);
+      thumbWrap.appendChild(bar);
     }
     const title = document.createElement('h3');
     title.className = 'c-title';
@@ -1640,11 +1792,11 @@
     nav.appendChild(row);
     navRows[item.key] = row;
   }
-  const guideChannels = () => {
-    const data = window.ytInitialData;
+  const fetchGuideChannels = async () => {
+    const res = await innertube('guide', {});
     const out = [];
     const seenIds = new Set();
-    walk(data, (node) => {
+    walk(res, (node) => {
       const g = node?.guideEntryRenderer;
       if (!g) return;
       const browseId = g.navigationEndpoint?.browseEndpoint?.browseId;
@@ -1661,12 +1813,10 @@
   const subsSection = document.createElement('div');
   subsSection.className = 'nav-subs';
   nav.appendChild(subsSection);
-  const renderGuideChannels = () => {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', renderGuideChannels, { once: true });
-      return;
-    }
-    const channels = guideChannels();
+  let guideChannelsCache = null;
+  let guideChannelsPromise = null;
+  const paintGuideChannels = () => {
+    const channels = guideChannelsCache || [];
     if (!channels.length) { subsSection.replaceChildren(); return; }
     const label = document.createElement('div');
     label.className = 'nav-section-label';
@@ -1686,6 +1836,20 @@
       rows.push(row);
     }
     subsSection.replaceChildren(...rows);
+  };
+  const renderGuideChannels = () => {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', renderGuideChannels, { once: true });
+      return;
+    }
+    if (guideChannelsCache) { paintGuideChannels(); return; }
+    if (guideChannelsPromise) return;
+    guideChannelsPromise = fetchGuideChannels()
+      .then((channels) => {
+        guideChannelsCache = channels;
+        paintGuideChannels();
+      })
+      .catch(() => { guideChannelsCache = []; });
   };
   renderGuideChannels();
   const syncNav = () => {
@@ -1809,14 +1973,28 @@
     const renderInitial = () => {
       const data = window.ytInitialData;
       if (!data) return;
+      const resumeItems = extractResumeItems(data, new Set());
+      for (const it of resumeItems) seenVideoIds.add(it.id);
+      if (resumeItems.length) {
+        const cwHeading = document.createElement('h2');
+        cwHeading.className = 'section-heading';
+        cwHeading.textContent = 'Continue watching';
+        const cwGrid = document.createElement('div');
+        cwGrid.className = 'grid';
+        for (const it of resumeItems) cwGrid.appendChild(createCard(it));
+        view.insertBefore(cwHeading, heading);
+        view.insertBefore(cwGrid, heading);
+      }
       const items = extractVideos(data);
       for (const item of items) grid.insertBefore(createCard(item), sentinel);
       continuationToken = findContinuationToken(data);
+      heading.style.display = grid.querySelector('.c') ? '' : 'none';
     };
 
     const heading = document.createElement('h2');
     heading.className = 'section-heading';
     heading.textContent = 'Recommended';
+    heading.style.display = 'none';
     view.replaceChildren(heading, grid, spinner);
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', renderInitial, { once: true });
@@ -2045,6 +2223,7 @@
 
     let continuationToken = null;
     let loading = false;
+    let currentExtractor = extractVideos;
     const loadMore = async () => {
       if (loading || !continuationToken) return;
       loading = true;
@@ -2052,7 +2231,7 @@
       try {
         const res = await innertube('browse', { continuation: continuationToken });
         if (!res) return;
-        const items = extractVideos(res, seen);
+        const items = currentExtractor(res, seen);
         continuationToken = findContinuationToken(res);
         scheduleAppend(items);
       } finally {
@@ -2102,8 +2281,53 @@
       return null;
     };
 
+    let browseId = null;
+    let activeTab = 'videos';
+    const tabBtns = {};
+
+    const clearGrid = () => {
+      for (const c of grid.querySelectorAll('.c')) c.remove();
+      const spacer = grid.querySelector('.spacer');
+      if (spacer) spacer.remove();
+    };
+
+    const loadTab = async (tab) => {
+      activeTab = tab;
+      currentExtractor = tab === 'playlists' ? extractPlaylists : extractVideos;
+      seen.clear();
+      continuationToken = null;
+      clearGrid();
+      loading = true;
+      spinner.classList.add('show');
+      try {
+        const params = tabParams(tab);
+        const res = await innertube('browse', params ? { browseId, params } : { browseId });
+        if (!res) return;
+        const items = currentExtractor(res, seen);
+        continuationToken = findContinuationToken(res);
+        for (const item of items) grid.insertBefore(createCard(item), sentinel);
+      } finally {
+        loading = false;
+        spinner.classList.remove('show');
+      }
+    };
+
+    const makeTabBtn = (key, label) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ch-tab';
+      btn.textContent = label;
+      btn.addEventListener('click', () => {
+        if (activeTab === key || loading) return;
+        for (const k in tabBtns) tabBtns[k].classList.toggle('active', k === key);
+        loadTab(key);
+      });
+      tabBtns[key] = btn;
+      return btn;
+    };
+
     const runInitial = async () => {
-      const browseId = resolveBrowseId();
+      browseId = resolveBrowseId();
       if (!browseId) {
         showEmpty("Couldn't load this channel.");
         return;
@@ -2126,14 +2350,35 @@
         );
         const h = getHeaderRenderer(res);
         if (h) {
+          const imgFrom = (node) => {
+            let best = null;
+            walk(node, (n) => {
+              if (best) return;
+              const list = Array.isArray(n.sources) ? n.sources : (Array.isArray(n.thumbnails) ? n.thumbnails : null);
+              if (list && list.length) {
+                const u = list[list.length - 1]?.url;
+                if (u) best = u;
+              }
+            });
+            return best;
+          };
+          const vm = h?.content?.pageHeaderViewModel;
+          const metaTexts = [];
+          walk(vm?.metadata, (n) => {
+            if (typeof n.content === 'string' && n.content && n.content.length < 40) metaTexts.push(n.content);
+          });
           const name = (typeof h?.title === 'string' ? h.title : null)
             || h?.title?.runs?.[0]?.text || h?.title?.simpleText
-            || h?.content?.pageHeaderViewModel?.title?.dynamicTextViewModel?.text?.content || null;
-          const handle = h?.channelHandleText?.runs?.[0]?.text || h?.channelHandleText?.simpleText || null;
-          const avatarUrl = thumbFrom(h?.avatar);
-          const subCount = h?.subscriberCountText?.simpleText || h?.subscriberCountText?.runs?.[0]?.text || null;
-          const videoCount = (h?.videosCountText?.runs || []).map((r) => r?.text || '').join('') || h?.videosCountText?.simpleText || null;
-          const bannerUrl = thumbFrom(h?.banner);
+            || vm?.title?.dynamicTextViewModel?.text?.content || null;
+          const handle = h?.channelHandleText?.runs?.[0]?.text || h?.channelHandleText?.simpleText
+            || metaTexts.find((t) => t.startsWith('@')) || null;
+          const avatarUrl = thumbFrom(h?.avatar) || imgFrom(vm?.image);
+          const subCount = h?.subscriberCountText?.simpleText || h?.subscriberCountText?.runs?.[0]?.text
+            || metaTexts.find((t) => /subscriber/i.test(t)) || null;
+          const videoCount = (h?.videosCountText?.runs || []).map((r) => r?.text || '').join('')
+            || h?.videosCountText?.simpleText
+            || metaTexts.find((t) => /video/i.test(t)) || null;
+          const bannerUrl = thumbFrom(h?.banner) || imgFrom(vm?.banner);
 
           if (bannerUrl) {
             const banner = document.createElement('img');
@@ -2162,6 +2407,13 @@
           meta.className = 'ch-meta';
           meta.textContent = [handle, subCount, videoCount].filter(Boolean).join(' · ');
           header.append(nameEl, meta);
+
+          const tabsEl = document.createElement('div');
+          tabsEl.className = 'ch-tabs';
+          tabsEl.appendChild(makeTabBtn('videos', 'Videos'));
+          if (tabParams('playlists')) tabsEl.appendChild(makeTabBtn('playlists', 'Playlists'));
+          tabBtns.videos.classList.add('active');
+          header.appendChild(tabsEl);
         }
 
         const items = extractVideos(res, seen);
