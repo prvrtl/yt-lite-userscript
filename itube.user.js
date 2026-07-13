@@ -1,10 +1,20 @@
 // ==UserScript==
 // @name         iTube
-// @namespace    yt-us
+// @name:en      iTube
+// @namespace    https://github.com/prvrtl/yt-lite-userscript
 // @version      3.6.0
-// @description  YouTube rebuilt as a native-feeling app. Our UI, YouTube's data.
+// @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
+// @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
+// @author       prvrtl
+// @license      MIT
+// @homepageURL  https://prvrtl.github.io/yt-lite-userscript/
+// @supportURL   https://github.com/prvrtl/yt-lite-userscript/issues
+// @updateURL    https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/itube.user.js
+// @downloadURL  https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/itube.user.js
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=youtube.com
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
+// @exclude      https://www.youtube.com/live_chat*
 // @run-at       document-start
 // @noframes
 // @grant        none
