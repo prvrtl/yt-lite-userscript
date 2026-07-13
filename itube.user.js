@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      3.8.0
+// @version      3.9.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -116,6 +116,20 @@
     check: () => icon([
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M3 8.3 6.3 11.6 13 4.5' }],
     ]),
+  };
+
+  const pillButton = (iconFn, label, className) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    if (className) btn.className = className;
+    const iconEl = iconFn ? iconFn() : null;
+    if (iconEl) btn.appendChild(iconEl);
+    const labelEl = label === null ? null : document.createElement('span');
+    if (labelEl) {
+      labelEl.textContent = label;
+      btn.appendChild(labelEl);
+    }
+    return { btn, icon: iconEl, label: labelEl };
   };
 
   const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -275,6 +289,14 @@
       display: flex;
       flex-direction: column;
       gap: 2px;
+      position: sticky;
+      top: 52px;
+      height: calc(100vh - 52px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, .18) transparent;
+      padding-bottom: 16px;
     }
     #itube .nav-row {
       display: flex;
@@ -1114,23 +1136,22 @@
     }
     #itube-bar {
       position: absolute;
-      left: 50%;
-      bottom: 14px;
-      transform: translateX(-50%);
-      width: min(94%, 920px);
+      left: 0;
+      right: 0;
+      bottom: 0;
+      box-sizing: border-box;
       z-index: 20;
       display: grid;
       grid-template-areas: 'seek seek seek' 'left center right';
       grid-template-columns: 1fr auto 1fr;
       align-items: center;
-      gap: 6px 12px;
-      padding: 10px 14px 8px;
-      border-radius: 22px;
-      background: rgba(18, 18, 24, .52);
-      backdrop-filter: blur(22px) saturate(1.7);
-      -webkit-backdrop-filter: blur(22px) saturate(1.7);
-      border: 1px solid rgba(255, 255, 255, .17);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 8px 32px rgba(0, 0, 0, .35);
+      gap: 8px 12px;
+      padding: 12px 16px 14px;
+      border-radius: 0 0 var(--r-lg) var(--r-lg);
+      background: linear-gradient(to top, rgba(10, 10, 14, .78), rgba(10, 10, 14, .40) 62%, rgba(10, 10, 14, 0));
+      backdrop-filter: blur(14px) saturate(1.4);
+      -webkit-backdrop-filter: blur(14px) saturate(1.4);
+      border: none;
       color: #fff;
       font: 500 12px -apple-system, system-ui, sans-serif;
       opacity: 0;
@@ -2110,8 +2131,13 @@
   const subsSection = document.createElement('div');
   subsSection.className = 'nav-subs';
   nav.appendChild(subsSection);
+  const idle = window.requestIdleCallback
+    ? (cb) => window.requestIdleCallback(cb, { timeout: 1500 })
+    : (cb) => setTimeout(cb, 200);
+  const MAX_GUIDE_CHANNELS = 30;
   let guideChannelsCache = null;
   let guideChannelsPromise = null;
+  let guideChannelsScheduled = false;
   const paintGuideChannels = () => {
     const channels = guideChannelsCache || [];
     if (!channels.length) { subsSection.replaceChildren(); return; }
@@ -2119,7 +2145,7 @@
     label.className = 'nav-section-label';
     label.textContent = 'SUBSCRIPTIONS';
     const rows = [label];
-    for (const ch of channels) {
+    for (const ch of channels.slice(0, MAX_GUIDE_CHANNELS)) {
       const row = document.createElement('a');
       row.className = 'nav-chan';
       row.href = '/channel/' + encodeURIComponent(ch.browseId);
@@ -2134,12 +2160,7 @@
     }
     subsSection.replaceChildren(...rows);
   };
-  const renderGuideChannels = () => {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', renderGuideChannels, { once: true });
-      return;
-    }
-    if (guideChannelsCache) { paintGuideChannels(); return; }
+  const startGuideChannelsFetch = () => {
     if (guideChannelsPromise) return;
     guideChannelsPromise = fetchGuideChannels()
       .then((channels) => {
@@ -2147,6 +2168,16 @@
         paintGuideChannels();
       })
       .catch(() => { guideChannelsCache = []; });
+  };
+  const renderGuideChannels = () => {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', renderGuideChannels, { once: true });
+      return;
+    }
+    if (guideChannelsCache) { paintGuideChannels(); return; }
+    if (guideChannelsScheduled) return;
+    guideChannelsScheduled = true;
+    idle(startGuideChannelsFetch);
   };
   renderGuideChannels();
   const syncNav = () => {
@@ -2182,142 +2213,48 @@
 
   let lastScroll = 0;
   addEventListener('scroll', () => { lastScroll = Date.now(); }, { passive: true, capture: true });
-  const idle = window.requestIdleCallback
-    ? (cb) => window.requestIdleCallback(cb, { timeout: 1200 })
-    : (cb) => setTimeout(cb, 200);
+  let spaNav = false;
 
-  const mountHome = () => {
-    const grid = document.createElement('div');
-    grid.className = 'grid';
+  const createListView = ({ itemClass, containerClass, renderItem, fetchInitial, fetchMore, emptyMessage }) => {
+    const container = document.createElement('div');
+    container.className = containerClass;
     const spinner = document.createElement('div');
     spinner.className = 'spinner';
     spinner.textContent = 'Loading…';
     const sentinel = document.createElement('div');
     sentinel.className = 'sentinel';
-    grid.append(sentinel);
+    container.append(sentinel);
 
-    let appendScheduled = false;
-    let pendingItems = null;
-    const tryAppend = () => {
-      appendScheduled = false;
-      if (Date.now() - lastScroll < 200) {
-        appendScheduled = true;
-        setTimeout(tryAppend, 200);
-        return;
-      }
-      const items = pendingItems;
-      pendingItems = null;
-      if (items) appendCards(items);
-    };
-    const scheduleAppend = (items) => {
-      pendingItems = pendingItems ? pendingItems.concat(items) : items;
-      if (appendScheduled) return;
-      appendScheduled = true;
-      idle(tryAppend);
-    };
-
-    const MAX_CARDS = 200;
-    const capGrid = () => {
-      const cards = grid.querySelectorAll('.c');
-      const excess = cards.length - MAX_CARDS;
-      if (excess <= 0) return;
-      const heightBefore = grid.getBoundingClientRect().height;
-      for (let i = 0; i < excess; i++) {
-        cards[i].remove();
-      }
-      const heightAfter = grid.getBoundingClientRect().height;
-      const removedHeight = heightBefore - heightAfter;
-      let spacer = grid.querySelector('.spacer');
-      if (!spacer) {
-        spacer = document.createElement('div');
-        spacer.className = 'spacer';
-        grid.insertBefore(spacer, grid.firstChild);
-      }
-      const current = parseFloat(spacer.style.height) || 0;
-      spacer.style.height = (current + removedHeight) + 'px';
-    };
-
-    const appendCards = (items) => {
-      for (const item of items) {
-        grid.insertBefore(createCard(item), sentinel);
-      }
-      capGrid();
-    };
-
-    let continuationToken = null;
-    let loading = false;
-    const loadMore = async () => {
-      if (loading || !continuationToken) return;
-      loading = true;
-      spinner.classList.add('show');
-      try {
-        const res = await innertube('browse', { continuation: continuationToken });
-        if (!res) return;
-        const items = extractVideos(res);
-        continuationToken = findContinuationToken(res);
-        scheduleAppend(items);
-      } finally {
-        loading = false;
-        spinner.classList.remove('show');
-      }
-    };
-
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) loadMore();
-    }, { rootMargin: '600px' });
-    io.observe(sentinel);
-
-    const renderInitial = () => {
-      const data = window.ytInitialData;
-      if (!data) return;
-      const resumeItems = extractResumeItems(data, new Set());
-      for (const it of resumeItems) seenVideoIds.add(it.id);
-      if (resumeItems.length) {
-        const cwHeading = document.createElement('h2');
-        cwHeading.className = 'section-heading';
-        cwHeading.textContent = 'Continue watching';
-        const cwGrid = document.createElement('div');
-        cwGrid.className = 'grid';
-        for (const it of resumeItems) cwGrid.appendChild(createCard(it));
-        view.insertBefore(cwHeading, heading);
-        view.insertBefore(cwGrid, heading);
-      }
-      const items = extractVideos(data);
-      for (const item of items) grid.insertBefore(createCard(item), sentinel);
-      continuationToken = findContinuationToken(data);
-      heading.style.display = grid.querySelector('.c') ? '' : 'none';
-    };
-
-    const heading = document.createElement('h2');
-    heading.className = 'section-heading';
-    heading.textContent = 'Recommended';
-    heading.style.display = 'none';
-    view.replaceChildren(heading, grid, spinner);
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', renderInitial, { once: true });
-    } else {
-      renderInitial();
-    }
-
-    return () => { io.disconnect(); };
-  };
-
-  const mountSearch = () => {
-    const query = new URLSearchParams(location.search).get('search_query') || '';
-    search.value = query;
     const seen = new Set();
-
-    const list = document.createElement('div');
-    list.className = 'list';
-    const spinner = document.createElement('div');
-    spinner.className = 'spinner';
-    spinner.textContent = 'Loading…';
-    const sentinel = document.createElement('div');
-    sentinel.className = 'sentinel';
-    list.append(sentinel);
-
+    let token = null;
+    let loading = false;
     let appendScheduled = false;
     let pendingItems = null;
+
+    const MAX_ITEMS = 200;
+    const cap = () => {
+      const items = container.querySelectorAll('.' + itemClass);
+      const excess = items.length - MAX_ITEMS;
+      if (excess <= 0) return;
+      const heightBefore = container.getBoundingClientRect().height;
+      for (let i = 0; i < excess; i++) items[i].remove();
+      const heightAfter = container.getBoundingClientRect().height;
+      const removedHeight = heightBefore - heightAfter;
+      let spacer = container.querySelector('.spacer');
+      if (!spacer) {
+        spacer = document.createElement('div');
+        spacer.className = 'spacer';
+        container.insertBefore(spacer, container.firstChild);
+      }
+      const current = parseFloat(spacer.style.height) || 0;
+      spacer.style.height = (current + removedHeight) + 'px';
+    };
+
+    const appendItems = (items) => {
+      for (const item of items) container.insertBefore(renderItem(item), sentinel);
+      cap();
+    };
+
     const tryAppend = () => {
       appendScheduled = false;
       if (Date.now() - lastScroll < 200) {
@@ -2327,62 +2264,37 @@
       }
       const items = pendingItems;
       pendingItems = null;
-      if (items) appendRows(items);
+      if (items) appendItems(items);
     };
     const scheduleAppend = (items) => {
       pendingItems = pendingItems ? pendingItems.concat(items) : items;
       if (appendScheduled) return;
       appendScheduled = true;
       idle(tryAppend);
-    };
-
-    const MAX_ROWS = 200;
-    const capList = () => {
-      const rows = list.querySelectorAll('.row');
-      const excess = rows.length - MAX_ROWS;
-      if (excess <= 0) return;
-      const heightBefore = list.getBoundingClientRect().height;
-      for (let i = 0; i < excess; i++) {
-        rows[i].remove();
-      }
-      const heightAfter = list.getBoundingClientRect().height;
-      const removedHeight = heightBefore - heightAfter;
-      let spacer = list.querySelector('.spacer');
-      if (!spacer) {
-        spacer = document.createElement('div');
-        spacer.className = 'spacer';
-        list.insertBefore(spacer, list.firstChild);
-      }
-      const current = parseFloat(spacer.style.height) || 0;
-      spacer.style.height = (current + removedHeight) + 'px';
-    };
-
-    const appendRows = (items) => {
-      for (const item of items) {
-        list.insertBefore(createRowCard(item), sentinel);
-      }
-      capList();
     };
 
     const showEmpty = (msg) => {
       const empty = document.createElement('div');
       empty.className = 'empty';
       empty.textContent = msg;
-      list.replaceChildren(empty);
+      container.replaceChildren(empty);
     };
 
-    let continuationToken = null;
-    let loading = false;
+    const clear = () => {
+      for (const n of container.querySelectorAll('.' + itemClass)) n.remove();
+      const spacer = container.querySelector('.spacer');
+      if (spacer) spacer.remove();
+    };
+
     const loadMore = async () => {
-      if (loading || !continuationToken) return;
+      if (loading || !token) return;
       loading = true;
       spinner.classList.add('show');
       try {
-        const res = await innertube('search', { continuation: continuationToken });
+        const res = await fetchMore(token, seen);
         if (!res) return;
-        const items = extractVideos(res, seen);
-        continuationToken = findContinuationToken(res);
-        scheduleAppend(items);
+        token = res.token;
+        scheduleAppend(res.items);
       } finally {
         loading = false;
         spinner.classList.remove('show');
@@ -2393,6 +2305,101 @@
       if (entries.some((e) => e.isIntersecting)) loadMore();
     }, { rootMargin: '600px' });
     io.observe(sentinel);
+
+    const load = async (fetchFn) => {
+      seen.clear();
+      token = null;
+      clear();
+      loading = true;
+      spinner.classList.add('show');
+      try {
+        const res = await fetchFn(seen);
+        if (!res || (res.items.length === 0 && !res.token)) {
+          showEmpty((res && res.message) || emptyMessage);
+          return;
+        }
+        token = res.token;
+        for (const item of res.items) container.insertBefore(renderItem(item), sentinel);
+      } finally {
+        loading = false;
+        spinner.classList.remove('show');
+      }
+    };
+
+    const loadInitial = () => load(fetchInitial);
+
+    return { container, spinner, seen, loadInitial, load, showEmpty, cleanup: () => io.disconnect() };
+  };
+
+  const mountHome = () => {
+    const heading = document.createElement('h2');
+    heading.className = 'section-heading';
+    heading.textContent = 'Recommended';
+    heading.style.display = 'none';
+
+    const list = createListView({
+      itemClass: 'c',
+      containerClass: 'grid',
+      renderItem: createCard,
+      fetchMore: async (token) => {
+        const res = await innertube('browse', { continuation: token });
+        if (!res) return null;
+        return { items: extractVideos(res), token: findContinuationToken(res) };
+      },
+      fetchInitial: async () => {
+        let data = spaNav ? null : window.ytInitialData;
+        if (!data) data = await innertube('browse', { browseId: 'FEwhat_to_watch' });
+        if (!data) return null;
+        const resumeItems = extractResumeItems(data, new Set());
+        for (const it of resumeItems) seenVideoIds.add(it.id);
+        if (resumeItems.length) {
+          const cwHeading = document.createElement('h2');
+          cwHeading.className = 'section-heading';
+          cwHeading.textContent = 'Continue watching';
+          const cwGrid = document.createElement('div');
+          cwGrid.className = 'grid';
+          for (const it of resumeItems) cwGrid.appendChild(createCard(it));
+          view.insertBefore(cwHeading, heading);
+          view.insertBefore(cwGrid, heading);
+        }
+        const items = extractVideos(data);
+        heading.style.display = items.length ? '' : 'none';
+        return { items, token: findContinuationToken(data) };
+      },
+      emptyMessage: 'Nothing here yet.',
+    });
+
+    view.replaceChildren(heading, list.container, list.spinner);
+    const run = () => list.loadInitial();
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', run, { once: true });
+    } else {
+      run();
+    }
+
+    return list.cleanup;
+  };
+
+  const mountSearch = () => {
+    const query = new URLSearchParams(location.search).get('search_query') || '';
+    search.value = query;
+
+    const list = createListView({
+      itemClass: 'row',
+      containerClass: 'list',
+      renderItem: createRowCard,
+      fetchInitial: async (seen) => {
+        if (!query) return { items: [], token: null, message: 'Type something to search.' };
+        const res = await innertube('search', { query });
+        if (!res) return { items: [], token: null, message: 'Something went wrong.' };
+        return { items: extractVideos(res, seen), token: findContinuationToken(res), message: 'No results for "' + query + '"' };
+      },
+      fetchMore: async (token, seen) => {
+        const res = await innertube('search', { continuation: token });
+        if (!res) return null;
+        return { items: extractVideos(res, seen), token: findContinuationToken(res) };
+      },
+    });
 
     if (query) {
       const label = document.createElement('div');
@@ -2401,55 +2408,35 @@
       const queryHeading = document.createElement('h1');
       queryHeading.className = 'search-query';
       queryHeading.textContent = query;
-      view.replaceChildren(label, queryHeading, list, spinner);
+      view.replaceChildren(label, queryHeading, list.container, list.spinner);
     } else {
-      view.replaceChildren(list, spinner);
+      view.replaceChildren(list.container, list.spinner);
     }
 
-    const runInitial = async () => {
-      if (!query) {
-        showEmpty('Type something to search.');
-        return;
-      }
-      loading = true;
-      spinner.classList.add('show');
-      try {
-        const res = await innertube('search', { query });
-        if (!res) {
-          showEmpty('Something went wrong.');
-          return;
-        }
-        const items = extractVideos(res, seen);
-        continuationToken = findContinuationToken(res);
-        if (items.length === 0 && !continuationToken) {
-          showEmpty('No results for "' + query + '"');
-          return;
-        }
-        for (const item of items) list.insertBefore(createRowCard(item), sentinel);
-      } finally {
-        loading = false;
-        spinner.classList.remove('show');
-      }
-    };
+    const run = () => list.loadInitial();
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', runInitial, { once: true });
+      document.addEventListener('DOMContentLoaded', run, { once: true });
     } else {
-      runInitial();
+      run();
     }
 
-    return () => { io.disconnect(); };
+    return list.cleanup;
   };
 
   const mountChannel = () => {
     const CHANNEL_ID_IN_PATH_RE = /^\/channel\/([^/]+)/;
-    const resolveBrowseId = () => {
+    const resolveBrowseId = async () => {
       const m = location.pathname.match(CHANNEL_ID_IN_PATH_RE);
       if (m) return m[1];
-      const data = window.ytInitialData;
-      const metaNode = findNode(data, (n) => typeof n?.metadata?.channelMetadataRenderer?.externalId === 'string');
-      if (metaNode) return metaNode.metadata.channelMetadataRenderer.externalId;
-      const idNode = findNode(data, (n) => typeof n?.browseId === 'string' && n.browseId.startsWith('UC'));
-      return idNode ? idNode.browseId : null;
+      if (!spaNav) {
+        const data = window.ytInitialData;
+        const metaNode = findNode(data, (n) => typeof n?.metadata?.channelMetadataRenderer?.externalId === 'string');
+        if (metaNode) return metaNode.metadata.channelMetadataRenderer.externalId;
+        const idNode = findNode(data, (n) => typeof n?.browseId === 'string' && n.browseId.startsWith('UC'));
+        if (idNode) return idNode.browseId;
+      }
+      const resolved = await innertube('navigation/resolve_url', { url: location.href });
+      return resolved?.endpoint?.browseEndpoint?.browseId || null;
     };
 
     const showEmpty = (msg) => {
@@ -2459,95 +2446,12 @@
       view.replaceChildren(empty);
     };
 
-    const seen = new Set();
-
-    const grid = document.createElement('div');
-    grid.className = 'grid';
-    const spinner = document.createElement('div');
-    spinner.className = 'spinner';
-    spinner.textContent = 'Loading…';
-    const sentinel = document.createElement('div');
-    sentinel.className = 'sentinel';
-    grid.append(sentinel);
-
-    let appendScheduled = false;
-    let pendingItems = null;
-    const tryAppend = () => {
-      appendScheduled = false;
-      if (Date.now() - lastScroll < 200) {
-        appendScheduled = true;
-        setTimeout(tryAppend, 200);
-        return;
-      }
-      const items = pendingItems;
-      pendingItems = null;
-      if (items) appendCards(items);
-    };
-    const scheduleAppend = (items) => {
-      pendingItems = pendingItems ? pendingItems.concat(items) : items;
-      if (appendScheduled) return;
-      appendScheduled = true;
-      idle(tryAppend);
-    };
-
-    const MAX_CARDS = 200;
-    const capGrid = () => {
-      const cards = grid.querySelectorAll('.c');
-      const excess = cards.length - MAX_CARDS;
-      if (excess <= 0) return;
-      const heightBefore = grid.getBoundingClientRect().height;
-      for (let i = 0; i < excess; i++) {
-        cards[i].remove();
-      }
-      const heightAfter = grid.getBoundingClientRect().height;
-      const removedHeight = heightBefore - heightAfter;
-      let spacer = grid.querySelector('.spacer');
-      if (!spacer) {
-        spacer = document.createElement('div');
-        spacer.className = 'spacer';
-        grid.insertBefore(spacer, grid.firstChild);
-      }
-      const current = parseFloat(spacer.style.height) || 0;
-      spacer.style.height = (current + removedHeight) + 'px';
-    };
-
-    const appendCards = (items) => {
-      for (const item of items) {
-        grid.insertBefore(createCard(item), sentinel);
-      }
-      capGrid();
-    };
-
-    let continuationToken = null;
-    let loading = false;
-    let currentExtractor = extractVideos;
-    const loadMore = async () => {
-      if (loading || !continuationToken) return;
-      loading = true;
-      spinner.classList.add('show');
-      try {
-        const res = await innertube('browse', { continuation: continuationToken });
-        if (!res) return;
-        const items = currentExtractor(res, seen);
-        continuationToken = findContinuationToken(res);
-        scheduleAppend(items);
-      } finally {
-        loading = false;
-        spinner.classList.remove('show');
-      }
-    };
-
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) loadMore();
-    }, { rootMargin: '600px' });
-    io.observe(sentinel);
-
     const header = document.createElement('div');
     header.className = 'ch-header';
 
     const thumbFrom = (node) => {
-      const list = node?.thumbnails;
-      if (Array.isArray(list) && list.length) return list[list.length - 1]?.url || null;
+      const thumbs = node?.thumbnails;
+      if (Array.isArray(thumbs) && thumbs.length) return thumbs[thumbs.length - 1]?.url || null;
       return getThumb(node);
     };
 
@@ -2559,6 +2463,7 @@
       }
     };
 
+    let browseId = null;
     const tabParams = (want) => {
       const found = [];
       const walkEp = (o, d) => {
@@ -2578,293 +2483,190 @@
       return null;
     };
 
-    let browseId = null;
     let activeTab = 'videos';
     const tabBtns = {};
 
-    const clearGrid = () => {
-      for (const c of grid.querySelectorAll('.c')) c.remove();
-      const spacer = grid.querySelector('.spacer');
-      if (spacer) spacer.remove();
-    };
-
-    const loadTab = async (tab) => {
-      activeTab = tab;
-      currentExtractor = tab === 'playlists' ? extractPlaylists : extractVideos;
-      seen.clear();
-      continuationToken = null;
-      clearGrid();
-      loading = true;
-      spinner.classList.add('show');
-      try {
-        const params = tabParams(tab);
+    const list = createListView({
+      itemClass: 'c',
+      containerClass: 'grid',
+      renderItem: createCard,
+      fetchMore: async (token, seen) => {
+        const res = await innertube('browse', { continuation: token });
+        if (!res) return null;
+        const extractor = activeTab === 'playlists' ? extractPlaylists : extractVideos;
+        return { items: extractor(res, seen), token: findContinuationToken(res) };
+      },
+      fetchInitial: async (seen) => {
+        const params = tabParams(activeTab);
         const res = await innertube('browse', params ? { browseId, params } : { browseId });
-        if (!res) return;
-        const items = currentExtractor(res, seen);
-        continuationToken = findContinuationToken(res);
-        for (const item of items) grid.insertBefore(createCard(item), sentinel);
-      } finally {
-        loading = false;
-        spinner.classList.remove('show');
-      }
-    };
+        if (!res) return null;
+        if (activeTab === 'videos') paintHeader(res);
+        const extractor = activeTab === 'playlists' ? extractPlaylists : extractVideos;
+        return { items: extractor(res, seen), token: findContinuationToken(res) };
+      },
+      emptyMessage: "Couldn't load this channel.",
+    });
 
+    let tabSwitching = false;
     const makeTabBtn = (key, label) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'ch-tab';
       btn.textContent = label;
-      btn.addEventListener('click', () => {
-        if (activeTab === key || loading) return;
+      btn.addEventListener('click', async () => {
+        if (activeTab === key || tabSwitching) return;
+        activeTab = key;
         for (const k in tabBtns) tabBtns[k].classList.toggle('active', k === key);
-        loadTab(key);
+        tabSwitching = true;
+        try {
+          await list.loadInitial();
+        } finally {
+          tabSwitching = false;
+        }
       });
       tabBtns[key] = btn;
       return btn;
     };
 
-    const runInitial = async () => {
-      browseId = resolveBrowseId();
+    let headerBuilt = false;
+    const paintHeader = (res) => {
+      if (headerBuilt) return;
+      headerBuilt = true;
+      const getHeaderRenderer = (data) => (
+        findNode(data, (n) => n?.c4TabbedHeaderRenderer)?.c4TabbedHeaderRenderer
+        || findNode(data, (n) => n?.pageHeaderRenderer)?.pageHeaderRenderer
+        || null
+      );
+      const h = getHeaderRenderer(res);
+      if (!h) return;
+      const imgFrom = (node) => {
+        let best = null;
+        walk(node, (n) => {
+          if (best) return;
+          const thumbs = Array.isArray(n.sources) ? n.sources : (Array.isArray(n.thumbnails) ? n.thumbnails : null);
+          if (thumbs && thumbs.length) {
+            const u = thumbs[thumbs.length - 1]?.url;
+            if (u) best = u;
+          }
+        });
+        return best;
+      };
+      const vm = h?.content?.pageHeaderViewModel;
+      const metaTexts = [];
+      walk(vm?.metadata, (n) => {
+        if (typeof n.content === 'string' && n.content && n.content.length < 40) metaTexts.push(n.content);
+      });
+      const name = (typeof h?.title === 'string' ? h.title : null)
+        || h?.title?.runs?.[0]?.text || h?.title?.simpleText
+        || vm?.title?.dynamicTextViewModel?.text?.content || null;
+      const handle = h?.channelHandleText?.runs?.[0]?.text || h?.channelHandleText?.simpleText
+        || metaTexts.find((t) => t.startsWith('@')) || null;
+      const avatarUrl = thumbFrom(h?.avatar) || imgFrom(vm?.image);
+      const subCount = h?.subscriberCountText?.simpleText || h?.subscriberCountText?.runs?.[0]?.text
+        || metaTexts.find((t) => /subscriber/i.test(t)) || null;
+      const videoCount = (h?.videosCountText?.runs || []).map((r) => r?.text || '').join('')
+        || h?.videosCountText?.simpleText
+        || metaTexts.find((t) => /video/i.test(t)) || null;
+      const bannerUrl = thumbFrom(h?.banner) || imgFrom(vm?.banner);
+
+      if (bannerUrl) {
+        const banner = document.createElement('img');
+        banner.className = 'ch-banner';
+        banner.addEventListener('load', () => banner.classList.add('in'), { once: true });
+        banner.addEventListener('error', () => banner.classList.add('in'), { once: true });
+        banner.setAttribute('loading', 'lazy');
+        banner.setAttribute('decoding', 'async');
+        banner.src = bannerUrl;
+        header.appendChild(banner);
+      }
+      if (avatarUrl) {
+        const avatar = document.createElement('img');
+        avatar.className = 'ch-avatar';
+        avatar.addEventListener('load', () => avatar.classList.add('in'), { once: true });
+        avatar.addEventListener('error', () => avatar.classList.add('in'), { once: true });
+        avatar.setAttribute('loading', 'lazy');
+        avatar.setAttribute('decoding', 'async');
+        avatar.src = avatarUrl;
+        header.appendChild(avatar);
+      }
+      const nameEl = document.createElement('h1');
+      nameEl.className = 'ch-name';
+      nameEl.textContent = name || '';
+      const meta = document.createElement('div');
+      meta.className = 'ch-meta';
+      meta.textContent = [handle, subCount, videoCount].filter(Boolean).join(' · ');
+
+      const titleRow = document.createElement('div');
+      titleRow.className = 'ch-title-row';
+      const titleCol = document.createElement('div');
+      titleCol.className = 'ch-title-col';
+      titleCol.append(nameEl, meta);
+
+      const { btn: chSubscribeBtn, label: chSubscribeLabel } = pillButton(null, '', 'watch-subscribe');
+      let chSubscribed = readSubscribedState(res);
+      let chSubscribeBusy = false;
+      const setChSubscribeUI = () => {
+        chSubscribeBtn.replaceChildren();
+        if (chSubscribed) chSubscribeBtn.appendChild(ICONS.check());
+        chSubscribeBtn.appendChild(chSubscribeLabel);
+        chSubscribeBtn.classList.toggle('subscribed', chSubscribed);
+        chSubscribeBtn.setAttribute('aria-pressed', String(chSubscribed));
+        chSubscribeLabel.textContent = chSubscribed ? 'Subscribed' : 'Subscribe';
+      };
+      chSubscribeBtn.disabled = !browseId;
+      setChSubscribeUI();
+      chSubscribeBtn.addEventListener('click', async () => {
+        if (chSubscribeBtn.disabled || chSubscribeBusy || !browseId) return;
+        chSubscribeBusy = true;
+        const prevSubscribed = chSubscribed;
+        chSubscribed = !prevSubscribed;
+        setChSubscribeUI();
+        const subRes = chSubscribed
+          ? await innertube('subscription/subscribe', { channelIds: [browseId], params: 'EgIIAg%3D%3D' })
+          : await innertube('subscription/unsubscribe', { channelIds: [browseId], params: 'CgIIAg%3D%3D' });
+        if (!subscribeConfirmed(subRes, chSubscribed)) {
+          chSubscribed = prevSubscribed;
+          setChSubscribeUI();
+        }
+        chSubscribeBusy = false;
+      });
+
+      titleRow.append(titleCol, chSubscribeBtn);
+      header.appendChild(titleRow);
+
+      const tabsEl = document.createElement('div');
+      tabsEl.className = 'ch-tabs';
+      tabsEl.appendChild(makeTabBtn('videos', 'Videos'));
+      if (tabParams('playlists')) tabsEl.appendChild(makeTabBtn('playlists', 'Playlists'));
+      tabBtns.videos.classList.add('active');
+      header.appendChild(tabsEl);
+    };
+
+    const run = async () => {
+      browseId = await resolveBrowseId();
       if (!browseId) {
         showEmpty("Couldn't load this channel.");
         return;
       }
-      view.replaceChildren(header, grid, spinner);
-      loading = true;
-      spinner.classList.add('show');
-      try {
-        const params = tabParams('videos');
-        const res = await innertube('browse', params ? { browseId, params } : { browseId });
-        if (!res) {
-          showEmpty("Couldn't load this channel.");
-          return;
-        }
-
-        const getHeaderRenderer = (data) => (
-          findNode(data, (n) => n?.c4TabbedHeaderRenderer)?.c4TabbedHeaderRenderer
-          || findNode(data, (n) => n?.pageHeaderRenderer)?.pageHeaderRenderer
-          || null
-        );
-        const h = getHeaderRenderer(res);
-        if (h) {
-          const imgFrom = (node) => {
-            let best = null;
-            walk(node, (n) => {
-              if (best) return;
-              const list = Array.isArray(n.sources) ? n.sources : (Array.isArray(n.thumbnails) ? n.thumbnails : null);
-              if (list && list.length) {
-                const u = list[list.length - 1]?.url;
-                if (u) best = u;
-              }
-            });
-            return best;
-          };
-          const vm = h?.content?.pageHeaderViewModel;
-          const metaTexts = [];
-          walk(vm?.metadata, (n) => {
-            if (typeof n.content === 'string' && n.content && n.content.length < 40) metaTexts.push(n.content);
-          });
-          const name = (typeof h?.title === 'string' ? h.title : null)
-            || h?.title?.runs?.[0]?.text || h?.title?.simpleText
-            || vm?.title?.dynamicTextViewModel?.text?.content || null;
-          const handle = h?.channelHandleText?.runs?.[0]?.text || h?.channelHandleText?.simpleText
-            || metaTexts.find((t) => t.startsWith('@')) || null;
-          const avatarUrl = thumbFrom(h?.avatar) || imgFrom(vm?.image);
-          const subCount = h?.subscriberCountText?.simpleText || h?.subscriberCountText?.runs?.[0]?.text
-            || metaTexts.find((t) => /subscriber/i.test(t)) || null;
-          const videoCount = (h?.videosCountText?.runs || []).map((r) => r?.text || '').join('')
-            || h?.videosCountText?.simpleText
-            || metaTexts.find((t) => /video/i.test(t)) || null;
-          const bannerUrl = thumbFrom(h?.banner) || imgFrom(vm?.banner);
-
-          if (bannerUrl) {
-            const banner = document.createElement('img');
-            banner.className = 'ch-banner';
-            banner.addEventListener('load', () => banner.classList.add('in'), { once: true });
-            banner.addEventListener('error', () => banner.classList.add('in'), { once: true });
-            banner.setAttribute('loading', 'lazy');
-            banner.setAttribute('decoding', 'async');
-            banner.src = bannerUrl;
-            header.appendChild(banner);
-          }
-          if (avatarUrl) {
-            const avatar = document.createElement('img');
-            avatar.className = 'ch-avatar';
-            avatar.addEventListener('load', () => avatar.classList.add('in'), { once: true });
-            avatar.addEventListener('error', () => avatar.classList.add('in'), { once: true });
-            avatar.setAttribute('loading', 'lazy');
-            avatar.setAttribute('decoding', 'async');
-            avatar.src = avatarUrl;
-            header.appendChild(avatar);
-          }
-          const nameEl = document.createElement('h1');
-          nameEl.className = 'ch-name';
-          nameEl.textContent = name || '';
-          const meta = document.createElement('div');
-          meta.className = 'ch-meta';
-          meta.textContent = [handle, subCount, videoCount].filter(Boolean).join(' · ');
-
-          const titleRow = document.createElement('div');
-          titleRow.className = 'ch-title-row';
-          const titleCol = document.createElement('div');
-          titleCol.className = 'ch-title-col';
-          titleCol.append(nameEl, meta);
-
-          const chSubscribeBtn = document.createElement('button');
-          chSubscribeBtn.type = 'button';
-          chSubscribeBtn.className = 'watch-subscribe';
-          const chSubscribeLabel = document.createElement('span');
-          let chSubscribed = readSubscribedState(res);
-          let chSubscribeBusy = false;
-          const setChSubscribeUI = () => {
-            chSubscribeBtn.replaceChildren();
-            if (chSubscribed) chSubscribeBtn.appendChild(ICONS.check());
-            chSubscribeBtn.appendChild(chSubscribeLabel);
-            chSubscribeBtn.classList.toggle('subscribed', chSubscribed);
-            chSubscribeBtn.setAttribute('aria-pressed', String(chSubscribed));
-            chSubscribeLabel.textContent = chSubscribed ? 'Subscribed' : 'Subscribe';
-          };
-          chSubscribeBtn.disabled = !browseId;
-          setChSubscribeUI();
-          chSubscribeBtn.addEventListener('click', async () => {
-            if (chSubscribeBtn.disabled || chSubscribeBusy || !browseId) return;
-            chSubscribeBusy = true;
-            const prevSubscribed = chSubscribed;
-            chSubscribed = !prevSubscribed;
-            setChSubscribeUI();
-            const subRes = chSubscribed
-              ? await innertube('subscription/subscribe', { channelIds: [browseId], params: 'EgIIAg%3D%3D' })
-              : await innertube('subscription/unsubscribe', { channelIds: [browseId], params: 'CgIIAg%3D%3D' });
-            if (!subscribeConfirmed(subRes, chSubscribed)) {
-              chSubscribed = prevSubscribed;
-              setChSubscribeUI();
-            }
-            chSubscribeBusy = false;
-          });
-
-          titleRow.append(titleCol, chSubscribeBtn);
-          header.appendChild(titleRow);
-
-          const tabsEl = document.createElement('div');
-          tabsEl.className = 'ch-tabs';
-          tabsEl.appendChild(makeTabBtn('videos', 'Videos'));
-          if (tabParams('playlists')) tabsEl.appendChild(makeTabBtn('playlists', 'Playlists'));
-          tabBtns.videos.classList.add('active');
-          header.appendChild(tabsEl);
-        }
-
-        const items = extractVideos(res, seen);
-        continuationToken = findContinuationToken(res);
-        for (const item of items) grid.insertBefore(createCard(item), sentinel);
-      } finally {
-        loading = false;
-        spinner.classList.remove('show');
-      }
+      view.replaceChildren(header, list.container, list.spinner);
+      await list.loadInitial();
     };
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', runInitial, { once: true });
+      document.addEventListener('DOMContentLoaded', run, { once: true });
     } else {
-      runInitial();
+      run();
     }
 
-    return () => { io.disconnect(); };
+    return list.cleanup;
   };
 
   const mountFeed = (browseIds, heading, opts = {}) => {
     const ids = Array.isArray(browseIds) ? browseIds : [browseIds];
     const useInitialData = !!opts.useInitialData;
-    const seen = new Set();
 
     const headingEl = document.createElement('h1');
     headingEl.className = 'page-heading';
     headingEl.textContent = heading;
-
-    const grid = document.createElement('div');
-    grid.className = 'grid';
-    const spinner = document.createElement('div');
-    spinner.className = 'spinner';
-    spinner.textContent = 'Loading…';
-    const sentinel = document.createElement('div');
-    sentinel.className = 'sentinel';
-    grid.append(sentinel);
-
-    const showEmpty = (msg) => {
-      const empty = document.createElement('div');
-      empty.className = 'empty';
-      empty.textContent = msg;
-      view.replaceChildren(headingEl, empty);
-    };
-
-    let appendScheduled = false;
-    let pendingItems = null;
-    const tryAppend = () => {
-      appendScheduled = false;
-      if (Date.now() - lastScroll < 200) {
-        appendScheduled = true;
-        setTimeout(tryAppend, 200);
-        return;
-      }
-      const items = pendingItems;
-      pendingItems = null;
-      if (items) appendCards(items);
-    };
-    const scheduleAppend = (items) => {
-      pendingItems = pendingItems ? pendingItems.concat(items) : items;
-      if (appendScheduled) return;
-      appendScheduled = true;
-      idle(tryAppend);
-    };
-
-    const MAX_CARDS = 200;
-    const capGrid = () => {
-      const cards = grid.querySelectorAll('.c');
-      const excess = cards.length - MAX_CARDS;
-      if (excess <= 0) return;
-      const heightBefore = grid.getBoundingClientRect().height;
-      for (let i = 0; i < excess; i++) {
-        cards[i].remove();
-      }
-      const heightAfter = grid.getBoundingClientRect().height;
-      const removedHeight = heightBefore - heightAfter;
-      let spacer = grid.querySelector('.spacer');
-      if (!spacer) {
-        spacer = document.createElement('div');
-        spacer.className = 'spacer';
-        grid.insertBefore(spacer, grid.firstChild);
-      }
-      const current = parseFloat(spacer.style.height) || 0;
-      spacer.style.height = (current + removedHeight) + 'px';
-    };
-
-    const appendCards = (items) => {
-      for (const item of items) {
-        grid.insertBefore(createCard(item), sentinel);
-      }
-      capGrid();
-    };
-
-    let continuationToken = null;
-    let loading = false;
-    const loadMore = async () => {
-      if (loading || !continuationToken) return;
-      loading = true;
-      spinner.classList.add('show');
-      try {
-        const res = await innertube('browse', { continuation: continuationToken });
-        if (!res) return;
-        const items = extractVideos(res, seen);
-        continuationToken = findContinuationToken(res);
-        scheduleAppend(items);
-      } finally {
-        loading = false;
-        spinner.classList.remove('show');
-      }
-    };
-
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) loadMore();
-    }, { rootMargin: '600px' });
-    io.observe(sentinel);
 
     const setPlaylistTitle = (res) => {
       try {
@@ -2874,7 +2676,7 @@
       } catch (e) {}
     };
 
-    const fetchFromApi = async () => {
+    const fetchFromApi = async (seen) => {
       for (const id of ids) {
         const res = await innertube('browse', { browseId: id });
         if (!res) continue;
@@ -2886,44 +2688,39 @@
       return null;
     };
 
-    const runInitial = async () => {
-      view.replaceChildren(headingEl, grid, spinner);
-      loading = true;
-      spinner.classList.add('show');
-      try {
-        if (useInitialData) {
+    const list = createListView({
+      itemClass: 'c',
+      containerClass: 'grid',
+      renderItem: createCard,
+      fetchInitial: async (seen) => {
+        if (useInitialData && !spaNav) {
           const pageData = window.ytInitialData;
           const initialItems = pageData ? extractVideos(pageData, seen) : [];
           if (initialItems.length) {
             if (ids[0].startsWith('VL')) setPlaylistTitle(pageData);
-            continuationToken = findContinuationToken(pageData);
-            for (const item of initialItems) grid.insertBefore(createCard(item), sentinel);
-            return;
+            return { items: initialItems, token: findContinuationToken(pageData) };
           }
         }
-        const result = await fetchFromApi();
-        if (!result) {
-          showEmpty('Nothing here yet.');
-          return;
-        }
-        continuationToken = result.token;
-        if (result.items.length === 0 && !continuationToken) {
-          showEmpty('Nothing here yet.');
-          return;
-        }
-        for (const item of result.items) grid.insertBefore(createCard(item), sentinel);
-      } finally {
-        loading = false;
-        spinner.classList.remove('show');
-      }
-    };
+        const result = await fetchFromApi(seen);
+        return result || { items: [], token: null };
+      },
+      fetchMore: async (token, seen) => {
+        const res = await innertube('browse', { continuation: token });
+        if (!res) return null;
+        return { items: extractVideos(res, seen), token: findContinuationToken(res) };
+      },
+      emptyMessage: 'Nothing here yet.',
+    });
+
+    view.replaceChildren(headingEl, list.container, list.spinner);
+    const run = () => list.loadInitial();
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', runInitial, { once: true });
+      document.addEventListener('DOMContentLoaded', run, { once: true });
     } else {
-      runInitial();
+      run();
     }
 
-    return () => { io.disconnect(); };
+    return list.cleanup;
   };
 
   const mountUnhandled = () => {
@@ -3090,37 +2887,15 @@
 
     const likes = document.createElement('div');
     likes.className = 'watch-likes';
-    const likeBtn = document.createElement('button');
-    likeBtn.type = 'button';
-    likeBtn.className = 'watch-like-btn';
-    const likeLabel = document.createElement('span');
-    likeBtn.append(ICONS.thumbsUp(), likeLabel);
+    const { btn: likeBtn, label: likeLabel } = pillButton(ICONS.thumbsUp, '', 'watch-like-btn');
     const likeDivider = document.createElement('div');
     likeDivider.className = 'watch-like-divider';
-    const dislikeBtn = document.createElement('button');
-    dislikeBtn.type = 'button';
-    dislikeBtn.className = 'watch-dislike-btn';
-    dislikeBtn.appendChild(ICONS.thumbsDown());
+    const { btn: dislikeBtn } = pillButton(ICONS.thumbsDown, null, 'watch-dislike-btn');
     likes.append(likeBtn, likeDivider, dislikeBtn);
 
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'watch-action-btn';
-    const saveLabel = document.createElement('span');
-    saveBtn.append(ICONS.save(), saveLabel);
-
-    const shareBtn = document.createElement('button');
-    shareBtn.type = 'button';
-    shareBtn.className = 'watch-action-btn';
-    const shareLabel = document.createElement('span');
-    shareLabel.textContent = 'Share';
-    shareBtn.append(ICONS.share(), shareLabel);
-
-    const subscribeBtn = document.createElement('button');
-    subscribeBtn.type = 'button';
-    subscribeBtn.className = 'watch-subscribe';
-    const subscribeLabel = document.createElement('span');
-    subscribeBtn.append(subscribeLabel);
+    const { btn: saveBtn, label: saveLabel } = pillButton(ICONS.save, '', 'watch-action-btn');
+    const { btn: shareBtn, label: shareLabel } = pillButton(ICONS.share, 'Share', 'watch-action-btn');
+    const { btn: subscribeBtn, label: subscribeLabel } = pillButton(null, '', 'watch-subscribe');
 
     actions.append(likes, saveBtn, shareBtn, subscribeBtn);
     channelRow.append(avatar, channelInfo, channelSpacer, actions);
@@ -3281,12 +3056,7 @@
 
     const commentsPanel = document.createElement('div');
     commentsPanel.className = 'comments';
-    const commentsToggle = document.createElement('button');
-    commentsToggle.className = 'comments-toggle';
-    const commentsChevron = ICONS.chevron();
-    const commentsLabel = document.createElement('span');
-    commentsLabel.textContent = 'Comments';
-    commentsToggle.append(commentsChevron, commentsLabel);
+    const { btn: commentsToggle, icon: commentsChevron, label: commentsLabel } = pillButton(ICONS.chevron, 'Comments', 'comments-toggle');
     const commentsBody = document.createElement('div');
     commentsBody.className = 'comments-body collapsed';
     const commentsList = document.createElement('div');
@@ -3912,7 +3682,7 @@
     if (!type) type = 'unhandled';
 
     const key = (type === 'search' || type === 'feed') ? path + location.search : path;
-    if (key === currentKey) { syncNav(); return; }
+    if (key === currentKey) { syncNav(); spaNav = false; return; }
     if (cleanup) { cleanup(); cleanup = null; }
     currentKey = key;
     syncNav();
@@ -3922,7 +3692,22 @@
       : type === 'channel' ? mountChannel()
       : type === 'feed' ? mountFeed(browseId, heading, { useInitialData })
       : mountUnhandled();
+    spaNav = false;
   };
+
+  const spaRoute = () => { spaNav = true; route(); };
+  root.addEventListener('click', (e) => {
+    if (e.button !== 0) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = e.target.closest('a');
+    if (!a || a.target === '_blank') return;
+    if (a.origin !== location.origin) return;
+    if (a.pathname === '/watch') return;
+    e.preventDefault();
+    history.pushState({}, '', a.href);
+    spaRoute();
+  });
+  window.addEventListener('popstate', spaRoute);
 
   window.addEventListener('yt-navigate-finish', route);
   route();
