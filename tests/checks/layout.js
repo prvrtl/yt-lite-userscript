@@ -298,6 +298,112 @@ function layoutInPage() {
     }
   }
 
+  // --- (k) SURFACE CLIPPED BY AN OVERFLOW ANCESTOR (inline axis) ---
+  // The bug this catches: `.rc { padding: 6px; margin: -6px }` bleeds the
+  // hover pill outward, but `.watch-right` is a scroll container with no
+  // horizontal padding and overflow clips at the PADDING box — so the left
+  // 6px of the pill was shaved off while top/bottom kept their inset, and the
+  // thumbnail sat flush against the pill's left edge. Any element that paints
+  // a surface worth preserving (background, rounded corners, or an outward
+  // negative inline margin) must fit inside the padding box of its nearest
+  // horizontal clipper. Vertical overflow is NOT checked: scrolling down a
+  // scroll container is the whole point of one.
+  const chrome = document.querySelector('#itube-bar');
+  const stage = document.querySelector('#itube-stage');
+  const isPlayerChrome = (el) =>
+    (chrome && chrome.contains(el)) || (stage && stage.contains(el));
+
+  const paintsSurface = (cs) => {
+    const bg = cs.backgroundColor;
+    if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return true;
+    if (parseFloat(cs.borderRadius) > 0) return true;
+    if (parseFloat(cs.marginLeft) < 0 || parseFloat(cs.marginRight) < 0) return true;
+    return false;
+  };
+
+  // Nearest ancestor that clips horizontally, searching up to (and including)
+  // #itube. `overflow-x: visible` is the only non-clipping value.
+  const clipperOf = (el) => {
+    let node = el.parentElement;
+    while (node) {
+      if (getComputedStyle(node).overflowX !== 'visible') return node;
+      if (node === itube) return null;
+      node = node.parentElement;
+    }
+    return null;
+  };
+
+  let clipped = 0;
+  for (const { el, rect, cs } of visible) {
+    if (clipped >= 3) break;
+    if (cs.position === 'fixed') continue;
+    if (isPlayerChrome(el)) continue;
+    if (!paintsSurface(cs)) continue;
+    const clipper = clipperOf(el);
+    if (!clipper) continue;
+    const cr = clipper.getBoundingClientRect();
+    const ccs = getComputedStyle(clipper);
+    const boxLeft = cr.left + parseFloat(ccs.borderLeftWidth || 0);
+    const boxRight = cr.right - parseFloat(ccs.borderRightWidth || 0);
+    if (rect.left < boxLeft - 1) {
+      report('surface-clipped', `${describe(el)} is clipped by ${describe(clipper)} on the left: element left=${rect.left.toFixed(1)} clip box left=${boxLeft.toFixed(1)} (a padded surface whose bleed is cut off renders with asymmetric insets)`);
+      clipped++;
+      continue;
+    }
+    if (rect.right > boxRight + 1) {
+      report('surface-clipped', `${describe(el)} is clipped by ${describe(clipper)} on the right: element right=${rect.right.toFixed(1)} clip box right=${boxRight.toFixed(1)} (a padded surface whose bleed is cut off renders with asymmetric insets)`);
+      clipped++;
+    }
+  }
+
+  // --- (l) INSET SYMMETRY on card surfaces ---
+  // Independent of cause: whatever the reason (clipping, a stray one-sided
+  // margin, an asymmetric padding shorthand), the rendered gap between a card
+  // and its content must look the same on all four sides. Measured from the
+  // union box of the card's laid-out children, so it reflects what a human
+  // actually sees rather than what the CSS claims. Only the first 8 of each
+  // selector are inspected — a 40-card grid is homogeneous and would just
+  // repeat the same violation 40 times.
+  let asym = 0;
+  for (const sel of ['.c', '.rc', '.row']) {
+    for (const el of Array.from(itube.querySelectorAll(sel)).slice(0, 8)) {
+      if (asym >= 3) break;
+      const cs = getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+
+      const kids = Array.from(el.children).filter((k) => {
+        const kcs = getComputedStyle(k);
+        if (kcs.display === 'none') return false;
+        if (kcs.position === 'absolute' || kcs.position === 'fixed') return false;
+        const kr = k.getBoundingClientRect();
+        return kr.width > 0 && kr.height > 0;
+      });
+      if (!kids.length) continue;
+
+      const rects = kids.map((k) => k.getBoundingClientRect());
+      const union = {
+        left: Math.min(...rects.map((r) => r.left)),
+        right: Math.max(...rects.map((r) => r.right)),
+        top: Math.min(...rects.map((r) => r.top)),
+        bottom: Math.max(...rects.map((r) => r.bottom)),
+      };
+      const l = union.left - rect.left;
+      const r = rect.right - union.right;
+      const t = union.top - rect.top;
+      const b = rect.bottom - union.bottom;
+
+      const gaps = [l, r, t, b];
+      const spread = Math.max(...gaps) - Math.min(...gaps);
+      if (spread > 1.5) {
+        report('inset-symmetry', `${describe(el)} has asymmetric insets: left=${l.toFixed(1)} right=${r.toFixed(1)} top=${t.toFixed(1)} bottom=${b.toFixed(1)} (all four should match the padding)`);
+        asym++;
+      }
+    }
+    if (asym >= 3) break;
+  }
+
   return violations;
 }
 

@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.1.2
+// @version      4.1.3
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -452,6 +452,7 @@
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
       gap: 24px 16px;
+      align-items: start;
     }
     #itube .spacer {
       grid-column: 1 / -1;
@@ -1027,7 +1028,6 @@
       text-decoration: none;
       color: var(--text);
       padding: 6px;
-      margin: -6px;
       border-radius: var(--r-sm);
     }
     #itube .rc:hover {

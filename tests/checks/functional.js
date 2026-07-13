@@ -23,12 +23,23 @@ async function isPlayerMuted(page) {
   });
 }
 
+// The <video> node is briefly absent while YouTube's player swaps elements
+// around a preroll ad, so a bare querySelector here returns null and every
+// caller that reads `.currentTime` off it throws. Poll for it, and if it is
+// genuinely gone, return a sentinel rather than null: callers stay
+// dereference-safe and the `video-ready` check reports the absence honestly
+// instead of the run dying with a TypeError.
 async function videoState(page) {
-  return page.evaluate(() => {
-    const v = document.querySelector('#itube-stage video');
-    if (!v) return null;
-    return { readyState: v.readyState, paused: v.paused, currentTime: v.currentTime, duration: v.duration };
-  });
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const state = await page.evaluate(() => {
+      const v = document.querySelector('#itube-stage video');
+      if (!v) return null;
+      return { readyState: v.readyState, paused: v.paused, currentTime: v.currentTime, duration: v.duration };
+    });
+    if (state) return state;
+    await page.waitForTimeout(300);
+  }
+  return { missing: true, readyState: 0, paused: true, currentTime: 0, duration: NaN };
 }
 
 // #itube-bar is hidden (opacity 0, visibility hidden, pointer-events none)
