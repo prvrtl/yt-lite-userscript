@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.4.0
+// @version      4.5.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -154,6 +154,8 @@
   const WATCH_RESUME_MS = 6000;
   const AD_BLANK_MAX_MS = 30000;
   const AD_RESTORE_MS = 8000;
+  const SUGGEST_DEBOUNCE_MS = 150;
+  const MAX_SUGGESTIONS = 10;
   const QUALITY_LABELS = {
     highres: '4320p', hd2160: '2160p', hd1440: '1440p', hd1080: '1080p',
     hd720: '720p', large: '480p', medium: '360p', small: '240p', tiny: '144p',
@@ -245,6 +247,43 @@
     }
     #itube .search:focus {
       border: 2px solid var(--accent);
+    }
+    #itube .search-suggest {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 6px);
+      z-index: 30;
+      display: none;
+      flex-direction: column;
+      padding: 6px;
+      border-radius: var(--r-md);
+      background: rgba(18, 18, 24, .92);
+      backdrop-filter: blur(22px) saturate(1.7);
+      -webkit-backdrop-filter: blur(22px) saturate(1.7);
+      border: 1px solid rgba(255, 255, 255, .17);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 8px 32px rgba(0, 0, 0, .35);
+    }
+    #itube .search-suggest.show {
+      display: flex;
+    }
+    #itube .search-suggest-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 32px;
+      padding: 0 10px;
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13.5px;
+      cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #itube .search-suggest-row.active,
+    #itube .search-suggest-row:hover {
+      background: rgba(255, 255, 255, .1);
     }
     #itube .hd-right {
       flex: 0 0 auto;
@@ -1180,6 +1219,7 @@
       padding: 8px;
       margin: -8px;
       border-radius: 14px;
+      min-width: 0;
     }
     #itube .row:hover {
       background: var(--hover);
@@ -1380,6 +1420,49 @@
       height: 2px;
       background: var(--accent);
       border-radius: var(--r-pill);
+    }
+    #itube .ch-about {
+      max-width: 640px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding-top: 24px;
+    }
+    #itube .ch-about-desc {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+    #itube .ch-about-stats {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #itube .ch-about-row {
+      display: flex;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    #itube .ch-about-row strong {
+      color: var(--text);
+      font-weight: 600;
+      min-width: 110px;
+      flex: none;
+    }
+    #itube .ch-about-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 20px;
+    }
+    #itube .ch-about-link {
+      font-size: 13px;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    #itube .ch-about-link:hover {
+      text-decoration: underline;
     }
     #itube-bar {
       position: absolute;
@@ -1619,6 +1702,68 @@
       height: 720px !important;
       opacity: 0 !important;
       pointer-events: none !important;
+    }
+    @media (max-width: 1000px) {
+      #itube .sidebar {
+        width: 64px;
+        padding: 12px 4px 16px;
+      }
+      #itube .nav-row {
+        justify-content: center;
+        padding: 0;
+      }
+      #itube .nav-row span,
+      #itube .nav-section-label,
+      #itube .nav-chan span {
+        display: none;
+      }
+      #itube .nav-chan {
+        justify-content: center;
+        padding: 4px 0;
+      }
+    }
+    @media (max-width: 600px) {
+      #itube .sidebar {
+        display: none;
+      }
+      #itube .hd {
+        gap: 12px;
+        padding: 0 12px;
+      }
+      #itube .hd-left {
+        flex: 0 0 auto;
+      }
+      #itube .brand-word {
+        display: none;
+      }
+      #itube .content {
+        padding: 12px;
+      }
+      #itube .watch {
+        grid-template-columns: 1fr;
+      }
+      #itube .watch-right {
+        position: static;
+        max-height: none;
+      }
+      #itube .watch-channel {
+        flex-wrap: wrap;
+        row-gap: 10px;
+      }
+      #itube .watch-channel-spacer {
+        flex: 1 1 100%;
+        min-width: 100%;
+        height: 0;
+      }
+      #itube .watch-actions {
+        flex: 1 1 100%;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      #itube .search-filters {
+        flex-wrap: wrap;
+        row-gap: 8px;
+      }
     }
   `;
 
@@ -2561,16 +2706,117 @@
   search.type = 'text';
   search.className = 'search';
   search.placeholder = 'Search';
-  search.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    const q = search.value.trim();
-    if (!q) return;
-    e.preventDefault();
+  search.setAttribute('autocomplete', 'off');
+
+  const suggestEl = document.createElement('div');
+  suggestEl.className = 'search-suggest';
+
+  let suggestItems = [];
+  let suggestIndex = -1;
+  let suggestGeneration = 0;
+  let suggestTimer = null;
+
+  const hideSuggestions = () => {
+    if (suggestTimer) { clearTimeout(suggestTimer); suggestTimer = null; }
+    suggestGeneration++;
+    suggestEl.classList.remove('show');
+    suggestEl.replaceChildren();
+    suggestItems = [];
+    suggestIndex = -1;
+  };
+
+  const submitSearch = (q) => {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    hideSuggestions();
     search.blur();
-    history.pushState({}, '', '/results?search_query=' + encodeURIComponent(q));
+    history.pushState({}, '', '/results?search_query=' + encodeURIComponent(trimmed));
     spaRoute();
+  };
+
+  const highlightSuggestion = (index) => {
+    const rows = suggestEl.querySelectorAll('.search-suggest-row');
+    rows.forEach((r, i) => r.classList.toggle('active', i === index));
+    suggestIndex = index;
+  };
+
+  const renderSuggestions = (items) => {
+    suggestEl.replaceChildren();
+    suggestItems = items;
+    suggestIndex = -1;
+    if (!items.length) {
+      suggestEl.classList.remove('show');
+      return;
+    }
+    for (const text of items) {
+      const row = document.createElement('div');
+      row.className = 'search-suggest-row';
+      row.textContent = text;
+      row.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        submitSearch(text);
+      });
+      suggestEl.appendChild(row);
+    }
+    suggestEl.classList.add('show');
+  };
+
+  const fetchSuggestions = async (q) => {
+    const gen = ++suggestGeneration;
+    try {
+      const res = await fetch('https://suggestqueries-clients6.youtube.com/complete/search?client=youtube&hl=en&ds=yt&xhr=t&q=' + encodeURIComponent(q), { credentials: 'omit' });
+      if (gen !== suggestGeneration || !res.ok) return;
+      const data = await res.json();
+      if (gen !== suggestGeneration) return;
+      const raw = Array.isArray(data?.[1]) ? data[1] : [];
+      const items = raw
+        .map((entry) => (Array.isArray(entry) ? entry[0] : null))
+        .filter((t) => typeof t === 'string')
+        .slice(0, MAX_SUGGESTIONS);
+      if (search.value.trim() === q) renderSuggestions(items);
+    } catch (e) {
+      console.warn('[itube] search suggestions failed', e);
+    }
+  };
+
+  search.addEventListener('input', () => {
+    const q = search.value.trim();
+    if (suggestTimer) clearTimeout(suggestTimer);
+    if (!q) { hideSuggestions(); return; }
+    suggestTimer = setTimeout(() => fetchSuggestions(q), SUGGEST_DEBOUNCE_MS);
   });
-  searchWrap.append(searchIcon, search);
+
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      if (!suggestItems.length) return;
+      e.preventDefault();
+      highlightSuggestion(suggestIndex < suggestItems.length - 1 ? suggestIndex + 1 : 0);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      if (!suggestItems.length) return;
+      e.preventDefault();
+      highlightSuggestion(suggestIndex > 0 ? suggestIndex - 1 : suggestItems.length - 1);
+      return;
+    }
+    if (e.key === 'Escape') {
+      hideSuggestions();
+      return;
+    }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    submitSearch(suggestIndex >= 0 ? suggestItems[suggestIndex] : search.value);
+  });
+
+  search.addEventListener('blur', () => {
+    setTimeout(hideSuggestions, 120);
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (!searchWrap.contains(e.target)) hideSuggestions();
+  });
+
+  searchWrap.append(searchIcon, search, suggestEl);
   const hdRight = document.createElement('div');
   hdRight.className = 'hd-right';
   const hdSignIn = document.createElement('a');
@@ -3133,7 +3379,7 @@
       return null;
     };
 
-    const CHANNEL_TABS = ['videos', 'playlists'];
+    const CHANNEL_TABS = ['videos', 'playlists', 'about'];
     const tabFromPath = () => {
       const seg = location.pathname.replace(/\/+$/, '').split('/').pop();
       return CHANNEL_TABS.includes(seg) ? seg : 'videos';
@@ -3145,6 +3391,9 @@
 
     let activeTab = tabFromPath();
     const tabBtns = {};
+    const aboutEl = document.createElement('div');
+    aboutEl.className = 'ch-about';
+    let aboutLoaded = false;
 
     let ownerName = '';
     const fillOwner = (items) => {
@@ -3192,7 +3441,13 @@
         setCurrentKey();
         tabSwitching = true;
         try {
-          await list.loadInitial();
+          if (key === 'about') {
+            view.replaceChildren(header, aboutEl);
+            await loadAbout();
+          } else {
+            view.replaceChildren(header, list.container, list.spinner);
+            await list.loadInitial();
+          }
         } finally {
           tabSwitching = false;
         }
@@ -3313,8 +3568,132 @@
       tabsEl.className = 'ch-tabs';
       tabsEl.appendChild(makeTabBtn('videos', 'Videos'));
       if (tabParams('playlists') || activeTab === 'playlists') tabsEl.appendChild(makeTabBtn('playlists', 'Playlists'));
+      tabsEl.appendChild(makeTabBtn('about', 'About'));
       (tabBtns[activeTab] || tabBtns.videos).classList.add('active');
       header.appendChild(tabsEl);
+    };
+
+    const asAboutText = (v) => {
+      if (v == null) return '';
+      if (typeof v === 'string') return v;
+      return v.content || v.simpleText || (Array.isArray(v.runs) ? v.runs.map((r) => r?.text || '').join('') : '') || '';
+    };
+
+    const fetchAboutPage = async () => {
+      try {
+        const res = await fetch(channelBase() + '/about', { credentials: 'include' });
+        if (!res.ok) return null;
+        const html = await res.text();
+        const marker = 'var ytInitialData = ';
+        const start = html.indexOf(marker);
+        if (start === -1) return null;
+        const from = start + marker.length;
+        let i = from;
+        let depth = 0;
+        let inStr = false;
+        let esc = false;
+        let strCh = '';
+        for (; i < html.length; i++) {
+          const c = html[i];
+          if (inStr) {
+            if (esc) esc = false;
+            else if (c === '\\') esc = true;
+            else if (c === strCh) inStr = false;
+            continue;
+          }
+          if (c === '"' || c === "'") { inStr = true; strCh = c; continue; }
+          if (c === '{') depth++;
+          else if (c === '}') {
+            depth--;
+            if (depth === 0) { i++; break; }
+          }
+        }
+        return JSON.parse(html.slice(from, i));
+      } catch (e) {
+        console.warn('[itube] channel about fetch failed', e);
+        return null;
+      }
+    };
+
+    const extractAboutLinks = (links) => {
+      if (!Array.isArray(links)) return [];
+      const out = [];
+      for (const entry of links) {
+        const vm = entry?.channelExternalLinkViewModel;
+        if (!vm) continue;
+        const label = asAboutText(vm.title) || asAboutText(vm.link);
+        if (!label) continue;
+        const cmd = vm.link?.commandRuns?.[0]?.onTap?.innertubeCommand;
+        const url = cmd?.commandMetadata?.webCommandMetadata?.url || cmd?.urlEndpoint?.url || null;
+        out.push({ label, url });
+      }
+      return out;
+    };
+
+    const buildAboutContent = (vm) => {
+      aboutEl.replaceChildren();
+      if (!vm) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = "Couldn't load channel info.";
+        aboutEl.appendChild(empty);
+        return;
+      }
+      const description = asAboutText(vm.description);
+      if (description) {
+        const descEl = document.createElement('div');
+        descEl.className = 'ch-about-desc';
+        descEl.textContent = description;
+        aboutEl.appendChild(descEl);
+      }
+      const stats = document.createElement('div');
+      stats.className = 'ch-about-stats';
+      const addRow = (label, value) => {
+        if (!value) return;
+        const row = document.createElement('div');
+        row.className = 'ch-about-row';
+        const strong = document.createElement('strong');
+        strong.textContent = label;
+        const span = document.createElement('span');
+        span.textContent = value;
+        row.append(strong, span);
+        stats.appendChild(row);
+      };
+      addRow('Joined', asAboutText(vm.joinedDateText));
+      addRow('Views', asAboutText(vm.viewCountText));
+      addRow('Subscribers', asAboutText(vm.subscriberCountText));
+      addRow('Country', asAboutText(vm.country));
+      if (stats.childElementCount) aboutEl.appendChild(stats);
+      const links = extractAboutLinks(vm.links);
+      if (links.length) {
+        const linksEl = document.createElement('div');
+        linksEl.className = 'ch-about-links';
+        for (const link of links) {
+          const a = document.createElement('a');
+          a.className = 'ch-about-link';
+          a.textContent = link.label;
+          a.href = link.url || '#';
+          linksEl.appendChild(a);
+        }
+        aboutEl.appendChild(linksEl);
+      }
+      if (!aboutEl.childElementCount) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = 'No channel info available.';
+        aboutEl.appendChild(empty);
+      }
+    };
+
+    const loadAbout = async () => {
+      if (aboutLoaded) return;
+      const data = await fetchAboutPage();
+      if (data) paintHeader(data);
+      const vm = findNode(data, (n) => n?.aboutChannelViewModel)?.aboutChannelViewModel
+        || findNode(data, (n) => n?.channelAboutFullMetadataRenderer)?.channelAboutFullMetadataRenderer
+        || null;
+      buildAboutContent(vm);
+      if (vm) aboutLoaded = true;
     };
 
     const run = async () => {
@@ -3323,8 +3702,13 @@
         showEmpty("Couldn't load this channel.");
         return;
       }
-      view.replaceChildren(header, list.container, list.spinner);
-      await list.loadInitial();
+      if (activeTab === 'about') {
+        view.replaceChildren(header, aboutEl);
+        await loadAbout();
+      } else {
+        view.replaceChildren(header, list.container, list.spinner);
+        await list.loadInitial();
+      }
     };
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', run, { once: true });

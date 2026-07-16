@@ -26,6 +26,9 @@ const {
   checkCommentsOffCopy,
   checkUserRouteClientSide,
   checkFiltersInUrl,
+  checkSearchSuggestions,
+  checkSuggestionsDontResurrectAfterSubmit,
+  checkAboutTab,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -176,6 +179,11 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
     }
     if (pageName === 'search') {
       violations = violations.concat(await checkFiltersInUrl(page));
+      violations = violations.concat(await checkSearchSuggestions(page));
+      violations = violations.concat(await checkSuggestionsDontResurrectAfterSubmit(page));
+    }
+    if (pageName === 'channel') {
+      violations = violations.concat(await checkAboutTab(page));
     }
     if (pageName !== 'watch') {
       violations = violations.concat(await checkHomeNavigation(page));

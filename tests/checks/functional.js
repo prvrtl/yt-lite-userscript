@@ -978,7 +978,19 @@ async function checkUnhandledPage(page) {
 // The `.body { max-width: 1720px; margin: 0 auto }` bug that shipped was
 // invisible at the default 1440px test viewport and only appeared on a wide
 // screen, so width is a dimension this suite has to actually exercise.
-async function checkResponsive(page, widths = [900, 2560]) {
+//
+// 400/560 exercise the narrow-phone breakpoints added for Wave 2 Chunk B:
+// below 1000px the sidebar must collapse (not sit at a rigid 200px forcing
+// everything else to be squeezed or clipped), and below 600px it must
+// disappear outright. The watch page's two-column
+// `minmax(0, 1fr) clamp(340px, 24vw, 460px)` grid used to leave the LEFT
+// (video) column with none of the room — at a narrow width the right column's
+// 340px floor ate the whole viewport and `#itube-stage`/`.watch-left`
+// shrank toward zero. That is the exact defect this check pins down: the
+// stage must keep a sane width instead of collapsing. Feed grids
+// (`.grid .c` / `.list .row`) must reflow to fewer columns rather than being
+// clipped by `.content`'s `overflow-x: hidden`.
+async function checkResponsive(page, widths = [400, 560, 900, 2560]) {
   const violations = [];
   const original = page.viewportSize();
   try {
@@ -989,6 +1001,9 @@ async function checkResponsive(page, widths = [900, 2560]) {
         const itube = document.querySelector('#itube');
         const sidebar = itube && itube.querySelector('.sidebar');
         const content = itube && itube.querySelector('.content');
+        const stage = document.querySelector('#itube-stage');
+        const watchLeft = itube && itube.querySelector('.watch-left');
+        const firstCard = itube && itube.querySelector('.grid .c, .list .row');
         const overflow = [];
         for (const sel of ['#itube', '.sidebar', '.content']) {
           const el = sel.startsWith('#') ? document.querySelector(sel) : itube && itube.querySelector(sel);
@@ -997,11 +1012,18 @@ async function checkResponsive(page, widths = [900, 2560]) {
             overflow.push(`${sel} scrollWidth=${el.scrollWidth} > clientWidth=${el.clientWidth}`);
           }
         }
+        const sidebarRect = sidebar ? sidebar.getBoundingClientRect() : null;
+        const contentRect = content ? content.getBoundingClientRect() : null;
         return {
           vw: window.innerWidth,
           docScrollWidth: document.documentElement.scrollWidth,
-          sidebarLeft: sidebar ? sidebar.getBoundingClientRect().left : null,
-          contentRight: content ? content.getBoundingClientRect().right : null,
+          sidebarLeft: sidebarRect ? sidebarRect.left : null,
+          sidebarWidth: sidebarRect ? sidebarRect.width : null,
+          contentRight: contentRect ? contentRect.right : null,
+          stageWidth: stage ? stage.getBoundingClientRect().width : null,
+          watchLeftWidth: watchLeft ? watchLeft.getBoundingClientRect().width : null,
+          cardRight: firstCard ? firstCard.getBoundingClientRect().right : null,
+          cardWidth: firstCard ? firstCard.getBoundingClientRect().width : null,
           overflow,
         };
       });
@@ -1019,6 +1041,35 @@ async function checkResponsive(page, widths = [900, 2560]) {
       }
       if (info.contentRight !== null && info.contentRight > info.vw + 1) {
         violations.push({ check: 'responsive-no-overflow', detail: `at width=${width} .content.right=${info.contentRight.toFixed(1)} exceeds the viewport (${info.vw})` });
+      }
+
+      if (width <= 600) {
+        if (info.sidebarWidth !== null && info.sidebarWidth > 4) {
+          violations.push({ check: 'responsive-sidebar-collapse', detail: `at width=${width} expected .sidebar to be hidden below 600px, got width=${info.sidebarWidth.toFixed(1)}` });
+        }
+      } else if (width < 1000) {
+        if (info.sidebarWidth !== null && info.sidebarWidth > 120) {
+          violations.push({ check: 'responsive-sidebar-collapse', detail: `at width=${width} expected .sidebar to collapse below 1000px, got width=${info.sidebarWidth.toFixed(1)}` });
+        }
+      }
+
+      if (width <= 600 && info.stageWidth !== null) {
+        const minSane = Math.min(240, info.vw * 0.5);
+        if (info.stageWidth < minSane) {
+          violations.push({ check: 'responsive-watch-stage-width', detail: `at width=${width} #itube-stage width=${info.stageWidth.toFixed(1)} collapsed below the sane minimum ${minSane.toFixed(1)}` });
+        }
+        if (info.watchLeftWidth !== null && info.watchLeftWidth < minSane) {
+          violations.push({ check: 'responsive-watch-stage-width', detail: `at width=${width} .watch-left width=${info.watchLeftWidth.toFixed(1)} collapsed below the sane minimum ${minSane.toFixed(1)}` });
+        }
+      }
+
+      if (width <= 600 && info.cardRight !== null && info.contentRight !== null) {
+        if (info.cardRight > info.contentRight + 1) {
+          violations.push({ check: 'responsive-grid-reflow', detail: `at width=${width} a feed card extends to ${info.cardRight.toFixed(1)}, past .content's right edge ${info.contentRight.toFixed(1)} (clipped instead of reflowed)` });
+        }
+        if (info.cardWidth !== null && info.cardWidth <= 0) {
+          violations.push({ check: 'responsive-grid-reflow', detail: `at width=${width} the first feed card rendered with zero width` });
+        }
       }
     }
   } finally {
@@ -1233,6 +1284,187 @@ async function checkFiltersInUrl(page) {
   return violations;
 }
 
+// The suggestions dropdown is fetched from a third-party endpoint
+// (suggestqueries-clients6.youtube.com) that can be flaky or briefly
+// throttled in CI, so a missing dropdown is a SKIP, not a FAIL — but once it
+// shows up, its keyboard behavior and submit behavior are asserted for real:
+// ArrowDown/ArrowUp must move the highlighted row, and Enter must submit the
+// HIGHLIGHTED suggestion (not just whatever was typed), landing on
+// /results?search_query=<that suggestion> without leaving the dropdown open.
+async function checkSearchSuggestions(page) {
+  const violations = [];
+  const input = await page.$('.search');
+  if (!input) {
+    violations.push({ check: 'search-suggestions-input', detail: 'expected a .search input in the header' });
+    return violations;
+  }
+
+  await input.click({ clickCount: 3 });
+  await page.keyboard.press('Backspace');
+  await input.type('liquid glass', { delay: 30 });
+  await page.waitForSelector('.search-suggest.show .search-suggest-row', { timeout: 5000 }).catch(() => {});
+  let rows = await page.$$('.search-suggest-row');
+  if (!rows.length) {
+    console.log('  search-suggestions: SKIP — no suggestions arrived (third-party endpoint variance), nothing to assert');
+    return violations;
+  }
+
+  const texts = await page.evaluate(() => [...document.querySelectorAll('.search-suggest-row')].map((r) => r.textContent));
+
+  await page.keyboard.press('ArrowDown');
+  let active = await page.evaluate(() => document.querySelector('.search-suggest-row.active')?.textContent || null);
+  if (active !== texts[0]) {
+    violations.push({ check: 'search-suggestions-keyboard', detail: `ArrowDown expected to highlight "${texts[0]}", got "${active}"` });
+  }
+  if (texts.length > 1) {
+    await page.keyboard.press('ArrowDown');
+    active = await page.evaluate(() => document.querySelector('.search-suggest-row.active')?.textContent || null);
+    if (active !== texts[1]) {
+      violations.push({ check: 'search-suggestions-keyboard', detail: `second ArrowDown expected to highlight "${texts[1]}", got "${active}"` });
+    }
+    await page.keyboard.press('ArrowUp');
+    active = await page.evaluate(() => document.querySelector('.search-suggest-row.active')?.textContent || null);
+    if (active !== texts[0]) {
+      violations.push({ check: 'search-suggestions-keyboard', detail: `ArrowUp expected to move back to "${texts[0]}", got "${active}"` });
+    }
+  }
+
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => location.pathname === '/results', { timeout: 5000 }).catch(() => {});
+  const afterEnter = await page.evaluate(() => ({
+    path: location.pathname,
+    q: new URLSearchParams(location.search).get('search_query'),
+    suggestVisible: !!document.querySelector('.search-suggest.show'),
+  }));
+  if (afterEnter.path !== '/results' || afterEnter.q !== texts[0]) {
+    violations.push({ check: 'search-suggestions-submit', detail: `expected Enter on the highlighted suggestion to navigate to /results?search_query=${encodeURIComponent(texts[0])}, got path=${afterEnter.path} q=${afterEnter.q}` });
+  }
+  if (afterEnter.suggestVisible) {
+    violations.push({ check: 'search-suggestions-submit', detail: 'the suggestions dropdown is still visible after submitting' });
+  }
+
+  const input2 = await page.$('.search');
+  await input2.click({ clickCount: 3 });
+  await page.keyboard.press('Backspace');
+  await input2.type('never gonna', { delay: 30 });
+  await page.waitForSelector('.search-suggest.show .search-suggest-row', { timeout: 5000 }).catch(() => {});
+  rows = await page.$$('.search-suggest-row');
+  if (!rows.length) {
+    console.log('  search-suggestions: SKIP (click phase) — no suggestions arrived for the second query');
+    return violations;
+  }
+  const clickText = await page.evaluate((el) => el.textContent, rows[0]);
+  await rows[0].click();
+  await page.waitForFunction((q) => new URLSearchParams(location.search).get('search_query') === q, clickText, { timeout: 5000 }).catch(() => {});
+  const afterClick = await page.evaluate(() => ({
+    path: location.pathname,
+    q: new URLSearchParams(location.search).get('search_query'),
+  }));
+  if (afterClick.path !== '/results' || afterClick.q !== clickText) {
+    violations.push({ check: 'search-suggestions-click', detail: `expected clicking a suggestion row to navigate to /results?search_query=${encodeURIComponent(clickText)}, got path=${afterClick.path} q=${afterClick.q}` });
+  }
+
+  return violations;
+}
+
+// Regression: hideSuggestions() used to clear only the dropdown DOM, not the
+// pending debounce timer or the in-flight fetch generation. So a suggestion
+// request that was still in flight when the user SUBMITTED (Enter within the
+// 150ms debounce, or clicking a video) resolved AFTER navigation and re-opened
+// the dropdown on the results/watch page over an unfocused input — the app
+// popping open a menu on a page the user had already left.
+//
+// checkSearchSuggestions can't catch this: it waits for the dropdown to appear
+// BEFORE pressing Enter, so by submit time there is no pending timer/fetch.
+// This reproduces the real condition — submit while a request is still pending
+// — deterministically by MOCKING the suggest endpoint (the live one is
+// third-party and its timing can't be relied on to land post-navigation).
+async function checkSuggestionsDontResurrectAfterSubmit(page) {
+  const violations = [];
+  const suggestRe = /suggestqueries.*\/complete\/search/;
+  // Canned reply keyed off the query, so the resurrected dropdown (if the bug
+  // is present) has real rows to render and `search.value === q` still holds
+  // after mountSearch re-sets the input value post-navigation.
+  await page.route(suggestRe, (route) => {
+    const q = new URL(route.request().url()).searchParams.get('q') || 'x';
+    const body = JSON.stringify([q, [[q + ' one'], [q + ' two'], [q + ' three']]]);
+    return route.fulfill({ status: 200, contentType: 'application/json', body });
+  });
+  try {
+    const input = await page.$('.search');
+    if (!input) {
+      violations.push({ check: 'suggestions-resurrect-input', detail: 'expected a .search input in the header' });
+      return violations;
+    }
+    await input.click({ clickCount: 3 });
+    await page.keyboard.press('Backspace');
+    // Type then submit immediately — the debounce timer scheduled by the last
+    // keystroke is still pending when Enter fires, which is the exact bug
+    // condition. (A short per-key delay keeps the whole type well under 150ms.)
+    await input.type('resurrect probe', { delay: 5 });
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => location.pathname === '/results', { timeout: 5000 }).catch(() => {});
+    // Well past the 150ms debounce plus the (instant, mocked) fetch: a
+    // resurrected dropdown would have rendered by now.
+    await page.waitForTimeout(700);
+    const visible = await page.evaluate(() => !!document.querySelector('.search-suggest.show'));
+    if (visible) {
+      violations.push({ check: 'suggestions-no-resurrect-after-submit', detail: 'the suggestions dropdown reappeared after the search was submitted — a debounce timer or in-flight suggestion request outlived hideSuggestions() and re-opened the dropdown post-navigation, over an unfocused input on a page the user already left' });
+    }
+  } finally {
+    await page.unroute(suggestRe).catch(() => {});
+  }
+  return violations;
+}
+
+// The About tab has to behave like Videos/Playlists: a real tab button that
+// mounts content client-side. Reuses the doc-load counting pattern from
+// checkUserRouteClientSide — the failure mode this guards against is the tab
+// silently falling back to a full navigation (or not existing at all).
+async function checkAboutTab(page) {
+  const violations = [];
+  const aboutHandle = await page.evaluateHandle(() => (
+    [...document.querySelectorAll('.ch-tab')].find((b) => b.textContent.trim() === 'About') || null
+  ));
+  const aboutBtn = aboutHandle.asElement();
+  if (!aboutBtn) {
+    violations.push({ check: 'about-tab-exists', detail: 'expected a "About" .ch-tab button beside Videos/Playlists' });
+    return violations;
+  }
+
+  const mark = await stampMark(page);
+  const rec = recordMainFrameDocLoads(page);
+  try {
+    await aboutBtn.click();
+    await page.waitForFunction(() => location.pathname.endsWith('/about'), { timeout: 15000 }).catch(() => {});
+    await page.waitForSelector('.ch-about-desc, .ch-about-stats, .ch-about .empty', { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(800);
+  } finally {
+    rec.stop();
+  }
+  const survived = await markSurvived(page, mark);
+
+  const info = await page.evaluate(() => ({
+    path: location.pathname,
+    hasAbout: !!document.querySelector('.ch-about'),
+    hasDescOrStats: !!(document.querySelector('.ch-about-desc') || document.querySelector('.ch-about-stats')),
+  }));
+
+  if (!info.path.endsWith('/about')) {
+    violations.push({ check: 'about-tab-url', detail: `expected the URL to end in /about after clicking the About tab, got "${info.path}"` });
+  }
+  if (!survived) {
+    violations.push({ check: 'about-tab-client-side', detail: 'clicking the About tab wiped window state — the page reloaded' });
+  }
+  if (rec.urls.length > 0) {
+    violations.push({ check: 'about-tab-client-side', detail: `clicking the About tab caused ${rec.urls.length} main-frame document load(s), expected a client-side mount: ${rec.urls.join(' , ')}` });
+  }
+  if (!info.hasAbout || !info.hasDescOrStats) {
+    violations.push({ check: 'about-tab-content', detail: 'expected the About tab to mount a description/stats block (.ch-about-desc or .ch-about-stats)' });
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkYtdAppHidden,
@@ -1249,4 +1481,7 @@ module.exports = {
   checkCommentsOffCopy,
   checkUserRouteClientSide,
   checkFiltersInUrl,
+  checkSearchSuggestions,
+  checkSuggestionsDontResurrectAfterSubmit,
+  checkAboutTab,
 };
