@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.7.0
+// @version      4.8.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -2222,10 +2222,17 @@
 
   const likeConfirmed = (res) => mutationConfirmed(res, () => true);
 
-  const subscribeConfirmed = (res, want) => mutationConfirmed(res, (n) => {
-    const u = n.updateSubscribeButtonAction;
-    return !!u && typeof u.subscribed === 'boolean' && u.subscribed === want;
-  });
+  const subscribeConfirmed = (res, want) => {
+    if (!res || res.error) return false;
+    let blocked = false;
+    let contradicted = false;
+    walk(res, (n) => {
+      if (n.openPopupAction || n.signInEndpoint || n.signalServiceEndpoint?.signal === 'CLIENT_SIGNAL') blocked = true;
+      const u = n.updateSubscribeButtonAction;
+      if (u && typeof u.subscribed === 'boolean' && u.subscribed !== want) contradicted = true;
+    });
+    return !blocked && !contradicted;
+  };
 
   const playlistEditConfirmed = (res) => !!res && !res.error && res.status === 'STATUS_SUCCEEDED';
 
@@ -3750,8 +3757,8 @@
         chSubscribed = !prevSubscribed;
         setChSubscribeUI();
         const subRes = chSubscribed
-          ? await innertube('subscription/subscribe', { channelIds: [browseId], params: 'EgIIAg%3D%3D' })
-          : await innertube('subscription/unsubscribe', { channelIds: [browseId], params: 'CgIIAg%3D%3D' });
+          ? await innertube('subscription/subscribe', { channelIds: [browseId], params: 'EgIIAg==' })
+          : await innertube('subscription/unsubscribe', { channelIds: [browseId], params: 'CgIIAg==' });
         if (!subscribeConfirmed(subRes, chSubscribed)) {
           chSubscribed = prevSubscribed;
           setChSubscribeUI();
@@ -4458,8 +4465,8 @@
       subscribed = !prevSubscribed;
       setSubscribeUI();
       const res = subscribed
-        ? await innertube('subscription/subscribe', { channelIds: [actionsChannelId], params: 'EgIIAg%3D%3D' })
-        : await innertube('subscription/unsubscribe', { channelIds: [actionsChannelId], params: 'CgIIAg%3D%3D' });
+        ? await innertube('subscription/subscribe', { channelIds: [actionsChannelId], params: 'EgIIAg==' })
+        : await innertube('subscription/unsubscribe', { channelIds: [actionsChannelId], params: 'CgIIAg==' });
       if (!subscribeConfirmed(res, subscribed)) {
         subscribed = prevSubscribed;
         setSubscribeUI();
