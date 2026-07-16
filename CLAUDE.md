@@ -30,6 +30,10 @@ develop against it, and never point install instructions at it.
   manager would.
 - `ARCHITECTURE.md` — why the app is shaped this way, plus the data shapes
   (`lockupViewModel`!) that have bitten us.
+- `RECOVERY.md` — the coupling map + runbook for fixing iTube after YouTube
+  changes a payload/player/DOM/endpoint: symptom → which test goes red → which
+  extractor to re-point, plus the invariants and the untested blind spots.
+  Start here when the suite goes red after a YouTube change.
 - `PERF.md` — what is measured, and what is explicitly NOT claimed.
 - `PLAN.md` — milestone tracker / QA log.
 
