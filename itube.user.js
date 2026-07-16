@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.9.0
+// @version      4.10.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -2017,6 +2017,37 @@
       return await res.json();
     } catch (e) {
       console.warn('[itube] innertube ' + endpoint + ' threw', e);
+      return null;
+    }
+  };
+
+  const RYD_FETCH_TIMEOUT = 4000;
+
+  const formatCompact = (n) => {
+    if (!Number.isFinite(n)) return '';
+    const abs = Math.abs(n);
+    if (abs < 1000) return String(n);
+    const scale = abs < 1e6 ? [1e3, 'K'] : abs < 1e9 ? [1e6, 'M'] : [1e9, 'B'];
+    const val = n / scale[0];
+    const rounded = val < 10 ? Math.round(val * 10) / 10 : Math.round(val);
+    return rounded + scale[1];
+  };
+
+  const fetchDislikes = async (videoId) => {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), RYD_FETCH_TIMEOUT);
+      const res = await fetch('https://returnyoutubedislikeapi.com/votes?videoId=' + encodeURIComponent(videoId), {
+        credentials: 'omit',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) return null;
+      const json = await res.json();
+      if (json?.deleted === true) return null;
+      const dislikes = json?.dislikes;
+      return Number.isFinite(dislikes) ? dislikes : null;
+    } catch (e) {
       return null;
     }
   };
@@ -4336,7 +4367,7 @@
     const { btn: likeBtn, label: likeLabel } = pillButton(ICONS.thumbsUp, '', 'watch-like-btn');
     const likeDivider = document.createElement('div');
     likeDivider.className = 'watch-like-divider';
-    const { btn: dislikeBtn } = pillButton(ICONS.thumbsDown, null, 'watch-dislike-btn');
+    const { btn: dislikeBtn, label: dislikeLabel } = pillButton(ICONS.thumbsDown, '', 'watch-dislike-btn');
     likes.append(likeBtn, likeDivider, dislikeBtn);
 
     const { btn: saveBtn, label: saveLabel } = pillButton(ICONS.save, '', 'watch-action-btn');
@@ -4371,6 +4402,7 @@
     let saveBusy = false;
     let subscribeBusy = false;
     let shareBusy = false;
+    let dislikeCountGeneration = 0;
 
     const setLikeUI = () => {
       likeBtn.classList.toggle('active', liked);
@@ -4487,6 +4519,19 @@
       disliked = likeState.disliked;
       likeLabel.textContent = likeState.likeCountText || '';
       setLikeUI();
+
+      dislikeLabel.textContent = '';
+      dislikeBtn.title = '';
+      const dislikeVideoId = actionsVideoId;
+      const dislikeGen = ++dislikeCountGeneration;
+      if (dislikeVideoId) {
+        fetchDislikes(dislikeVideoId).then((count) => {
+          if (dislikeGen !== dislikeCountGeneration) return;
+          if (count === null) return;
+          dislikeLabel.textContent = '~' + formatCompact(count);
+          dislikeBtn.title = 'Estimated dislikes · Return YouTube Dislike';
+        });
+      }
 
       saved = false;
       setSaveUI();

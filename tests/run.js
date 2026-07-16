@@ -39,6 +39,7 @@ const {
   checkBootLoaderReducedMotion,
   checkBootLoaderNoSpaReappear,
   checkAudioTrackSelector,
+  checkDislikeEstimate,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -402,6 +403,26 @@ async function main() {
     table.push({ page: 'audiotrack', check: 'functional', status, count: res.violations.length });
     console.log(`  audiotrack / functional: ${status} — ${res.detail}`);
     for (const v of res.violations) console.log(`    page=audiotrack ${fmt(v)}`);
+  }
+
+  // The Return YouTube Dislike estimate is mocked (own context, own routed
+  // response) rather than read off the live third-party API, so it runs once
+  // rather than per-page — the real network call is a fire-and-forget best
+  // effort, not something the rest of the suite should depend on.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- dislike estimate (Return YouTube Dislike, mocked) ---');
+    let violations;
+    try {
+      violations = await checkDislikeEstimate(browser);
+    } catch (err) {
+      console.error(`  ERROR running the dislike estimate check: ${err.stack || err}`);
+      violations = [{ check: 'dislike-estimate', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'dislikeestimate', check: 'functional', status, count: violations.length });
+    console.log(`  dislike estimate / functional: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=dislikeestimate ${fmt(v)}`);
   }
 
   // The cold-load watch skeleton runs once, in its own freshly-opened page: it

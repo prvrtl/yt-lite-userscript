@@ -2138,8 +2138,79 @@ async function checkAudioTrackSelector(browser) {
   }
 }
 
+// The dislike count next to .watch-dislike-btn is sourced from the third-
+// party Return YouTube Dislike API (fetchDislikes/refreshActions), NOT
+// YouTube's own data — YouTube stopped exposing real dislike counts. Two
+// things matter: the label shows a clearly-marked ESTIMATE when the API
+// answers, and it shows NOTHING (never '0'/'NaN') when the API fails, so a
+// broken/unreachable third party can't paint a misleading number. Both
+// scenarios are mocked via context.route so this runs deterministically
+// against a known response, not whatever the live API currently returns for
+// this video.
+const DISLIKE_TEST_VIDEO_ID = 'aircAruvnKk';
+const RYD_ROUTE_PATTERN = 'https://returnyoutubedislikeapi.com/**';
+
+async function readDislikeLabel(page) {
+  await page.waitForSelector('.watch-dislike-btn', { state: 'visible', timeout: 15000 }).catch(() => {});
+  const btn = await page.$('.watch-dislike-btn');
+  if (!btn) return null;
+  return page.evaluate((el) => el.querySelector('span')?.textContent ?? null, btn);
+}
+
+async function checkDislikeEstimate(browser) {
+  const violations = [];
+
+  // --- success: a known RYD response renders as a labeled estimate ---
+  {
+    const context = await newContext(browser);
+    try {
+      await context.route(RYD_ROUTE_PATTERN, (route) => route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: DISLIKE_TEST_VIDEO_ID, dateCreated: '2020-01-01', likes: 100000, rawDislikes: 12345,
+          rawLikes: 100000, dislikes: 12345, rating: 4, viewCount: 1000000, deleted: false,
+        }),
+      }));
+      const { page } = await openPage(context, `https://www.youtube.com/watch?v=${DISLIKE_TEST_VIDEO_ID}`);
+      await waitForApp(page, { timeout: 30000 });
+      await page.waitForTimeout(500);
+      const label = await readDislikeLabel(page);
+      if (label === null) {
+        violations.push({ check: 'dislike-estimate-exists', detail: 'expected .watch-dislike-btn (with a label span) to exist' });
+      } else if (!label.includes('~') || !label.includes('12') || !/k/i.test(label)) {
+        violations.push({ check: 'dislike-estimate-renders', detail: `expected the dislike label to show a "~" estimate for the mocked dislikes:12345, got "${label}"` });
+      }
+    } finally {
+      await context.close();
+    }
+  }
+
+  // --- failure: the RYD endpoint erroring must leave the label EMPTY, never 0/NaN ---
+  {
+    const context = await newContext(browser);
+    try {
+      await context.route(RYD_ROUTE_PATTERN, (route) => route.fulfill({ status: 500, body: 'error' }));
+      const { page } = await openPage(context, `https://www.youtube.com/watch?v=${DISLIKE_TEST_VIDEO_ID}`);
+      await waitForApp(page, { timeout: 30000 });
+      await page.waitForTimeout(500);
+      const label = await readDislikeLabel(page);
+      if (label === null) {
+        violations.push({ check: 'dislike-estimate-graceful-failure-exists', detail: 'expected .watch-dislike-btn (with a label span) to exist' });
+      } else if (label !== '') {
+        violations.push({ check: 'dislike-estimate-graceful-failure', detail: `expected the dislike label to stay empty when the RYD API errors (never show a stale/zero/NaN count), got "${label}"` });
+      }
+    } finally {
+      await context.close();
+    }
+  }
+
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
+  checkDislikeEstimate,
   checkColdLoadSkeleton,
   checkBootLoaderColdLoad,
   checkBootLoaderFeedColdLoad,

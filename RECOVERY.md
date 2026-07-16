@@ -103,7 +103,25 @@ drops data.
 - **Channel:** `metadata.channelMetadataRenderer.externalId` (3428), `c4TabbedHeaderRenderer`/`pageHeaderRenderer` (3562), tab `browseEndpoint.params` (3471), `aboutChannelViewModel`/`channelAboutFullMetadataRenderer` (3722/3792), `guideEntryRenderer` (2980), `playlistHeaderRenderer.title` (3833, UNGUARDED).
 - **Prompts / endpoints:** `backgroundPromoRenderer`/`messageRenderer`/`signInEndpoint`/`openPopupAction` (2093), `feedNudgeRenderer` (2109), `updateSubscribeButtonAction.subscribed` / `CLIENT_SIGNAL` (2119/2128), and navigation endpoints `browseEndpoint.{canonicalBaseUrl,browseId,commandMetadata.webCommandMetadata.url}` / `watchEndpoint.{videoId,startTimeSeconds}` / `urlEndpoint.url` used by `channelHrefFrom` (1991), `buildRunsSegments`/`buildAttributedSegments` (2411).
 
-### 2.4 Player object (`#movie_player`, id at 3911) & `<video>`
+### 2.4 Third-party: Return YouTube Dislike (estimate only)
+`fetchDislikes(videoId)` (2036) hits `GET https://returnyoutubedislikeapi.com/votes?videoId=<id>`,
+`credentials:'omit'` (deliberately — a third-party host must never see YouTube
+auth cookies), reads the `dislikes` field, `null` on any failure/timeout/
+`deleted:true`/non-finite value. Consumed from `refreshActions` (~4520) with a
+per-video generation guard (`dislikeCountGeneration`) so a slow response for a
+video the user already navigated away from can't paint. Renders into
+`dislikeLabel` as `'~' + formatCompact(count)` (2026) with
+`dislikeBtn.title = 'Estimated dislikes · Return YouTube Dislike'` — the `~`
+and title are the only "this is an estimate" labeling; do not drop them. On
+`null` the label is left **empty**, never `0` or `NaN`. This is a genuine
+privacy tradeoff (video IDs leave the page to a third party) the user
+explicitly accepted; if the endpoint disappears or CSP starts blocking it,
+the feature should degrade to no-count, not break the rest of the watch page.
+Guarded only by a mocked functional test (`tests/checks/functional.js`); the
+real network call against the live RYD service is otherwise UNGUARDED (see
+Blind spots).
+
+### 2.5 Player object (`#movie_player`, id at 3911) & `<video>`
 Every player call is optional-chained/`typeof`-guarded → a removed method
 no-ops or falls back to the raw `<video>`. Key ones: `getVolume`/`setVolume`/
 `isMuted`/`mute`/`unMute` (3915–3946), `seekTo` (2035), `getVideoData().{video_id,isLive}`
@@ -121,7 +139,7 @@ and `.requestVideoFrameCallback` (4071, crossfade).
 re-parented `<video>`'s crossfade) events via
 `EventTarget.prototype.addEventListener.call(...)` (4078) or they no-op.
 
-### 2.5 DOM / CSS hooks into YouTube's markup
+### 2.6 DOM / CSS hooks into YouTube's markup
 `#movie_player` (3911), `ytd-app` (5403; parked `left:-99999px !important`
 **not** `display:none` at 1799 — it must keep laying out to decode), `<video>`
 re-parented into `#itube-stage` (`adoptVideo` 3983), ad class `ad-showing`
@@ -130,7 +148,7 @@ re-parented into `#itube-stage` (`adoptVideo` 3983), ad class `ad-showing`
 `.ytp-caption-window-container` (3989), search suggest host
 `suggestqueries-clients6.youtube.com/complete/search?...&xhr=t` (2867).
 
-### 2.6 Events & navigation
+### 2.7 Events & navigation
 Dispatch `yt-navigate` on `ytd-app` with `detail.endpoint.{commandMetadata…webPageType:'WEB_PAGE_TYPE_WATCH', watchEndpoint:{videoId,playlistId}}`
 (5405) to boot YouTube's router and construct `#movie_player`; listen
 `yt-navigate-finish` (`e.detail.response.response || …`) (5121); capture-phase
@@ -138,7 +156,7 @@ Dispatch `yt-navigate` on `ytd-app` with `detail.endpoint.{commandMetadata…web
 link interception gated by `NATIVE_NAV_RE` (5607). Fallback when the boot never
 lands: `bootWatch` timeout → `location.assign` hard nav (5451).
 
-### 2.7 HTML scraping (the only one)
+### 2.8 HTML scraping (the only one)
 About tab: `fetch(channelBase()+'/about')` then extract `ytInitialData` from the
 HTML via the marker string `'var ytInitialData = '` + a hand-written balanced-
 brace scanner + `JSON.parse` (3682). Breaks if the assignment becomes
@@ -185,3 +203,4 @@ you touch them:
 - **Player quality & captions menus** (`getAvailableQualityLevels`, `getOption('captions',…)`, `isSubtitlesOn`, `setPlaybackQualityRange`), **prev/next** (`getPlaylist`, `previous/nextVideo`), **live edge** (`seekToLiveHead`), **seek preview** storyboards.
 - **Signed-in mutation success** for like/dislike/save/subscribe — only the signed-out prompt is guarded, so a reverting-on-success regression (the subscribe trap above) ships green.
 - **Playlist header title**, **caption CSS restyle**, **`video.buffered`** bar.
+- **Return YouTube Dislike live network call** — the mocked functional test proves the render path, not that `returnyoutubedislikeapi.com` itself is still reachable/shaped the same; a real outage or schema change just silently empties the dislike count (by design, see 2.4).
