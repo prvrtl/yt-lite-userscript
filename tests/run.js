@@ -41,6 +41,7 @@ const {
   checkAudioTrackSelector,
   checkDislikeEstimate,
   checkWatchMetaReveals,
+  checkSubscribeConfirmsOnPopup,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -442,6 +443,25 @@ async function main() {
     table.push({ page: 'watchmeta', check: 'reveals', status, count: violations.length });
     console.log(`  watch meta reveals: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=watchmeta ${fmt(v)}`);
+  }
+
+  // The signed-in subscribe-confirmation path (a successful mutation whose
+  // response carries a notification popup) has no other coverage — the suite is
+  // logged out, so it fakes LOGGED_IN and mocks the endpoint. Runs once.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- subscribe confirms on notification popup (signed-in path) ---');
+    let violations;
+    try {
+      violations = await checkSubscribeConfirmsOnPopup(browser);
+    } catch (err) {
+      console.error(`  ERROR running the subscribe-confirms check: ${err.stack || err}`);
+      violations = [{ check: 'subscribe-confirms-on-popup', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'subscribe', check: 'confirms', status, count: violations.length });
+    console.log(`  subscribe confirms: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=subscribe ${fmt(v)}`);
   }
 
   // The cold-load watch skeleton runs once, in its own freshly-opened page: it

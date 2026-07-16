@@ -48,14 +48,20 @@ Distinguish the three break classes early, because they live in different places
 
 > **The mutation-confirmation trap.** Optimistic actions (like/dislike/save/
 > subscribe) flip the UI, call InnerTube, then **revert unless the response
-> confirms**. If YouTube stops returning the confirming field, a *successful*
-> action reverts and looks broken. `likeConfirmed` accepts any non-blocked HTTP
-> 200; `subscribeConfirmed` (2127) still **requires**
-> `updateSubscribeButtonAction.subscribed === want`. If subscribe reverts, that
-> strict check is the first suspect — loosen it to the `likeConfirmed` pattern
-> (accept a non-blocked 200; `mutationConfirmed` still reverts on a
-> `signInEndpoint`/`openPopupAction`/`CLIENT_SIGNAL` in the body). This path is
-> **UNGUARDED** signed-in — the suite only tests the signed-out prompt.
+> confirms**. Two ways this bit us, both making a *successful* action look
+> broken: (1) requiring a confirming field YouTube stopped sending
+> (`subscribeConfirmed` once demanded `updateSubscribeButtonAction.subscribed`);
+> and (2) mis-reading a normal success signal as a failure — a successful
+> subscribe response carries an `openPopupAction` (the notification popup) and
+> client signals, and the "blocked" detector used to treat ANY
+> `openPopupAction`/`CLIENT_SIGNAL` as blocked, so the button flipped then
+> snapped back (you'd be subscribed after a refresh). The "blocked" signal is now
+> narrowed to **`signInEndpoint` only** (`mutationConfirmed` 2244,
+> `subscribeConfirmed` 2257), and `subscribeConfirmed` reverts only on a
+> `signInEndpoint` or an *explicitly contradicting* `updateSubscribeButtonAction`.
+> Guarded by `checkSubscribeConfirmsOnPopup` (fakes LOGGED_IN + mocks a
+> success-with-popup response); the real signed-in network path is still
+> otherwise **UNGUARDED** — the suite runs logged out.
 
 ---
 

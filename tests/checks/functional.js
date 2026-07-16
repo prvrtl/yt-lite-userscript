@@ -2272,8 +2272,61 @@ async function checkWatchMetaReveals(browser) {
   return violations;
 }
 
+// Signed-in subscribe SUCCESS used to revert the button. YouTube's successful
+// subscribe response carries an openPopupAction (the post-subscribe notification
+// popup); the confirmation code treated any openPopupAction / CLIENT_SIGNAL as a
+// "blocked" signal (it was meant to catch a SIGN-IN prompt), so the optimistic
+// flip snapped back even though the server registered the subscribe (you'd find
+// yourself subscribed after a hard refresh). The suite runs logged out — where
+// the click short-circuits before the network call — so this fakes LOGGED_IN and
+// mocks the endpoint to exercise the signed-in path that no other check reaches.
+async function checkSubscribeConfirmsOnPopup(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  const subRe = (u) => /\/youtubei\/v1\/subscription\/subscribe/.test(u.toString());
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.watch-subscribe', { timeout: 20000 }).catch(() => {});
+    await page.evaluate(() => { if (window.ytcfg && window.ytcfg.data_) window.ytcfg.data_.LOGGED_IN = true; });
+    // A successful subscribe response that carries ONLY a notification popup and
+    // no signInEndpoint — the exact shape that used to be misread as blocked.
+    await page.route(subRe, (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ responseContext: {}, actions: [{ openPopupAction: { popupType: 'TOAST', popup: { notificationActionRenderer: { responseText: { simpleText: 'Subscribed' } } } } }] }),
+    }));
+    await page.waitForFunction(() => {
+      const b = document.querySelector('.watch-subscribe');
+      return b && !b.disabled && getComputedStyle(b).display !== 'none' && b.getBoundingClientRect().width > 0;
+    }, { timeout: 15000 }).catch(() => {});
+    const btn = await page.$('.watch-subscribe');
+    if (!btn) {
+      violations.push({ check: 'subscribe-button-exists', detail: 'expected a usable .watch-subscribe on the watch page' });
+      return violations;
+    }
+    const before = await page.evaluate((b) => b.getAttribute('aria-pressed'), btn);
+    if (before === 'true') {
+      console.log('  subscribe-confirms-on-popup: SKIP — button already reads subscribed, cannot exercise a fresh subscribe');
+      return violations;
+    }
+    await btn.click();
+    await page.waitForTimeout(1500);
+    const after = await page.evaluate((b) => ({ pressed: b.getAttribute('aria-pressed'), text: b.textContent.trim() }), btn);
+    if (after.pressed !== 'true') {
+      violations.push({ check: 'subscribe-confirms-on-popup', detail: `after a successful subscribe whose response carried only a notification openPopupAction (no signInEndpoint), the button reverted (aria-pressed=${after.pressed}, "${after.text}") — a notification/confirmation popup must not be read as a failed or blocked mutation` });
+    }
+  } finally {
+    await page.unroute(subRe).catch(() => {});
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
+  checkSubscribeConfirmsOnPopup,
   checkWatchMetaReveals,
   checkDislikeEstimate,
   checkColdLoadSkeleton,

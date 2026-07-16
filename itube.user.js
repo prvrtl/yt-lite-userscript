@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.11.0
+// @version      4.12.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -2246,7 +2246,7 @@
     let blocked = false;
     let ok = false;
     walk(res, (n) => {
-      if (n.openPopupAction || n.signInEndpoint || n.signalServiceEndpoint?.signal === 'CLIENT_SIGNAL') blocked = true;
+      if (n.signInEndpoint) blocked = true;
       if (check(n)) ok = true;
     });
     return ok && !blocked;
@@ -2259,7 +2259,7 @@
     let blocked = false;
     let contradicted = false;
     walk(res, (n) => {
-      if (n.openPopupAction || n.signInEndpoint || n.signalServiceEndpoint?.signal === 'CLIENT_SIGNAL') blocked = true;
+      if (n.signInEndpoint) blocked = true;
       const u = n.updateSubscribeButtonAction;
       if (u && typeof u.subscribed === 'boolean' && u.subscribed !== want) contradicted = true;
     });
