@@ -518,7 +518,11 @@ function layoutInPage() {
 
       const gaps = [l, r, t, b];
       const spread = Math.max(...gaps) - Math.min(...gaps);
-      if (spread > 1.5) {
+      // 3px tolerance: CSS-grid column math rounds a card's box by a sub-pixel or
+      // two depending on the exact container width (e.g. whether a 16px scrollbar
+      // is present), which is not the clipped-bleed / stretched-card asymmetry
+      // (tens of px) this check exists to catch.
+      if (spread > 3) {
         report('inset-symmetry', `${describe(el)} has asymmetric insets: left=${l.toFixed(1)} right=${r.toFixed(1)} top=${t.toFixed(1)} bottom=${b.toFixed(1)} (all four should match the padding)`);
         asym++;
       }

@@ -29,8 +29,11 @@ const CONSENT_COOKIES = [
 ];
 
 async function launchBrowser() {
+  // Headless by default so the run doesn't steal focus / throw windows on screen.
+  // Set HEADED=1 to watch it (debugging). New-headless Chromium decodes YouTube's
+  // media, so the video-playback checks still hold.
   const browser = await chromium.launch({
-    headless: false,
+    headless: !process.env.HEADED,
     args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required'],
   });
   return browser;

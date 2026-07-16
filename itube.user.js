@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.12.0
+// @version      4.13.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -4529,7 +4529,7 @@
         fetchDislikes(dislikeVideoId).then((count) => {
           if (dislikeGen !== dislikeCountGeneration) return;
           if (count === null) return;
-          dislikeLabel.textContent = '~' + formatCompact(count);
+          dislikeLabel.textContent = formatCompact(count);
           dislikeBtn.title = 'Estimated dislikes · Return YouTube Dislike';
         });
       }

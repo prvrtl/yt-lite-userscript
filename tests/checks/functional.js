@@ -2178,8 +2178,14 @@ async function checkDislikeEstimate(browser) {
       const label = await readDislikeLabel(page);
       if (label === null) {
         violations.push({ check: 'dislike-estimate-exists', detail: 'expected .watch-dislike-btn (with a label span) to exist' });
-      } else if (!label.includes('~') || !label.includes('12') || !/k/i.test(label)) {
-        violations.push({ check: 'dislike-estimate-renders', detail: `expected the dislike label to show a "~" estimate for the mocked dislikes:12345, got "${label}"` });
+      } else if (!label.includes('12') || !/k/i.test(label)) {
+        violations.push({ check: 'dislike-estimate-renders', detail: `expected the dislike label to show a compact count for the mocked dislikes:12345 (e.g. "12K"), got "${label}"` });
+      } else {
+        // The estimate is now marked by the tooltip, not a "~" prefix.
+        const title = await page.evaluate(() => document.querySelector('.watch-dislike-btn')?.getAttribute('title') || '');
+        if (!/estimat/i.test(title)) {
+          violations.push({ check: 'dislike-estimate-labeled', detail: `expected the dislike button to carry an "estimate" tooltip (Return YouTube Dislike), got title="${title}"` });
+        }
       }
     } finally {
       await context.close();

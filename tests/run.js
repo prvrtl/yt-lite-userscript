@@ -559,6 +559,16 @@ async function main() {
   if (!args.page && (!args.check || args.check === 'ads')) {
     for (const [name, fn] of [['statemachine', checkAdStateMachine], ['video', checkVideoAds], ['feed', checkFeedAds]]) {
       console.log(`\n--- ads / ${name} ---`);
+      // The live-ad "video" check observes the ad being blanked/fast-forwarded,
+      // which needs real compositing — headless Chromium plays the ad but does
+      // not composite it the same way, so the neutralisation can't be observed.
+      // Skip it headless (the default) and direct to HEADED=1; the state-machine
+      // and feed-ad checks work headless and still run.
+      if (name === 'video' && !process.env.HEADED) {
+        console.log('  ads / video: SKIP — ad compositing is unreliable headless; run `HEADED=1 npm test` to verify ad handling');
+        table.push({ page: 'ads', check: name, status: 'SKIP', count: 0 });
+        continue;
+      }
       let res;
       try {
         res = await fn(browser);
