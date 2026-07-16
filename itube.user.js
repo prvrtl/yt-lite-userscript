@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.6.0
+// @version      4.7.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -1865,6 +1865,67 @@
         row-gap: 8px;
       }
     }
+    #itube-boot {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483647;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: #0b0c10;
+      color: #a2a7b3;
+      font-family: -apple-system, system-ui, sans-serif;
+      opacity: 1;
+      transition: opacity .22s ease;
+    }
+    #itube-boot.itube-boot-hide {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #itube-boot .itube-boot-mark {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: #0a84ff;
+    }
+    #itube-boot .itube-boot-label {
+      font-size: 13px;
+    }
+    #itube-boot .itube-boot-bar {
+      position: relative;
+      width: 160px;
+      height: 3px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .12);
+      overflow: hidden;
+    }
+    #itube-boot .itube-boot-bar::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -40%;
+      height: 100%;
+      width: 40%;
+      border-radius: 999px;
+      background: #0a84ff;
+      animation: itube-boot-progress 1.1s ease-in-out infinite;
+    }
+    @keyframes itube-boot-progress {
+      0% { left: -40%; }
+      100% { left: 100%; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #itube-boot {
+        transition: none;
+      }
+      #itube-boot .itube-boot-bar::after {
+        animation: none;
+        left: 0;
+        width: 100%;
+      }
+    }
   `;
 
   const style = document.createElement('style');
@@ -1876,6 +1937,43 @@
     if (style.parentNode !== root) root.appendChild(style);
   };
   mountStyle();
+
+  const BOOT_TYPE = (() => {
+    const path = location.pathname;
+    if (path === '/watch' || /^\/shorts\//.test(path)) return 'watch';
+    if (path === '/results') return 'search';
+    if (CHANNEL_PATH_RE.test(path)) return 'channel';
+    if (path === '/playlist') return 'playlist';
+    if (path === '/' || path === '/feed/explore' || FEED_BROWSE[path]) return 'feed';
+    return 'other';
+  })();
+
+  const BOOT_LABELS = {
+    watch: 'Loading player…',
+    search: 'Searching…',
+    channel: 'Loading channel…',
+    playlist: 'Loading playlist…',
+    feed: 'Loading your feed…',
+    other: 'Loading…',
+  };
+
+  const bootOverlay = document.createElement('div');
+  bootOverlay.id = 'itube-boot';
+  const bootMark = document.createElement('div');
+  bootMark.className = 'itube-boot-mark';
+  const bootLabel = document.createElement('div');
+  bootLabel.className = 'itube-boot-label';
+  bootLabel.textContent = 'Starting…';
+  const bootBar = document.createElement('div');
+  bootBar.className = 'itube-boot-bar';
+  bootOverlay.append(bootMark, bootLabel, bootBar);
+
+  const mountBoot = () => {
+    const root = document.documentElement;
+    if (!root) { setTimeout(mountBoot, 0); return; }
+    if (bootOverlay.parentNode !== root) root.appendChild(bootOverlay);
+  };
+  mountBoot();
 
   const cfg = () => window.ytcfg?.data_;
 
@@ -5631,6 +5729,31 @@
   window.addEventListener('yt-navigate-finish', () => {
     if (watchBoot) spaRoute(); else route();
   });
+
+  let bootDone = false;
+  let bootLabeled = false;
+  const finishBoot = () => {
+    if (bootDone) return;
+    bootDone = true;
+    clearInterval(bootPoll);
+    clearTimeout(bootFallback);
+    bootOverlay.classList.add('itube-boot-hide');
+    setTimeout(() => bootOverlay.remove(), 240);
+  };
+  const bootPoll = setInterval(() => {
+    if (!bootLabeled && cfg()?.INNERTUBE_API_KEY) {
+      bootLabeled = true;
+      bootLabel.textContent = BOOT_LABELS[BOOT_TYPE];
+    }
+    if (BOOT_TYPE === 'watch') {
+      const v = document.querySelector('#itube-stage video');
+      if (v && v.readyState >= 2) finishBoot();
+    } else if (view.querySelector('.c, .row, .rc, .empty, .signin-state')) {
+      finishBoot();
+    }
+  }, 80);
+  const bootFallback = setTimeout(finishBoot, 8000);
+
   route();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', syncAccount, { once: true });

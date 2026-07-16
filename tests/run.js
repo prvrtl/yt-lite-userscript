@@ -34,6 +34,10 @@ const {
   checkWatchLoadSkeleton,
   checkSkeletonReducedMotion,
   checkColdLoadSkeleton,
+  checkBootLoaderColdLoad,
+  checkBootLoaderFeedColdLoad,
+  checkBootLoaderReducedMotion,
+  checkBootLoaderNoSpaReappear,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -202,6 +206,7 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
     if (pageName === 'home') {
       violations = violations.concat(await checkUnhandledLinkRouting(page));
       violations = violations.concat(await checkUserRouteClientSide(page));
+      violations = violations.concat(await checkBootLoaderNoSpaReappear(page));
     }
     results.push({ name: 'functional', violations });
   }
@@ -390,6 +395,53 @@ async function main() {
     table.push({ page: 'coldload', check: 'skeleton', status, count: violations.length });
     console.log(`  cold-load skeleton: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=coldload ${fmt(v)}`);
+  }
+
+  // The cold-start boot loader (#itube-boot) is a separate concern from the
+  // watch-meta skeleton above: it covers the window BEFORE the app shell even
+  // exists, on every route, not just watch. Each of these opens its own fresh
+  // page for the same reason checkColdLoadSkeleton does — the sampler has to
+  // be installed before any page script runs.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- boot loader: cold watch load ---');
+    let violations;
+    try {
+      violations = await checkBootLoaderColdLoad(context);
+    } catch (err) {
+      console.error(`  ERROR running the boot loader cold watch load check: ${err.stack || err}`);
+      violations = [{ check: 'boot-loader-cold-watch', detail: String(err.message || err).split('\n')[0] }];
+    }
+    let status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'bootloader', check: 'cold-watch', status, count: violations.length });
+    console.log(`  boot loader / cold-watch: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=bootloader ${fmt(v)}`);
+
+    console.log('\n--- boot loader: cold home load ---');
+    try {
+      violations = await checkBootLoaderFeedColdLoad(context);
+    } catch (err) {
+      console.error(`  ERROR running the boot loader cold home load check: ${err.stack || err}`);
+      violations = [{ check: 'boot-loader-cold-feed', detail: String(err.message || err).split('\n')[0] }];
+    }
+    status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'bootloader', check: 'cold-feed', status, count: violations.length });
+    console.log(`  boot loader / cold-feed: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=bootloader ${fmt(v)}`);
+
+    console.log('\n--- boot loader: reduced motion ---');
+    try {
+      violations = await checkBootLoaderReducedMotion(context);
+    } catch (err) {
+      console.error(`  ERROR running the boot loader reduced-motion check: ${err.stack || err}`);
+      violations = [{ check: 'boot-loader-reduced-motion', detail: String(err.message || err).split('\n')[0] }];
+    }
+    status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'bootloader', check: 'reduced-motion', status, count: violations.length });
+    console.log(`  boot loader / reduced-motion: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=bootloader ${fmt(v)}`);
   }
 
   // The signed-out suite runs once, in its own contexts: it opens the

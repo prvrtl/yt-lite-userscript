@@ -1782,9 +1782,217 @@ async function checkColdLoadSkeleton(context) {
   return violations;
 }
 
+// The cold-start boot loader (#itube-boot) is the very first thing painted at
+// document-start, before ytInitialData/the app shell exist. It must (1) be on
+// screen before any real content, (2) report a real current step rather than
+// sitting stuck on "Starting…", and (3) vanish exactly once the watch stage
+// has an actual playable frame — never leaving a stuck overlay, and never
+// revealing a black stage (video readyState<2) underneath it. This samples a
+// genuinely cold /watch load with the sampler installed BEFORE any page
+// script runs, the same way checkColdLoadSkeleton does.
+async function checkBootLoaderColdLoad(context) {
+  const violations = [];
+  const page = await context.newPage();
+  await page.addInitScript(() => {
+    window.__boot = { sawAtStart: false, labels: [], removedAt: null, videoReadyAtFade: null, overlayPosition: null, t0: Date.now() };
+    const tick = () => {
+      const st = window.__boot;
+      const overlay = document.querySelector('#itube-boot');
+      const label = document.querySelector('#itube-boot .itube-boot-label');
+      if (overlay && !st.sawAtStart) st.sawAtStart = true;
+      // The loader must be out of normal flow so that its presence and removal
+      // can never reflow the app underneath it — that, not a runtime box diff,
+      // is what "no layout shift on handoff" actually means. (Measuring
+      // #itube-stage across the fade is meaningless here: it is a fixed overlay,
+      // and the stage legitimately resizes its own aspect ratio as the video's
+      // dimensions arrive in the same window — a shift the loader cannot cause.)
+      if (overlay && st.overlayPosition === null) st.overlayPosition = getComputedStyle(overlay).position;
+      if (label && label.textContent && st.labels[st.labels.length - 1] !== label.textContent) {
+        st.labels.push(label.textContent);
+      }
+      if (!overlay && st.removedAt === null) {
+        st.removedAt = Date.now() - st.t0;
+        const v = document.querySelector('#itube-stage video');
+        st.videoReadyAtFade = v ? v.readyState : null;
+      }
+      if (Date.now() - st.t0 < 10000) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  try {
+    await page.goto('https://www.youtube.com/watch?v=aircAruvnKk', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(
+      () => window.__boot && (window.__boot.removedAt !== null || Date.now() - window.__boot.t0 > 9000),
+      { timeout: 12000 }
+    ).catch(() => {});
+    await page.waitForTimeout(300);
+    const res = await page.evaluate(() => window.__boot);
+
+    if (!res.sawAtStart) {
+      violations.push({ check: 'boot-loader-first-paint', detail: 'expected #itube-boot to exist on a cold /watch load before content settled, it was never observed' });
+    }
+    if (res.labels.length === 0) {
+      violations.push({ check: 'boot-loader-label-advances', detail: 'expected the boot label to be non-empty at some point during a cold load, it never was' });
+    } else if (!res.labels.some((l) => /player/i.test(l))) {
+      violations.push({ check: 'boot-loader-label-route-specific', detail: `expected the boot label to advance past "Starting…" to a watch-specific label containing "player", saw: ${JSON.stringify(res.labels)}` });
+    }
+    if (res.removedAt === null) {
+      violations.push({ check: 'boot-loader-removed', detail: 'expected #itube-boot to be removed from the DOM once the video had a real frame, it never was (stuck overlay)' });
+    } else if (res.videoReadyAtFade != null && res.videoReadyAtFade < 2) {
+      violations.push({ check: 'boot-loader-no-black-stage', detail: `boot loader faded while video.readyState was ${res.videoReadyAtFade} (<2) — the stage would have shown black underneath it` });
+    }
+    if (res.overlayPosition !== 'fixed') {
+      violations.push({ check: 'boot-loader-no-layout-shift', detail: `expected #itube-boot to be position:fixed so it is out of flow and can never reflow the app on handoff, got position:${res.overlayPosition}` });
+    }
+  } finally {
+    await page.close();
+  }
+  return violations;
+}
+
+// Non-watch routes fade the boot loader on first real content (a card) or a
+// settled empty/sign-in state, not a fixed timer. This exercises that path on
+// a genuinely cold home load, and checks the label reads a feed-specific
+// step rather than the generic fallback.
+async function checkBootLoaderFeedColdLoad(context) {
+  const violations = [];
+  const page = await context.newPage();
+  await page.addInitScript(() => {
+    window.__bootFeed = { sawAtStart: false, labels: [], removedAt: null, hadContentAtFade: null, t0: Date.now() };
+    const tick = () => {
+      const st = window.__bootFeed;
+      const overlay = document.querySelector('#itube-boot');
+      const label = document.querySelector('#itube-boot .itube-boot-label');
+      if (overlay && !st.sawAtStart) st.sawAtStart = true;
+      if (label && label.textContent && st.labels[st.labels.length - 1] !== label.textContent) {
+        st.labels.push(label.textContent);
+      }
+      if (!overlay && st.removedAt === null) {
+        st.removedAt = Date.now() - st.t0;
+        const view = document.querySelector('#itube .content');
+        st.hadContentAtFade = !!(view && view.querySelector('.c, .row, .rc, .empty, .signin-state'));
+      }
+      if (Date.now() - st.t0 < 10000) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  try {
+    await page.goto('https://www.youtube.com/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(
+      () => window.__bootFeed && (window.__bootFeed.removedAt !== null || Date.now() - window.__bootFeed.t0 > 9000),
+      { timeout: 12000 }
+    ).catch(() => {});
+    await page.waitForTimeout(300);
+    const res = await page.evaluate(() => window.__bootFeed);
+
+    if (!res.sawAtStart) {
+      violations.push({ check: 'boot-loader-feed-first-paint', detail: 'expected #itube-boot to exist on a cold home load before content settled' });
+    }
+    if (!res.labels.some((l) => /feed/i.test(l))) {
+      violations.push({ check: 'boot-loader-feed-label', detail: `expected a route-specific label containing "feed" on the home route, saw: ${JSON.stringify(res.labels)}` });
+    }
+    if (res.removedAt === null) {
+      violations.push({ check: 'boot-loader-feed-removed', detail: 'expected #itube-boot to be removed once the feed had real content, it never was' });
+    } else if (!res.hadContentAtFade) {
+      violations.push({ check: 'boot-loader-feed-no-early-fade', detail: 'boot loader faded before any .c/.row/.empty/.signin-state existed in the view — it would have revealed an empty view' });
+    }
+  } finally {
+    await page.close();
+  }
+  return violations;
+}
+
+// prefers-reduced-motion must disable the boot loader's own indeterminate
+// progress sweep (a separate animation from the later watch-meta shimmer),
+// checked at the instant the overlay is created since it fades within
+// seconds of a real cold load.
+async function checkBootLoaderReducedMotion(context) {
+  const violations = [];
+  const page = await context.newPage();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.addInitScript(() => {
+    window.__bootReduced = null;
+    // The userscript itself runs as one synchronous document-start script
+    // (registered on the context, ahead of this page-level init script), so
+    // by the time this callback even starts the overlay may already be in
+    // the DOM — an edge-triggered MutationObserver would miss that insertion
+    // entirely. Poll every frame instead, the same pattern the cold-load
+    // skeleton sampler uses, so an already-past insertion is still caught.
+    const t0 = Date.now();
+    const tick = () => {
+      const bar = document.querySelector('#itube-boot .itube-boot-bar');
+      if (bar) {
+        window.__bootReduced = getComputedStyle(bar, '::after').animationName;
+        return;
+      }
+      if (Date.now() - t0 < 5000) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  try {
+    await page.goto('https://www.youtube.com/watch?v=aircAruvnKk', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => window.__bootReduced !== null, { timeout: 5000 }).catch(() => {});
+    const anim = await page.evaluate(() => window.__bootReduced);
+    if (anim == null) {
+      violations.push({ check: 'boot-loader-reduced-motion-baseline', detail: 'expected the #itube-boot progress bar to exist to test the sweep animation' });
+    } else if (anim !== 'none') {
+      violations.push({ check: 'boot-loader-reduced-motion-disables', detail: `expected the boot progress sweep to be disabled under prefers-reduced-motion, got animation-name: ${anim}` });
+    }
+  } finally {
+    await page.close();
+  }
+  return violations;
+}
+
+// The boot loader is cold-start only: SPA navigations already have their own
+// per-page skeletons/spinners, and a second overlay reappearing on every
+// client-side nav would read as a regression to a double-loader. Runs on the
+// already-mounted shared page fixture, which is exactly where a resurrection
+// bug would show up.
+async function checkBootLoaderNoSpaReappear(page) {
+  const violations = [];
+  const armed = await page.evaluate(() => {
+    window.__bootSeenOnSpa = false;
+    const mo = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const n of m.addedNodes) {
+          if (n.id === 'itube-boot') window.__bootSeenOnSpa = true;
+        }
+      }
+    });
+    mo.observe(document.documentElement, { childList: true });
+    window.__bootSpaObserver = mo;
+    return true;
+  });
+  if (!armed) {
+    violations.push({ check: 'boot-loader-spa-guard-setup', detail: 'could not arm the observer watching for #itube-boot resurrecting' });
+    return violations;
+  }
+  const away = await page.$('.nav-row[href="/feed/history"]');
+  const home = await page.$('.nav-row[href="/"]');
+  if (away) {
+    await away.click().catch(() => {});
+    await page.waitForTimeout(500);
+  }
+  if (home) {
+    await home.click().catch(() => {});
+    await page.waitForTimeout(500);
+  }
+  const seen = await page.evaluate(() => window.__bootSeenOnSpa);
+  await page.evaluate(() => { if (window.__bootSpaObserver) window.__bootSpaObserver.disconnect(); });
+  if (seen) {
+    violations.push({ check: 'boot-loader-no-spa-reappear', detail: 'expected #itube-boot to never be re-inserted on SPA navigation (it is cold-start only), but it reappeared' });
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkColdLoadSkeleton,
+  checkBootLoaderColdLoad,
+  checkBootLoaderFeedColdLoad,
+  checkBootLoaderReducedMotion,
+  checkBootLoaderNoSpaReappear,
   checkYtdAppHidden,
   checkWatchToWatchNavigation,
   checkHomeNavigation,
