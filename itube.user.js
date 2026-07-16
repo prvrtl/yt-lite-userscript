@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.3.0
+// @version      4.4.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -23,7 +23,7 @@
 (() => {
   'use strict';
 
-  const CHANNEL_PATH_RE = /^\/(?:@[^/]+|channel\/[^/]+|c\/[^/]+)(?:\/.*)?$/;
+  const CHANNEL_PATH_RE = /^\/(?:@[^/]+|channel\/[^/]+|c\/[^/]+|user\/[^/]+)(?:\/.*)?$/;
   const FEED_BROWSE = {
     '/feed/subscriptions': { browseId: 'FEsubscriptions', heading: 'Subscriptions' },
     '/feed/history': { browseId: 'FEhistory', heading: 'Watch history' },
@@ -1784,6 +1784,20 @@
     || null
   );
 
+  const seekPlayerTo = (seconds) => {
+    const p = player();
+    if (p?.seekTo) {
+      p.seekTo(seconds, true);
+      return true;
+    }
+    const video = document.querySelector('#movie_player video');
+    if (video) {
+      video.currentTime = seconds;
+      return true;
+    }
+    return false;
+  };
+
   const resolveOwnerChannelId = (data, details) => {
     const owner = findNode(data, (n) => n?.videoOwnerRenderer)?.videoOwnerRenderer;
     const fromOwner = owner?.navigationEndpoint?.browseEndpoint?.browseId;
@@ -2146,6 +2160,43 @@
     return map;
   };
 
+  const buildRunsSegments = (runs) => {
+    if (!Array.isArray(runs) || !runs.length) return null;
+    return runs.map((r) => {
+      const watch = r?.navigationEndpoint?.watchEndpoint;
+      return {
+        text: r?.text || '',
+        url: r?.navigationEndpoint?.commandMetadata?.webCommandMetadata?.url || null,
+        seconds: typeof watch?.startTimeSeconds === 'number' ? watch.startTimeSeconds : null,
+        videoId: watch?.videoId || null,
+      };
+    });
+  };
+
+  const buildAttributedSegments = (attributed) => {
+    const content = attributed?.content;
+    if (typeof content !== 'string' || !content) return null;
+    const commandRuns = (attributed.commandRuns || [])
+      .filter((r) => typeof r?.startIndex === 'number' && typeof r?.length === 'number' && r?.onTap?.innertubeCommand)
+      .sort((a, b) => a.startIndex - b.startIndex);
+    const segments = [];
+    let cursor = 0;
+    for (const run of commandRuns) {
+      if (run.startIndex > cursor) segments.push({ text: content.slice(cursor, run.startIndex), url: null, seconds: null, videoId: null });
+      const cmd = run.onTap.innertubeCommand;
+      const watch = cmd?.watchEndpoint;
+      segments.push({
+        text: content.slice(run.startIndex, run.startIndex + run.length),
+        url: cmd?.commandMetadata?.webCommandMetadata?.url || null,
+        seconds: typeof watch?.startTimeSeconds === 'number' ? watch.startTimeSeconds : null,
+        videoId: watch?.videoId || null,
+      });
+      cursor = run.startIndex + run.length;
+    }
+    if (cursor < content.length) segments.push({ text: content.slice(cursor), url: null, seconds: null, videoId: null });
+    return segments;
+  };
+
   const getCommentAvatar = (legacy, author) => (
     (Array.isArray(legacy?.authorThumbnail?.thumbnails) && legacy.authorThumbnail.thumbnails.length
       ? legacy.authorThumbnail.thumbnails[legacy.authorThumbnail.thumbnails.length - 1]?.url
@@ -2158,7 +2209,8 @@
   const extractComment = (thread, entityMap) => {
     const legacy = thread?.comment?.commentRenderer || thread?.commentRenderer;
     if (legacy) {
-      const text = (legacy.contentText?.runs || []).map((r) => r?.text || '').join('') || legacy.contentText?.simpleText || '';
+      const runs = legacy.contentText?.runs;
+      const text = (runs || []).map((r) => r?.text || '').join('') || legacy.contentText?.simpleText || '';
       const replyToken = findContinuationToken(thread?.replies) || findAnyContinuationToken(thread?.replies);
       const replyCount = Number(legacy.replyCount) || (replyToken ? 1 : 0);
       return {
@@ -2167,6 +2219,7 @@
         authorHref: channelHrefFrom(legacy.authorEndpoint),
         avatar: getCommentAvatar(legacy, null),
         text,
+        textSegments: buildRunsSegments(runs),
         published: legacy.publishedTimeText?.runs?.[0]?.text || legacy.publishedTimeText?.simpleText || '',
         likes: legacy.voteCount?.simpleText || legacy.voteCount?.accessibility?.accessibilityData?.label || '',
         replyCount,
@@ -2190,6 +2243,7 @@
         || (typeof author?.channelId === 'string' && author.channelId ? '/channel/' + author.channelId : null),
       avatar: getCommentAvatar(null, author),
       text: props.content?.content || '',
+      textSegments: buildAttributedSegments(props.content),
       published: props.publishedTime || '',
       likes: toolbar?.likeCountA11y || toolbar?.likeCountNotliked || toolbar?.likeCountLiked || '',
       replyCount,
@@ -2228,7 +2282,7 @@
 
   const itemHref = (item) => (item.type === 'playlist'
     ? '/playlist?list=' + encodeURIComponent(item.id)
-    : '/watch?v=' + encodeURIComponent(item.id));
+    : '/watch?v=' + encodeURIComponent(item.id) + (item.listId ? '&list=' + encodeURIComponent(item.listId) : ''));
 
   const createItemLink = (item, cls) => {
     const link = document.createElement('a');
@@ -2394,7 +2448,30 @@
 
     const text = document.createElement('div');
     text.className = 'comment-text';
-    text.textContent = item.text || '';
+    if (item.textSegments && item.textSegments.length) {
+      const currentId = resolveVideoId();
+      for (const seg of item.textSegments) {
+        if (!seg.text) continue;
+        if (seg.url) {
+          const a = document.createElement('a');
+          a.className = 'comment-link';
+          a.href = seg.url;
+          a.textContent = seg.text;
+          if (seg.seconds != null && (!seg.videoId || seg.videoId === currentId)) {
+            a.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              seekPlayerTo(seg.seconds);
+            });
+          }
+          text.appendChild(a);
+        } else {
+          text.appendChild(document.createTextNode(seg.text));
+        }
+      }
+    } else {
+      text.textContent = item.text || '';
+    }
 
     const showMore = document.createElement('button');
     showMore.className = 'comment-showmore';
@@ -2909,6 +2986,8 @@
 
     let activeFilter = null;
 
+    const spParam = new URLSearchParams(location.search).get('sp') || '';
+
     const fetchSearch = async (seen) => {
       if (!query) return { items: [], token: null, message: 'Type something to search.' };
       const body = activeFilter ? { query, params: activeFilter.value } : { query };
@@ -2942,6 +3021,16 @@
     filterRow.className = 'search-filters';
     filterRow.append(sortSelect, dateSelect, durSelect);
 
+    if (spParam) {
+      for (const [select, options] of [[sortSelect, SEARCH_SORT_OPTIONS], [dateSelect, SEARCH_DATE_OPTIONS], [durSelect, SEARCH_DURATION_OPTIONS]]) {
+        if (options.some(([value]) => value === spParam)) {
+          select.value = spParam;
+          activeFilter = { select, value: spParam };
+          break;
+        }
+      }
+    }
+
     const onFilterChange = (select) => {
       if (select.value === '') {
         if (activeFilter?.select === select) activeFilter = null;
@@ -2949,6 +3038,12 @@
         activeFilter = { select, value: select.value };
         for (const s of [sortSelect, dateSelect, durSelect]) if (s !== select) s.value = '';
       }
+      const params = new URLSearchParams(location.search);
+      if (activeFilter) params.set('sp', activeFilter.value);
+      else params.delete('sp');
+      const qs = params.toString();
+      history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : ''));
+      currentKey = keyFor('search', location.pathname, location.search);
       list.load(fetchSearch);
     };
     sortSelect.addEventListener('change', () => onFilterChange(sortSelect));
@@ -3243,6 +3338,7 @@
   const mountFeed = (browseIds, heading, opts = {}) => {
     const ids = Array.isArray(browseIds) ? browseIds : [browseIds];
     const useInitialData = !!opts.useInitialData;
+    const listId = ids[0] && ids[0].startsWith('VL') ? ids[0].slice(2) : null;
 
     const headingEl = document.createElement('h1');
     headingEl.className = 'page-heading';
@@ -3280,7 +3376,7 @@
     const list = createListView({
       itemClass: 'c',
       containerClass: 'grid',
-      renderItem: createCard,
+      renderItem: listId ? (item) => createCard({ ...item, listId }) : createCard,
       fetchInitial: async (seen) => {
         if (useInitialData && !spaNav) {
           const pageData = window.ytInitialData;
@@ -3807,30 +3903,9 @@
 
     const buildDescriptionSegments = (secondary) => {
       try {
-        const attributed = secondary?.attributedDescription;
-        if (attributed?.content) {
-          const content = attributed.content;
-          const commandRuns = (attributed.commandRuns || [])
-            .filter((r) => typeof r?.startIndex === 'number' && typeof r?.length === 'number' && r?.onTap?.innertubeCommand)
-            .sort((a, b) => a.startIndex - b.startIndex);
-          const segments = [];
-          let cursor = 0;
-          for (const run of commandRuns) {
-            if (run.startIndex > cursor) segments.push({ text: content.slice(cursor, run.startIndex) });
-            const url = run.onTap.innertubeCommand?.commandMetadata?.webCommandMetadata?.url || null;
-            segments.push({ text: content.slice(run.startIndex, run.startIndex + run.length), url });
-            cursor = run.startIndex + run.length;
-          }
-          if (cursor < content.length) segments.push({ text: content.slice(cursor) });
-          return segments;
-        }
-        const runsArr = secondary?.description?.runs;
-        if (Array.isArray(runsArr) && runsArr.length) {
-          return runsArr.map((r) => ({
-            text: r?.text || '',
-            url: r?.navigationEndpoint?.commandMetadata?.webCommandMetadata?.url || null,
-          }));
-        }
+        const segs = buildAttributedSegments(secondary?.attributedDescription);
+        if (segs) return segs;
+        return buildRunsSegments(secondary?.description?.runs);
       } catch (e) {
         console.warn('[itube] description parse failed', e);
       }
@@ -3840,6 +3915,7 @@
     const renderDescription = (segments, fallbackText) => {
       desc.replaceChildren();
       if (segments && segments.length) {
+        const currentId = resolveVideoId();
         for (const seg of segments) {
           if (!seg.text) continue;
           if (seg.url) {
@@ -3847,6 +3923,13 @@
             a.className = 'watch-desc-link';
             a.href = seg.url;
             a.textContent = seg.text;
+            if (seg.seconds != null && (!seg.videoId || seg.videoId === currentId)) {
+              a.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                seekPlayerTo(seg.seconds);
+              });
+            }
             desc.appendChild(a);
           } else {
             desc.appendChild(document.createTextNode(seg.text));
@@ -4070,7 +4153,7 @@
       });
     };
 
-    const resetComments = (data = window.ytInitialData) => {
+    const resetComments = (data = window.ytInitialData, fresh = true) => {
       commentsList.replaceChildren();
       commentsSpinner.classList.remove('show');
       commentsMore.style.display = 'none';
@@ -4083,7 +4166,7 @@
       setChevron();
       commentsToken = findCommentsToken(data);
       const count = getCommentsCount(data);
-      commentsLabel.textContent = count || 'Comments';
+      commentsLabel.textContent = commentsToken ? (count || 'Comments') : (fresh ? 'Comments are turned off.' : 'Comments');
       commentsToggle.disabled = !commentsToken;
       sortOptions = findCommentsSortOptions(data);
       activeSortIndex = 0;
@@ -4099,7 +4182,7 @@
         fetchComments(true);
       }
     });
-    resetComments();
+    resetComments(window.ytInitialData, !mountedFromSpa);
 
     let chapterSecs = parseChapters(window.ytInitialData);
     let storyboard = null;

@@ -272,6 +272,50 @@ async function checkCardStillOpensVideo(page, pageName) {
   return violations;
 }
 
+// Opening a video from a /playlist page used to lose the queue: only the
+// watch-page queue itself appended `&list=`, so a card's own `.c-link` was a
+// bare `/watch?v=<id>` with no playlist context at all. Passive half: every
+// card's href must carry `list=`.
+async function checkPlaylistCardsCarryList(page) {
+  const violations = [];
+  const hrefs = await page.evaluate(() => [...document.querySelectorAll('#itube .c .c-link')].map((a) => a.getAttribute('href')));
+  if (!hrefs.length) {
+    violations.push({ check: 'playlist-cards-exist', detail: 'expected at least one .c card on the playlist page' });
+    return violations;
+  }
+  const missing = hrefs.filter((href) => !href || !/[?&]list=/.test(href));
+  if (missing.length) {
+    violations.push({
+      check: 'playlist-card-carries-list',
+      detail: `${missing.length}/${hrefs.length} playlist cards have a .c-link href with no list= param, so opening the video from here loses the queue: ${missing.slice(0, 3).join(' ; ')}`,
+    });
+  }
+  return violations;
+}
+
+// Active half: actually click a card and confirm the queue survives the
+// navigation — location.search keeps list=, and the watch page's own
+// .queue-item rail populates from it.
+async function checkPlaylistClickPreservesQueue(page) {
+  const violations = [];
+  const link = await page.$('#itube .c .c-link[href]');
+  if (!link) {
+    violations.push({ check: 'playlist-click-preserves-list', detail: 'no .c-link to click on the playlist page' });
+    return violations;
+  }
+  await link.click();
+  await page.waitForFunction(() => location.pathname === '/watch', { timeout: 10000 }).catch(() => {});
+  await page.waitForFunction(() => document.querySelectorAll('.queue-item').length > 0, { timeout: 10000 }).catch(() => {});
+  const after = await page.evaluate(() => ({ search: location.search, queueItems: document.querySelectorAll('.queue-item').length }));
+  if (!/[?&]list=/.test(after.search)) {
+    violations.push({ check: 'playlist-click-preserves-list', detail: `after clicking a playlist card, location.search is "${after.search}" — expected a list= param so the queue survives the click` });
+  }
+  if (after.queueItems === 0) {
+    violations.push({ check: 'playlist-click-populates-queue', detail: 'expected >0 .queue-item after opening a video from the playlist page' });
+  }
+  return violations;
+}
+
 // Runs the channel-link suite for one page. Navigation-y checks come last and
 // re-open the page under test, so each one starts from the same state.
 async function runChannelChecks(page, pageName, url) {
@@ -286,6 +330,10 @@ async function runChannelChecks(page, pageName, url) {
     violations = violations.concat(await checkNoNestedAnchors(page, 'watch (comments expanded)'));
   }
 
+  if (pageName === 'playlist') {
+    violations = violations.concat(await checkPlaylistCardsCarryList(page));
+  }
+
   violations = violations.concat(await checkChannelLinkNavigation(page, pageName));
 
   // The watch page has no grid card to click, and its related rail is already
@@ -295,6 +343,16 @@ async function runChannelChecks(page, pageName, url) {
     await waitForApp(page, { timeout: 30000 });
     await page.waitForSelector('.c, .rc, .row', { timeout: 10000 }).catch(() => {});
     violations = violations.concat(await checkCardStillOpensVideo(page, pageName));
+  }
+
+  // Own fresh reload: the checks above already navigated this page away
+  // (channel-link-navigation, card-still-opens-video), so the click here
+  // needs a clean slate to be sure it lands on the FIRST card in list order.
+  if (pageName === 'playlist') {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await waitForApp(page, { timeout: 30000 });
+    await page.waitForSelector('.c', { timeout: 10000 }).catch(() => {});
+    violations = violations.concat(await checkPlaylistClickPreservesQueue(page));
   }
 
   return violations;
@@ -308,4 +366,6 @@ module.exports = {
   checkWatchChannelRow,
   checkCommentAuthorLinks,
   checkChannelLinkNavigation,
+  checkPlaylistCardsCarryList,
+  checkPlaylistClickPreservesQueue,
 };

@@ -1028,6 +1028,211 @@ async function checkResponsive(page, widths = [900, 2560]) {
   return violations;
 }
 
+// A description "1:23" link that points at the SAME video used to be a dead
+// click: it rendered as /watch?v=<sameId>&t=83s, the router saw an unchanged
+// video id and no-opped, and the timestamp did nothing. The fix intercepts the
+// click and calls player.seekTo() directly, while leaving the href intact so
+// middle-click/Cmd-click still open a real timestamped URL. This asserts the
+// left-click path: the clock actually jumps, and it does so WITHOUT a
+// navigation (reusing the doc-load counting pattern from
+// checkWatchToWatchNavigation).
+async function checkDescriptionTimestampSeek(page) {
+  const violations = [];
+  const currentVideoId = await page.evaluate(() => new URLSearchParams(location.search).get('v'));
+
+  const handle = await page.evaluateHandle((vid) => {
+    const links = [...document.querySelectorAll('.watch-desc-link')];
+    return links.find((a) => {
+      const href = a.getAttribute('href') || '';
+      if (!/[?&]t=\d/.test(href)) return false;
+      try {
+        const url = new URL(href, location.origin);
+        const linkVid = url.searchParams.get('v');
+        return !linkVid || linkVid === vid;
+      } catch (e) {
+        return false;
+      }
+    }) || null;
+  }, currentVideoId);
+  const el = handle.asElement();
+  if (!el) {
+    console.log("  timestamp-seek: SKIP — this video's description has no same-video timestamp link (.watch-desc-link with t=)");
+    return violations;
+  }
+
+  const targetSeconds = await page.evaluate((a) => {
+    const m = (a.getAttribute('href') || '').match(/[?&]t=(\d+)/);
+    return m ? Number(m[1]) : null;
+  }, el);
+  const before = await page.evaluate(() => document.querySelector('#itube-stage video')?.currentTime ?? null);
+
+  const rec = recordMainFrameDocLoads(page);
+  await el.click();
+  await page.waitForTimeout(700);
+  rec.stop();
+
+  const after = await page.evaluate(() => ({
+    currentTime: document.querySelector('#itube-stage video')?.currentTime ?? null,
+    pathname: location.pathname,
+    v: new URLSearchParams(location.search).get('v'),
+  }));
+
+  if (rec.urls.length > 0) {
+    violations.push({ check: 'timestamp-seek-no-reload', detail: `expected 0 main-frame document loads clicking a description timestamp link, got ${rec.urls.length}: ${rec.urls.join(' , ')}` });
+  }
+  if (after.pathname !== '/watch' || after.v !== currentVideoId) {
+    violations.push({ check: 'timestamp-seek-same-video', detail: `expected to stay on /watch?v=${currentVideoId}, got pathname=${after.pathname} v=${after.v}` });
+  }
+  if (targetSeconds == null || after.currentTime == null || Math.abs(after.currentTime - targetSeconds) > 2) {
+    violations.push({ check: 'timestamp-seek-jumps', detail: `expected currentTime to land within ~2s of target ${targetSeconds}, before=${before} after=${after.currentTime}` });
+  }
+  return violations;
+}
+
+// Best-effort: comment bodies now render clickable segments (timestamps seek,
+// URLs/mentions are real links) instead of one plain-text blob. Not every
+// video's top comments contain a link, so this skips cleanly rather than
+// asserting on content the live site may not have served this run.
+async function checkCommentBodyLinks(page) {
+  const violations = [];
+  const links = await page.evaluate(() => [...document.querySelectorAll('.comment-text a')].map((a) => ({
+    href: a.getAttribute('href'),
+    nested: !!a.querySelector('a'),
+  })));
+  if (!links.length) {
+    console.log('  comment-body-links: SKIP — no <a> found inside any .comment-text on this run');
+    return violations;
+  }
+  const bad = links.filter((l) => !l.href || !/^(\/|https?:\/\/)/.test(l.href) || l.nested);
+  if (bad.length) {
+    violations.push({
+      check: 'comment-body-link-shape',
+      detail: `${bad.length}/${links.length} .comment-text links are malformed (want a real channel/watch/http href, no nested <a>): ${bad.slice(0, 3).map((l) => JSON.stringify(l)).join(' ; ')}`,
+    });
+  }
+  return violations;
+}
+
+// Best-effort/optional: a deterministic comments-disabled video is hard to
+// pin to a live id, so this only asserts something when the CURRENT video
+// happens to have comments disabled (commentsToggle.disabled reflects that
+// directly — see resetComments in itube.user.js). Otherwise it skips cleanly.
+async function checkCommentsOffCopy(page) {
+  const violations = [];
+  const info = await page.evaluate(() => {
+    const toggle = document.querySelector('.comments-toggle');
+    const label = toggle ? toggle.querySelector('span') : null;
+    return { disabled: toggle ? toggle.disabled : null, text: label ? label.textContent : null };
+  });
+  if (!info.disabled) {
+    console.log('  comments-off-copy: SKIP — this video has comments enabled, nothing to assert');
+    return violations;
+  }
+  if (info.text !== 'Comments are turned off.') {
+    violations.push({ check: 'comments-off-copy', detail: `expected the comments pill label to read "Comments are turned off." on a video with comments disabled, got "${info.text}"` });
+  }
+  return violations;
+}
+
+// A legacy /user/<name> channel URL used to fall straight through
+// CHANNEL_PATH_RE, land on { type: 'unhandled' }, and render the "isn't
+// available" card instead of the channel — even though the click was already
+// intercepted client-side. Proves both halves: no reload, AND the channel
+// mount (not the unhandled one) is what actually renders.
+async function checkUserRouteClientSide(page) {
+  const violations = [];
+  const userHref = '/user/YouTube';
+  await page.evaluate((href) => {
+    const a = document.createElement('a');
+    a.id = 'itube-test-user-link';
+    a.href = href;
+    a.textContent = 'legacy user link';
+    a.style.position = 'fixed';
+    a.style.left = '0';
+    a.style.bottom = '0';
+    a.style.zIndex = '99999';
+    document.querySelector('#itube').appendChild(a);
+  }, userHref);
+
+  const mark = await stampMark(page);
+  const rec = recordMainFrameDocLoads(page);
+  let survived;
+  try {
+    await page.click('#itube-test-user-link');
+    await page.waitForFunction(() => (
+      document.querySelector('.ch-header') || document.querySelector('.empty') || document.querySelector('.unhandled')
+    ), { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    survived = await markSurvived(page, mark);
+  } finally {
+    rec.stop();
+  }
+
+  const info = await page.evaluate(() => ({
+    path: location.pathname,
+    mountedChannel: !!(document.querySelector('.ch-header') || document.querySelector('.empty')),
+    mountedUnhandled: !!document.querySelector('.unhandled'),
+  }));
+  await page.evaluate(() => document.getElementById('itube-test-user-link')?.remove());
+
+  if (info.path !== userHref) {
+    violations.push({ check: 'user-route-client-side', detail: `expected clicking "${userHref}" to SPA-route to it, got pathname "${info.path}"` });
+  }
+  if (rec.urls.length > 0) {
+    violations.push({ check: 'user-route-no-reload', detail: `clicking "${userHref}" caused ${rec.urls.length} main-frame document load(s), expected a client-side route: ${rec.urls.join(' , ')}` });
+  }
+  if (!survived) {
+    violations.push({ check: 'user-route-no-reload', detail: `window.__itubeMark did not survive clicking "${userHref}" — the document was replaced` });
+  }
+  if (info.mountedUnhandled || !info.mountedChannel) {
+    violations.push({ check: 'user-route-mounts-channel', detail: `expected "${userHref}" to mount the channel view (CHANNEL_PATH_RE must match legacy /user/ paths), got mountedUnhandled=${info.mountedUnhandled} mountedChannel=${info.mountedChannel}` });
+  }
+  return violations;
+}
+
+// The applied search filter used to live in memory only: reload or Back lost
+// it silently. Asserts the filter round-trips through the URL's own `sp`
+// param (YouTube's real param name) both ways — select change -> URL, and
+// URL -> restored select on reload — without asserting on result CONTENT,
+// which the live site can legitimately vary.
+async function checkFiltersInUrl(page) {
+  const violations = [];
+  const selects = await page.$$('.search-filter-select');
+  if (!selects.length) {
+    violations.push({ check: 'filters-in-url-select-exists', detail: 'expected .search-filter-select elements on the search page' });
+    return violations;
+  }
+  const sortSelect = selects[0];
+  const options = await page.evaluate((el) => [...el.options].map((o) => o.value).filter(Boolean), sortSelect);
+  if (!options.length) {
+    violations.push({ check: 'filters-in-url-select-exists', detail: 'expected the sort filter select to have at least one non-empty option' });
+    return violations;
+  }
+  const chosen = options[0];
+  await sortSelect.selectOption(chosen);
+  await page.waitForFunction((val) => new URLSearchParams(location.search).get('sp') === val, chosen, { timeout: 5000 }).catch(() => {});
+  const spAfterChange = await page.evaluate(() => new URLSearchParams(location.search).get('sp'));
+  if (spAfterChange !== chosen) {
+    violations.push({ check: 'filters-in-url-sp-set', detail: `expected location.search to gain sp=${chosen} after changing the sort filter, got sp=${spAfterChange}` });
+  }
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await waitForApp(page, { timeout: 30000 });
+  await page.waitForSelector('.search-filter-select', { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  const restored = await page.evaluate(() => {
+    const sel = document.querySelector('.search-filter-select');
+    return { spInUrl: new URLSearchParams(location.search).get('sp'), selectValue: sel ? sel.value : null };
+  });
+  if (restored.spInUrl !== chosen) {
+    violations.push({ check: 'filters-in-url-survives-reload', detail: `expected sp=${chosen} to survive reload, got sp=${restored.spInUrl}` });
+  }
+  if (restored.selectValue !== chosen) {
+    violations.push({ check: 'filters-in-url-select-restored', detail: `expected the sort <select> value to be restored to "${chosen}" after reload, got "${restored.selectValue}"` });
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkYtdAppHidden,
@@ -1039,4 +1244,9 @@ module.exports = {
   checkUnhandledPage,
   checkUnhandledLinkRouting,
   checkResponsive,
+  checkDescriptionTimestampSeek,
+  checkCommentBodyLinks,
+  checkCommentsOffCopy,
+  checkUserRouteClientSide,
+  checkFiltersInUrl,
 };

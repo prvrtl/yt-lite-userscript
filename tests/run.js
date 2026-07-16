@@ -21,6 +21,11 @@ const {
   checkUnhandledPage,
   checkUnhandledLinkRouting,
   checkResponsive,
+  checkDescriptionTimestampSeek,
+  checkCommentBodyLinks,
+  checkCommentsOffCopy,
+  checkUserRouteClientSide,
+  checkFiltersInUrl,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -155,9 +160,22 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
     if (pageName === 'watch') {
       violations = violations.concat(await runWatchFunctional(page));
       violations = violations.concat(await checkWatchToWatchNavigation(page));
+      violations = violations.concat(await checkDescriptionTimestampSeek(page));
+      violations = violations.concat(await checkCommentsOffCopy(page));
+      const toggle = await page.$('.comments-toggle');
+      const disabled = toggle ? await page.evaluate((el) => el.disabled, toggle) : true;
+      if (toggle && !disabled) {
+        const opened = await page.evaluate(() => document.querySelectorAll('.comment-row').length > 0);
+        if (!opened) await toggle.click().catch(() => {});
+        await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 15000 }).catch(() => {});
+        violations = violations.concat(await checkCommentBodyLinks(page));
+      }
     }
     if (SCROLLING_PAGES.has(pageName)) {
       violations = violations.concat(await checkInfiniteScroll(page, pageName));
+    }
+    if (pageName === 'search') {
+      violations = violations.concat(await checkFiltersInUrl(page));
     }
     if (pageName !== 'watch') {
       violations = violations.concat(await checkHomeNavigation(page));
@@ -166,6 +184,7 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
     // client-side route, while /redirect?q= must stay a native navigation.
     if (pageName === 'home') {
       violations = violations.concat(await checkUnhandledLinkRouting(page));
+      violations = violations.concat(await checkUserRouteClientSide(page));
     }
     results.push({ name: 'functional', violations });
   }

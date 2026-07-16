@@ -41,7 +41,14 @@ const CARD_SPECS = [
     // row, avatar link, img, body, head, author, time, text, show-more, likes
     sel: '.comment-row',
     budget: 10,
-    optional: [{ sel: '.comment-replies-btn', nodes: 1, why: 'view-replies button' }],
+    optional: [
+      { sel: '.comment-replies-btn', nodes: 1, why: 'view-replies button' },
+      // Clickable timestamps/URLs/mentions inside a comment body render as
+      // <a> per segment instead of one textContent blob (see A5): the
+      // count is per-match, not a flat allowance, because a comment can
+      // carry any number of links.
+      { sel: '.comment-text a', nodes: 1, why: 'clickable comment link/timestamp/mention' },
+    ],
     // Expanded replies nest whole comment rows inside this one; they are their
     // own rows and are budgeted as such, not as part of the parent.
     exclude: '.comment-replies',
@@ -81,9 +88,10 @@ async function checkNodeBudget(page, pageName) {
         const raw = count;
         const allowed = [];
         for (const opt of spec.optional || []) {
-          if (el.querySelector(opt.sel)) {
-            count -= opt.nodes;
-            allowed.push(opt.why);
+          const matches = el.querySelectorAll(opt.sel).length;
+          if (matches) {
+            count -= opt.nodes * matches;
+            allowed.push(matches > 1 ? `${opt.why} x${matches}` : opt.why);
           }
         }
         if (!worst || count > worst.count) {
