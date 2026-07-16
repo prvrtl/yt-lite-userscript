@@ -166,7 +166,7 @@ async function main() {
   }
 
   const browser = await chromium.launch({
-    headless: false,
+    headless: !process.env.HEADED,
     args: ['--mute-audio', '--autoplay-policy=no-user-gesture-required'],
   });
 
