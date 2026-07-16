@@ -1465,8 +1465,326 @@ async function checkAboutTab(page) {
   return violations;
 }
 
+// Clicking a related video used to swap the <video> source with nothing
+// covering the gap: the decoder drops the old frame before the new one is
+// ready, so the stage goes black or freezes for a beat. The fix snapshots the
+// stage into a <canvas> the instant the switch starts and fades it out once
+// the new video has actually painted. This asserts the whole contract: the
+// overlay shows up, it goes away again within its ~1.5s hard timeout, the
+// underlying <video> is never hidden while it's covering for it (the actual
+// failure mode this exists to prevent), the stage box never moves, there is
+// no main-frame reload, and playback is still advancing afterward.
+async function checkVideoCrossfade(page) {
+  const violations = [];
+  await page.waitForSelector('.rc', { timeout: 10000 }).catch(() => {});
+  const related = await page.$('.rc');
+  if (!related) {
+    violations.push({ check: 'crossfade-related-exists', detail: 'expected at least one .rc related card to trigger a watch-to-watch switch' });
+    return violations;
+  }
+  // The crossfade only has something worth snapshotting once the CURRENT
+  // video has actually reached a decodable frame (readyState >= 2) — YouTube's
+  // own player cycles readyState down to 0 and back a few times while it
+  // resolves formats after any switch, so clicking again mid-cycle (e.g. right
+  // after checkWatchToWatchNavigation's own switch) is a real, correct skip
+  // condition, not a bug. Wait for that settle first so this check exercises
+  // the overlay path instead of the guarded no-op path.
+  await page.waitForFunction(() => {
+    const v = document.querySelector('#itube-stage video');
+    return v && v.readyState >= 2;
+  }, { timeout: 8000 }).catch(() => {});
+  const stageBefore = await page.evaluate(() => {
+    const r = document.querySelector('#itube-stage')?.getBoundingClientRect();
+    return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
+  });
+  const titleBefore = await page.evaluate(() => document.querySelector('.watch-title')?.textContent || '');
+  const rec = recordMainFrameDocLoads(page);
+  const clicked = await clickCardPart(page, related, '.rc-title');
+  if (!clicked) {
+    rec.stop();
+    violations.push({ check: 'crossfade-related-exists', detail: 'the first .rc related card has no layout box to click' });
+    return violations;
+  }
+
+  const result = await page.evaluate(() => new Promise((resolve) => {
+    const stage = document.getElementById('itube-stage');
+    const start = performance.now();
+    let sawOverlay = false;
+    let sawVideoHidden = false;
+    const poll = () => {
+      const canvas = stage && stage.querySelector('canvas.itube-crossfade');
+      const video = stage && stage.querySelector('video');
+      if (canvas && Number(getComputedStyle(canvas).opacity) > 0) sawOverlay = true;
+      if (video && getComputedStyle(video).display === 'none') sawVideoHidden = true;
+      if (performance.now() - start < 3000) {
+        requestAnimationFrame(poll);
+      } else {
+        resolve({
+          sawOverlay,
+          sawVideoHidden,
+          overlayGoneAtEnd: !(stage && stage.querySelector('canvas.itube-crossfade')),
+        });
+      }
+    };
+    requestAnimationFrame(poll);
+  }));
+  rec.stop();
+
+  await page.waitForFunction(
+    (prev) => document.querySelector('.watch-title')?.textContent !== prev,
+    titleBefore,
+    { timeout: 8000 }
+  ).catch(() => {});
+
+  const stageAfter = await page.evaluate(() => {
+    const r = document.querySelector('#itube-stage')?.getBoundingClientRect();
+    return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
+  });
+  // YouTube's own player cycles readyState/currentTime a few times while it
+  // resolves formats after a switch (see the crossfade-overlay-appears
+  // comment above), so a single fixed-delay sample can land mid-cycle. Poll
+  // instead of sleeping once: this only cares that playback eventually
+  // resumes, not how many buffering cycles it took to get there.
+  const playbackOk = await page.evaluate(() => new Promise((resolve) => {
+    const video = document.querySelector('#itube-stage video');
+    if (!video) { resolve(false); return; }
+    const t0 = video.currentTime;
+    const deadline = performance.now() + 6000;
+    const poll = () => {
+      if (video.currentTime > t0 || !video.paused) { resolve(true); return; }
+      if (performance.now() > deadline) { resolve(false); return; }
+      setTimeout(poll, 250);
+    };
+    poll();
+  }));
+
+  if (!result.sawOverlay) {
+    violations.push({ check: 'crossfade-overlay-appears', detail: 'expected a canvas.itube-crossfade snapshot overlay to appear with opacity > 0 during a watch-to-watch switch' });
+  }
+  if (!result.overlayGoneAtEnd) {
+    violations.push({ check: 'crossfade-overlay-removed', detail: 'expected the crossfade snapshot overlay to be gone within ~1.5s (its hard timeout), it was still present after 2.2s' });
+  }
+  if (result.sawVideoHidden) {
+    violations.push({ check: 'crossfade-no-black-flash', detail: 'the <video> element was display:none at some point during the switch — that is the black-flash failure mode the crossfade overlay exists to cover for' });
+  }
+  if (rec.urls.length > 0) {
+    violations.push({ check: 'crossfade-no-reload', detail: `expected 0 main-frame document loads during the crossfade switch, got ${rec.urls.length}: ${rec.urls.join(' , ')}` });
+  }
+  if (stageBefore && stageAfter) {
+    // A tolerance wider than 1px is deliberate: the related/queue list can
+    // grow or shrink enough between videos to toggle the page's own vertical
+    // scrollbar, which shifts the viewport width by a scrollbar's worth of
+    // pixels — a real but unrelated effect, not a regression in the
+    // crossfade. What this guards against is the stage collapsing or
+    // resizing by anything bigger than that.
+    const moved = Math.abs(stageBefore.x - stageAfter.x) > 24 || Math.abs(stageBefore.y - stageAfter.y) > 24
+      || Math.abs(stageBefore.width - stageAfter.width) > 24 || Math.abs(stageBefore.height - stageAfter.height) > 24;
+    if (moved) {
+      violations.push({ check: 'crossfade-no-layout-jump', detail: `#itube-stage box moved during the switch: before=${JSON.stringify(stageBefore)} after=${JSON.stringify(stageAfter)}` });
+    }
+  }
+  if (!playbackOk) {
+    violations.push({ check: 'crossfade-playback-resumes', detail: 'expected playback to resume (currentTime advancing, or not paused) after the switch completed' });
+  }
+  return violations;
+}
+
+// The crossfade is explicitly skipped when Picture-in-Picture is active (the
+// video has left the stage, so there is nothing on the stage to snapshot).
+// Headless Chromium generally refuses to actually enter PiP with no window
+// manager behind it, so this is best-effort: it only asserts the guard when
+// it can actually get the browser into PiP, and skips cleanly (with a reason)
+// otherwise rather than passing vacuously or failing on an environment limit.
+async function checkCrossfadeSkipsWithPiP(page) {
+  const violations = [];
+  await page.waitForSelector('.rc', { timeout: 10000 }).catch(() => {});
+  const related = await page.$('.rc');
+  if (!related) return violations;
+  const enteredPiP = await page.evaluate(() => {
+    const video = document.querySelector('#itube-stage video');
+    if (!video || typeof video.requestPictureInPicture !== 'function') return Promise.resolve(false);
+    return video.requestPictureInPicture().then(() => true).catch(() => false);
+  });
+  if (!enteredPiP) {
+    console.log('  crossfade-pip-skip: SKIP — headless Chromium would not enter real Picture-in-Picture here, cannot exercise the PiP guard');
+    return violations;
+  }
+  const clicked = await clickCardPart(page, related, '.rc-title');
+  if (clicked) {
+    await page.waitForTimeout(400);
+    const hasOverlay = await page.evaluate(() => !!document.querySelector('#itube-stage canvas.itube-crossfade'));
+    if (hasOverlay) {
+      violations.push({ check: 'crossfade-pip-skip', detail: 'expected no crossfade overlay while Picture-in-Picture is active' });
+    }
+  }
+  await page.evaluate(() => (document.exitPictureInPicture ? document.exitPictureInPicture().catch(() => {}) : null));
+  return violations;
+}
+
+// Before renderMeta() applies a video's data, the meta card used to render as
+// visibly broken: an empty avatar circle, an empty channel name, and a
+// metaDivider line sitting above nothing (channelRow hidden/empty while the
+// divider it sits under stayed visible). The skeleton exists to occupy that
+// gap deliberately instead. This drives a real watch-to-watch switch (the
+// only path with an observable async gap — the initial hard load renders
+// synchronously from ytInitialData) and asserts: the skeleton actually shows
+// up, the divider is never shown while its own channelRow is hidden (the
+// structural version of the orphaned-divider bug — a stale channel NAME
+// lingering hidden behind it isn't the bug; a divider floating over nothing
+// visible is), the skeleton is gone by the time real data lands, and the
+// real name text is there afterward.
+async function checkWatchLoadSkeleton(page) {
+  const violations = [];
+  await page.waitForSelector('.rc', { timeout: 10000 }).catch(() => {});
+  const related = await page.$('.rc');
+  if (!related) {
+    violations.push({ check: 'skeleton-related-exists', detail: 'expected at least one .rc related card to trigger a watch-to-watch switch' });
+    return violations;
+  }
+  // Arm the observer BEFORE clicking, not after — renderWatchFor's async gap
+  // can be short enough on a fast connection that a probe installed only
+  // after the click misses the whole loading window and asserts nothing.
+  await page.evaluate(() => {
+    window.__skeletonProbe = new Promise((resolve) => {
+      const sk = document.querySelector('.watch-skeleton');
+      const divider = document.querySelector('.watch-meta-divider');
+      const channelRow = document.querySelector('.watch-channel');
+      const nameEl = document.querySelector('.watch-channel-name');
+      let sawSkeleton = false;
+      let orphanedDivider = false;
+      const check = () => {
+        if (sk) {
+          const skVisible = getComputedStyle(sk).display !== 'none' && Number(getComputedStyle(sk).opacity) > 0;
+          if (skVisible) sawSkeleton = true;
+        }
+        const dividerVisible = divider && getComputedStyle(divider).display !== 'none';
+        const channelRowVisible = channelRow && getComputedStyle(channelRow).display !== 'none';
+        if (dividerVisible && !channelRowVisible) orphanedDivider = true;
+      };
+      check();
+      const mo = new MutationObserver(check);
+      mo.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['style', 'class'] });
+      setTimeout(() => {
+        mo.disconnect();
+        check();
+        resolve({
+          sawSkeleton,
+          orphanedDivider,
+          skeletonGoneAtEnd: !sk || getComputedStyle(sk).display === 'none',
+          nameAtEnd: (nameEl && nameEl.textContent || '').trim(),
+        });
+      }, 6000);
+    });
+  });
+
+  const clicked = await clickCardPart(page, related, '.rc-title');
+  if (!clicked) {
+    violations.push({ check: 'skeleton-related-exists', detail: 'the first .rc related card has no layout box to click' });
+    return violations;
+  }
+
+  const result = await page.evaluate(() => window.__skeletonProbe);
+
+  if (!result.sawSkeleton) {
+    violations.push({ check: 'watch-skeleton-appears', detail: 'expected .watch-skeleton to become visible while the next video\'s meta was loading, it never did' });
+  }
+  if (result.orphanedDivider) {
+    violations.push({ check: 'watch-skeleton-no-orphan-divider', detail: 'watch-meta-divider was visible while its own .watch-channel row was hidden — the exact broken pre-load state (a divider over nothing) the skeleton exists to replace' });
+  }
+  if (!result.skeletonGoneAtEnd) {
+    violations.push({ check: 'watch-skeleton-hides', detail: 'expected .watch-skeleton to be hidden once the new video\'s meta had loaded' });
+  }
+  if (!result.nameAtEnd) {
+    violations.push({ check: 'watch-skeleton-real-content', detail: 'expected .watch-channel-name to have real text after the switch completed' });
+  }
+  return violations;
+}
+
+// prefers-reduced-motion must turn the shimmer off rather than merely making
+// it subtle — getComputedStyle resolves a display:none element's pseudo
+// element fine, so this does not need to catch the skeleton mid-load.
+async function checkSkeletonReducedMotion(page) {
+  const violations = [];
+  const normal = await page.evaluate(() => {
+    const el = document.querySelector('.watch-skeleton-avatar');
+    return el ? getComputedStyle(el, '::after').animationName : null;
+  });
+  if (normal == null) {
+    violations.push({ check: 'skeleton-reduced-motion-baseline', detail: 'expected a .watch-skeleton-avatar element to exist to test the shimmer animation' });
+    return violations;
+  }
+  if (normal === 'none') {
+    violations.push({ check: 'skeleton-shimmer-present', detail: 'expected the shimmer keyframe to be applied by default, got animation-name: none' });
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const reduced = await page.evaluate(() => {
+    const el = document.querySelector('.watch-skeleton-avatar');
+    return el ? getComputedStyle(el, '::after').animationName : null;
+  });
+  await page.emulateMedia({ reducedMotion: null });
+  if (reduced !== 'none') {
+    violations.push({ check: 'skeleton-reduced-motion-disables', detail: `expected the shimmer keyframe to be disabled under prefers-reduced-motion, got animation-name: ${reduced}` });
+  }
+  return violations;
+}
+
+// The skeleton must cover the COLD page-load window, not only SPA switches.
+// This is the state the user actually screenshotted: a fresh /watch load shows
+// a ~2s gap before the ytInitialData-derived meta renders, and before this was
+// guarded that gap displayed the broken pre-load state — an empty
+// .watch-channel row under a visible .watch-meta-divider, a divider drawn over
+// nothing — with no skeleton at all. checkWatchLoadSkeleton exercises ONLY the
+// SPA related-click path (renderWatchFor), so it could not catch the cold-load
+// regression; renderMeta()'s no-data branch is a separate code path. This opens
+// a genuinely cold page with the sampler installed BEFORE any page script runs,
+// so it sees the earliest frames.
+async function checkColdLoadSkeleton(context) {
+  const violations = [];
+  const page = await context.newPage();
+  await page.addInitScript(() => {
+    window.__cold = { sawSkeleton: false, sawOrphanDivider: false, nameAt: null, t0: Date.now() };
+    const tick = () => {
+      const st = window.__cold;
+      const sk = document.querySelector('.watch-skeleton');
+      const divider = document.querySelector('.watch-meta-divider');
+      const nameEl = document.querySelector('.watch-channel-name');
+      if (sk) {
+        const cs = getComputedStyle(sk);
+        if (cs.display !== 'none' && Number(cs.opacity) > 0) st.sawSkeleton = true;
+      }
+      const nameText = (nameEl && nameEl.textContent || '').trim();
+      if (divider && getComputedStyle(divider).display !== 'none' && !nameText) st.sawOrphanDivider = true;
+      if (nameText && st.nameAt === null) st.nameAt = Date.now() - st.t0;
+      if (Date.now() - st.t0 < 8000) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  try {
+    await page.goto('https://www.youtube.com/watch?v=aircAruvnKk', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(
+      () => window.__cold && (window.__cold.nameAt !== null || Date.now() - window.__cold.t0 > 7000),
+      { timeout: 12000 }
+    ).catch(() => {});
+    await page.waitForTimeout(300);
+    const res = await page.evaluate(() => window.__cold);
+    if (res.sawOrphanDivider) {
+      violations.push({ check: 'cold-load-skeleton-no-orphan', detail: `on a COLD /watch load the broken pre-load state appeared: .watch-meta-divider was visible over an empty .watch-channel-name (name filled at ${res.nameAt}ms) — the divider-over-nothing the skeleton exists to replace. The skeleton must cover the cold-load window, not only SPA switches.` });
+    }
+    // Only demand the skeleton when there was actually a gap to cover: if the
+    // meta rendered near-instantly (ytInitialData already present at
+    // document-start) there is legitimately nothing to skeleton over.
+    if (!res.sawSkeleton && (res.nameAt === null || res.nameAt > 400)) {
+      violations.push({ check: 'cold-load-skeleton-appears', detail: `expected .watch-skeleton to cover the cold-load window (real content filled at ${res.nameAt}ms), but the skeleton never became visible` });
+    }
+  } finally {
+    await page.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
+  checkColdLoadSkeleton,
   checkYtdAppHidden,
   checkWatchToWatchNavigation,
   checkHomeNavigation,
@@ -1484,4 +1802,8 @@ module.exports = {
   checkSearchSuggestions,
   checkSuggestionsDontResurrectAfterSubmit,
   checkAboutTab,
+  checkVideoCrossfade,
+  checkCrossfadeSkipsWithPiP,
+  checkWatchLoadSkeleton,
+  checkSkeletonReducedMotion,
 };

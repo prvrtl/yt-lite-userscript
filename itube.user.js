@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.5.0
+// @version      4.6.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -727,6 +727,17 @@
     #itube-stage.ad video {
       opacity: 0;
     }
+    #itube-stage canvas.itube-crossfade {
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      z-index: 5;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity .22s ease;
+    }
     #itube-stage video {
       position: absolute !important;
       left: 0 !important;
@@ -939,6 +950,95 @@
     #itube .watch-meta-divider {
       height: 1px;
       background: rgba(255, 255, 255, .08);
+    }
+    #itube .watch-channel,
+    #itube .watch-meta-divider,
+    #itube .watch-stats,
+    #itube .watch-description,
+    #itube .watch-skeleton {
+      transition: opacity .2s ease;
+    }
+    #itube .watch-skeleton {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #itube .watch-skeleton-channel {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #itube .watch-skeleton-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      flex: none;
+      background: var(--raised);
+    }
+    #itube .watch-skeleton-lines {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #itube .watch-skeleton-bar {
+      border-radius: 4px;
+      background: var(--raised);
+    }
+    #itube .watch-skeleton-name {
+      width: 140px;
+      height: 13px;
+    }
+    #itube .watch-skeleton-subs {
+      width: 90px;
+      height: 11px;
+    }
+    #itube .watch-skeleton-stats {
+      width: 220px;
+      height: 13px;
+      margin: 6px 0;
+    }
+    #itube .watch-skeleton-pill {
+      width: 96px;
+      height: 34px;
+      border-radius: var(--r-pill);
+      background: var(--raised);
+      flex: none;
+      margin-left: auto;
+    }
+    #itube .watch-skeleton-desc {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #itube .watch-skeleton-desc-line {
+      height: 12px;
+      width: 100%;
+    }
+    #itube .watch-skeleton-desc-line.short {
+      width: 60%;
+    }
+    #itube .sk-shimmer {
+      position: relative;
+      overflow: hidden;
+    }
+    #itube .sk-shimmer::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .07), transparent);
+      background-size: 200% 100%;
+      animation: itube-shimmer 1.2s ease-in-out infinite;
+    }
+    @keyframes itube-shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #itube .sk-shimmer::after {
+        animation: none;
+      }
     }
     #itube .watch-stats {
       font-size: 13px;
@@ -3923,6 +4023,64 @@
     if (v.style.objectFit !== 'contain') v.style.objectFit = 'contain';
   };
 
+  const CROSSFADE_HARD_TIMEOUT_MS = 1500;
+
+  let crossfadeState = null;
+
+  const teardownCrossfade = (immediate) => {
+    const st = crossfadeState;
+    if (!st) return;
+    crossfadeState = null;
+    clearTimeout(st.hardTimeout);
+    EventTarget.prototype.removeEventListener.call(st.video, 'loadeddata', st.onReady);
+    EventTarget.prototype.removeEventListener.call(st.video, 'playing', st.onReady);
+    if (immediate) {
+      st.canvas.remove();
+      return;
+    }
+    const done = () => st.canvas.remove();
+    st.canvas.addEventListener('transitionend', done, { once: true });
+    setTimeout(done, 320);
+    requestAnimationFrame(() => { st.canvas.style.opacity = '0'; });
+  };
+
+  const beginVideoCrossfade = () => {
+    teardownCrossfade(true);
+    if (document.pictureInPictureElement) return;
+    const stage = document.getElementById('itube-stage');
+    if (!stage) return;
+    const video = stage.querySelector('video');
+    if (!video || video.readyState < 2) return;
+    const rect = stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const canvas = document.createElement('canvas');
+    canvas.className = 'itube-crossfade';
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    const ctx = canvas.getContext('2d');
+    try {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    } catch (e) {
+      return;
+    }
+    stage.appendChild(canvas);
+    const st = { video, canvas, hardTimeout: null, onReady: null };
+    const finish = () => teardownCrossfade(false);
+    const onReady = () => {
+      if (typeof video.requestVideoFrameCallback === 'function') {
+        video.requestVideoFrameCallback(finish);
+      } else {
+        finish();
+      }
+    };
+    st.onReady = onReady;
+    EventTarget.prototype.addEventListener.call(video, 'loadeddata', onReady, { once: true });
+    EventTarget.prototype.addEventListener.call(video, 'playing', onReady, { once: true });
+    st.hardTimeout = setTimeout(finish, CROSSFADE_HARD_TIMEOUT_MS);
+    crossfadeState = st;
+  };
+
   const parseChapters = (data) => {
     try {
       for (const ep of data?.engagementPanels || []) {
@@ -4256,7 +4414,70 @@
     unavailable.className = 'watch-unavailable';
     unavailable.textContent = "This video isn't available.";
     unavailable.style.display = 'none';
-    meta.append(unavailable, channelRow, signInHint, metaDivider, stats, desc, descToggle);
+
+    const skeleton = document.createElement('div');
+    skeleton.className = 'watch-skeleton';
+    const skelChannel = document.createElement('div');
+    skelChannel.className = 'watch-skeleton-channel';
+    const skelAvatar = document.createElement('div');
+    skelAvatar.className = 'watch-skeleton-avatar sk-shimmer';
+    const skelLines = document.createElement('div');
+    skelLines.className = 'watch-skeleton-lines';
+    const skelName = document.createElement('div');
+    skelName.className = 'watch-skeleton-bar sk-shimmer watch-skeleton-name';
+    const skelSubs = document.createElement('div');
+    skelSubs.className = 'watch-skeleton-bar sk-shimmer watch-skeleton-subs';
+    skelLines.append(skelName, skelSubs);
+    const skelPill = document.createElement('div');
+    skelPill.className = 'watch-skeleton-pill sk-shimmer';
+    skelChannel.append(skelAvatar, skelLines, skelPill);
+    const skelStats = document.createElement('div');
+    skelStats.className = 'watch-skeleton-bar sk-shimmer watch-skeleton-stats';
+    const skelDesc = document.createElement('div');
+    skelDesc.className = 'watch-skeleton-desc';
+    const skelDescLine1 = document.createElement('div');
+    skelDescLine1.className = 'watch-skeleton-bar sk-shimmer watch-skeleton-desc-line';
+    const skelDescLine2 = document.createElement('div');
+    skelDescLine2.className = 'watch-skeleton-bar sk-shimmer watch-skeleton-desc-line';
+    const skelDescLine3 = document.createElement('div');
+    skelDescLine3.className = 'watch-skeleton-bar sk-shimmer watch-skeleton-desc-line short';
+    skelDesc.append(skelDescLine1, skelDescLine2, skelDescLine3);
+    skeleton.append(skelChannel, skelStats, skelDesc);
+
+    const META_CONTENT_ELS = [channelRow, metaDivider, stats, desc];
+    let metaSkeletonVisible = false;
+
+    const showMetaSkeleton = () => {
+      metaSkeletonVisible = true;
+      unavailable.style.display = 'none';
+      for (const contentEl of META_CONTENT_ELS) {
+        contentEl.style.display = 'none';
+        contentEl.style.opacity = '0';
+      }
+      descToggle.style.display = 'none';
+      skeleton.style.opacity = '1';
+      skeleton.style.display = 'flex';
+    };
+
+    const hideMetaSkeletonImmediate = () => {
+      metaSkeletonVisible = false;
+      skeleton.style.display = 'none';
+    };
+
+    const revealMetaContent = () => {
+      for (const contentEl of META_CONTENT_ELS) contentEl.style.display = '';
+      if (metaSkeletonVisible) {
+        metaSkeletonVisible = false;
+        skeleton.style.opacity = '0';
+        setTimeout(() => { if (!metaSkeletonVisible) skeleton.style.display = 'none'; }, 220);
+      }
+      requestAnimationFrame(() => {
+        for (const contentEl of META_CONTENT_ELS) contentEl.style.opacity = '1';
+      });
+    };
+
+    meta.append(unavailable, skeleton, channelRow, signInHint, metaDivider, stats, desc, descToggle);
+    showMetaSkeleton();
 
     const commentsPanel = document.createElement('div');
     commentsPanel.className = 'comments';
@@ -4340,6 +4561,7 @@
       if ((status && status !== 'OK') || !hasVideo) {
         title.textContent = '';
         setTitle(null);
+        hideMetaSkeletonImmediate();
         unavailable.style.display = '';
         channelRow.style.display = 'none';
         metaDivider.style.display = 'none';
@@ -4357,10 +4579,11 @@
         setTimeout(() => { if (title.textContent === t) setTitle(t); }, 1500);
       }
       unavailable.style.display = 'none';
-      channelRow.style.display = '';
-      metaDivider.style.display = '';
       const owner = secondary?.owner?.videoOwnerRenderer;
-      channelName.textContent = owner?.title?.runs?.[0]?.text || details?.author || '';
+      const ownerName = owner?.title?.runs?.[0]?.text || details?.author || '';
+      if (!ownerName) { showMetaSkeleton(); return; }
+      revealMetaContent();
+      channelName.textContent = ownerName;
       subs.textContent = owner?.subscriberCountText?.simpleText
         || owner?.subscriberCountText?.accessibility?.accessibilityData?.label
         || '';
@@ -5126,9 +5349,10 @@
     let renderGeneration = 0;
     const renderWatchFor = async (videoId) => {
       const gen = ++renderGeneration;
+      showMetaSkeleton();
       const data = await innertube('next', { videoId });
       if (gen !== renderGeneration) return;
-      if (!data) return;
+      if (!data) { hideMetaSkeletonImmediate(); return; }
       chapterSecs = parseChapters(data);
       renderMeta(data);
       renderTicks();
@@ -5146,6 +5370,7 @@
     return () => {
       clearInterval(timer);
       mountAbort.abort();
+      teardownCrossfade(true);
       adObserver?.disconnect();
       adObserver = null;
       adObserved = null;
@@ -5254,6 +5479,7 @@
   };
 
   const requestPlayback = (pl, videoId) => {
+    beginVideoCrossfade();
     requestedVideoId = videoId;
     requestedAt = Date.now();
     resumeVideoId = null;

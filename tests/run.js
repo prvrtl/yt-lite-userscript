@@ -29,6 +29,11 @@ const {
   checkSearchSuggestions,
   checkSuggestionsDontResurrectAfterSubmit,
   checkAboutTab,
+  checkVideoCrossfade,
+  checkCrossfadeSkipsWithPiP,
+  checkWatchLoadSkeleton,
+  checkSkeletonReducedMotion,
+  checkColdLoadSkeleton,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -163,6 +168,10 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
     if (pageName === 'watch') {
       violations = violations.concat(await runWatchFunctional(page));
       violations = violations.concat(await checkWatchToWatchNavigation(page));
+      violations = violations.concat(await checkVideoCrossfade(page));
+      violations = violations.concat(await checkWatchLoadSkeleton(page));
+      violations = violations.concat(await checkSkeletonReducedMotion(page));
+      violations = violations.concat(await checkCrossfadeSkipsWithPiP(page));
       violations = violations.concat(await checkDescriptionTimestampSeek(page));
       violations = violations.concat(await checkCommentsOffCopy(page));
       const toggle = await page.$('.comments-toggle');
@@ -362,6 +371,25 @@ async function main() {
     table.push({ page: 'shorts', check: 'functional', status, count: violations.length });
     console.log(`  shorts / functional: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=shorts ${fmt(v)}`);
+  }
+
+  // The cold-load watch skeleton runs once, in its own freshly-opened page: it
+  // must sample the load from BEFORE any page script runs, which the shared
+  // per-page `page` (already mounted) cannot do.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- cold-load skeleton (https://www.youtube.com/watch?v=aircAruvnKk) ---');
+    let violations;
+    try {
+      violations = await checkColdLoadSkeleton(context);
+    } catch (err) {
+      console.error(`  ERROR running the cold-load skeleton check: ${err.stack || err}`);
+      violations = [{ check: 'cold-load-skeleton', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'coldload', check: 'skeleton', status, count: violations.length });
+    console.log(`  cold-load skeleton: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=coldload ${fmt(v)}`);
   }
 
   // The signed-out suite runs once, in its own contexts: it opens the
