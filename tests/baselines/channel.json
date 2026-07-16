@@ -28,7 +28,7 @@
       "y": 424,
       "w": 296
     },
-    ".c-thumb:first-child": {
+    ".c:first-child .c-thumb": {
       "x": 224,
       "y": 432,
       "w": 280,

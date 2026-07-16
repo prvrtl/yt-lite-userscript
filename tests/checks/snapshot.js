@@ -15,13 +15,19 @@ const ARTIFACT_DIR = path.join(__dirname, '..', 'artifacts');
 
 // Superset of selectors worth tracking across all page types. Selectors
 // that don't exist on a given page are simply skipped.
+// NOTE the thumb selectors are DESCENDANT selectors, not `:first-child` ones.
+// A card's first child is now its overlay video link (the restructure that made
+// the channel name a link of its own), so `.c-thumb:first-child` matches
+// nothing — and "matches nothing" reads as `missing from current page`, which
+// is a real failure mode, not a false alarm: it is how a collapsed or removed
+// thumbnail would look too. Anchor on the card instead.
 const KEY_SELECTORS = [
   '.hd', '.sidebar', '.content', '.grid',
-  '.c:first-child', '.c-thumb:first-child',
+  '.c:first-child', '.c:first-child .c-thumb',
   '#itube-stage', '#itube-bar',
   '.watch-meta', '.watch-right', '.watch-left',
   '.ch-banner', '.ch-avatar',
-  '.row:first-child', '.row-thumb:first-child',
+  '.row:first-child', '.row:first-child .row-thumb',
 ];
 
 // Elements whose HEIGHT is a function of what YouTube happened to serve, not
@@ -36,9 +42,9 @@ const KEY_SELECTORS = [
 //    the source of the channel/playlist snapshot flake: baselines held
 //    h=220/236, a re-ranked feed measured 236/252, and the suite went red on a
 //    page where nothing was wrong. The card's real layout is still pinned —
-//    x/y/w are asserted here, and `.c-thumb:first-child` / `.row-thumb:first-child`
-//    keep FULL geometry including height, because a thumbnail's box is fixed by
-//    the design and not by the content.
+//    x/y/w are asserted here, and the card's thumbnail keeps FULL geometry
+//    including height, because a thumbnail's box is fixed by the design and not
+//    by the content.
 //
 // Height is not simply ignored for any of these: liveViolations asserts every
 // one of them renders with height > 0, so a collapsed card or an empty column

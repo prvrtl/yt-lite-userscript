@@ -23,7 +23,7 @@
       "y": 180,
       "w": 1184
     },
-    ".row-thumb:first-child": {
+    ".row:first-child .row-thumb": {
       "x": 224,
       "y": 188,
       "w": 248,
@@ -32,7 +32,7 @@
   },
   "counts": {
     "c": 0,
-    "row": 11,
+    "row": 12,
     "rc": 0,
     "commentRow": 0
   }

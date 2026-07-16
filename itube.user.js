@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.2.0
+// @version      4.3.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -254,22 +254,6 @@
       min-width: 96px;
       justify-content: flex-end;
     }
-    #itube .hd-icon-btn {
-      padding: 0;
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      border: none;
-      background: none;
-      color: var(--muted);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-    }
-    #itube .hd-icon-btn:hover {
-      background: var(--surface);
-    }
     #itube .hd-avatar {
       width: 28px;
       height: 28px;
@@ -484,6 +468,7 @@
     }
     #itube .c {
       display: block;
+      position: relative;
       color: var(--text);
       text-decoration: none;
       content-visibility: auto;
@@ -495,6 +480,46 @@
     }
     #itube .c:hover {
       background: var(--hover);
+    }
+    #itube .c-link,
+    #itube .rc-link,
+    #itube .row-link {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+    }
+    #itube a.c-chan,
+    #itube a.rc-chan,
+    #itube a.row-chan {
+      text-decoration: none;
+      cursor: pointer;
+    }
+    #itube .c-chan,
+    #itube .rc-chan,
+    #itube .row-chan {
+      position: relative;
+      z-index: 2;
+      width: fit-content;
+      max-width: 100%;
+    }
+    #itube a.c-chan:hover,
+    #itube a.rc-chan:hover,
+    #itube a.row-chan:hover {
+      color: var(--text);
+    }
+    #itube a.comment-author,
+    #itube .comment-avatar-link {
+      color: inherit;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    #itube .comment-avatar-link {
+      display: block;
+      flex: none;
+      border-radius: 50%;
+    }
+    #itube a.comment-author:hover {
+      color: var(--accent);
     }
     #itube .c:hover .c-thumb img {
       filter: brightness(1.06);
@@ -736,6 +761,12 @@
       object-fit: cover;
       background: var(--raised);
       flex: none;
+      display: block;
+    }
+    #itube .watch-avatar-link {
+      flex: none;
+      display: block;
+      border-radius: 50%;
     }
     #itube .watch-channel-info {
       flex: none;
@@ -744,6 +775,17 @@
     #itube .watch-channel-name {
       font-size: 14px;
       font-weight: 600;
+      color: var(--text);
+      text-decoration: none;
+      display: block;
+      width: fit-content;
+    }
+    #itube a.watch-channel-name[href]:hover {
+      color: var(--accent);
+    }
+    #itube a.watch-avatar-link[href],
+    #itube a.watch-channel-name[href] {
+      cursor: pointer;
     }
     #itube .watch-subs {
       font-size: 12.5px;
@@ -1072,6 +1114,7 @@
     }
     #itube .rc {
       display: flex;
+      position: relative;
       gap: 10px;
       text-decoration: none;
       color: var(--text);
@@ -1127,6 +1170,7 @@
     }
     #itube .row {
       display: flex;
+      position: relative;
       gap: 16px;
       color: var(--text);
       text-decoration: none;
@@ -1143,8 +1187,8 @@
     #itube .row:hover .row-thumb img {
       filter: brightness(1.06);
     }
-    #itube .c:focus-visible .c-thumb,
-    #itube .row:focus-visible .row-thumb {
+    #itube .c-link:focus-visible ~ .c-thumb,
+    #itube .row-link:focus-visible ~ .row-thumb {
       outline: 2px solid var(--accent);
       outline-offset: 2px;
     }
@@ -1204,6 +1248,66 @@
       text-align: center;
       padding: 48px 0;
       font-size: 14px;
+    }
+    #itube .signin-state {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 48px 16px;
+      text-align: center;
+    }
+    #itube .signin-title {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -.01em;
+      color: var(--text);
+    }
+    #itube .signin-message {
+      font-size: 14px;
+      color: var(--muted);
+      max-width: 420px;
+    }
+    #itube .signin-btn {
+      display: flex;
+      align-items: center;
+      height: 34px;
+      padding: 0 16px;
+      border-radius: var(--r-pill);
+      background: rgba(10, 132, 255, .16);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    #itube .signin-btn:hover {
+      background: rgba(10, 132, 255, .24);
+    }
+    #itube .hd-signin {
+      display: flex;
+      align-items: center;
+      height: 28px;
+      padding: 0 12px;
+      border-radius: var(--r-pill);
+      background: rgba(10, 132, 255, .16);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      flex: none;
+    }
+    #itube .hd-signin:hover {
+      background: rgba(10, 132, 255, .24);
+    }
+    #itube .watch-signin-hint {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--muted);
     }
     #itube .ch-header {
       margin-bottom: 24px;
@@ -1530,6 +1634,8 @@
 
   const cfg = () => window.ytcfg?.data_;
 
+  const loggedOut = () => cfg()?.LOGGED_IN === false;
+
   const sapisidHash = async () => {
     const m = document.cookie.match(/(?:^|;\s*)(?:__Secure-3PAPISID|SAPISID)=([^;]+)/);
     if (!m) return null;
@@ -1637,6 +1743,27 @@
     || null
   );
 
+  const channelHrefFrom = (endpoint) => {
+    const cmd = endpoint?.innertubeCommand || endpoint;
+    const browse = cmd?.browseEndpoint;
+    if (!browse) return null;
+    const base = browse.canonicalBaseUrl;
+    if (typeof base === 'string' && base.startsWith('/')) return base;
+    const url = cmd?.commandMetadata?.webCommandMetadata?.url;
+    if (typeof url === 'string' && url.startsWith('/')) return url;
+    const id = browse.browseId;
+    return typeof id === 'string' && id.startsWith('UC') ? '/channel/' + id : null;
+  };
+
+  const getChannelHref = (node) => channelHrefFrom(
+    node?.longBylineText?.runs?.[0]?.navigationEndpoint
+    || node?.shortBylineText?.runs?.[0]?.navigationEndpoint
+    || node?.ownerText?.runs?.[0]?.navigationEndpoint
+    || node?.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.navigationEndpoint
+  );
+
+  const handleFromHref = (href) => (typeof href === 'string' && href.startsWith('/@') ? href.slice(1) : '');
+
   const getThumb = (node) => {
     const list = node?.thumbnail?.thumbnails;
     if (Array.isArray(list) && list.length) {
@@ -1697,6 +1824,34 @@
     return { liked, disliked, likeCountText };
   };
 
+  const runsText = (node) => (
+    node?.simpleText
+    || (Array.isArray(node?.runs) ? node.runs.map((r) => r?.text || '').join('') : '')
+    || node?.content
+    || ''
+  );
+
+  const needsSignIn = (node) => !!findNode(node, (n) => n.signInEndpoint || n.openPopupAction);
+
+  const feedSignInPrompt = (res) => {
+    if (!res) return null;
+    const promo = findNode(res, (n) => n?.backgroundPromoRenderer)?.backgroundPromoRenderer;
+    if (promo && needsSignIn(promo)) {
+      return { title: runsText(promo.title), message: runsText(promo.bodyText) };
+    }
+    const message = findNode(res, (n) => n?.messageRenderer)?.messageRenderer;
+    if (message && needsSignIn(message)) {
+      return { title: runsText(message.text), message: '' };
+    }
+    return null;
+  };
+
+  const feedNudgePrompt = (res) => {
+    const nudge = findNode(res, (n) => n?.feedNudgeRenderer)?.feedNudgeRenderer;
+    if (!nudge) return null;
+    return { title: runsText(nudge.title), message: runsText(nudge.subtitle) };
+  };
+
   const mutationConfirmed = (res, check) => {
     if (!res || res.error) return false;
     let blocked = false;
@@ -1707,6 +1862,8 @@
     });
     return ok && !blocked;
   };
+
+  const likeConfirmed = (res) => mutationConfirmed(res, () => true);
 
   const subscribeConfirmed = (res, want) => mutationConfirmed(res, (n) => {
     const u = n.updateSubscribeButtonAction;
@@ -1780,6 +1937,8 @@
       id,
       title,
       channel: rest.find((t) => !/views?|ago|watching/i.test(t)) || '',
+      channelHref: channelHrefFrom(meta?.image?.decoratedAvatarViewModel?.rendererContext?.commandContext?.onTap)
+        || channelHrefFrom(findNode(meta?.image?.avatarStackViewModel, (n) => n?.browseEndpoint)),
       thumb,
       duration: texts.find((t) => /^\d+:\d\d/.test(t)) || '',
       views: rest.find((t) => /views?|watching/i.test(t)) || '',
@@ -1806,6 +1965,7 @@
         id: node.videoId,
         title,
         channel: getChannel(node),
+        channelHref: getChannelHref(node),
         thumb,
         duration: getDuration(node),
         views: getViews(node),
@@ -1842,6 +2002,7 @@
         id: node.videoId,
         title,
         channel: getChannel(node),
+        channelHref: getChannelHref(node),
         thumb,
         duration: getDuration(node),
         views: getViews(node),
@@ -1867,7 +2028,7 @@
         const thumb = sources.length ? sources[sources.length - 1].url : null;
         if (!title || !thumb) return;
         seen.add(id);
-        out.push({ id, type: 'playlist', title, channel: '', thumb, duration: '', views: '', published: '', snippet: '' });
+        out.push({ id, type: 'playlist', title, channel: '', channelHref: null, thumb, duration: '', views: '', published: '', snippet: '' });
         return;
       }
       const legacy = node.playlistRenderer || node.gridPlaylistRenderer || node.compactPlaylistRenderer;
@@ -1883,7 +2044,7 @@
         || legacy.videoCountText?.simpleText
         || null;
       seen.add(id);
-      out.push({ id, type: 'playlist', title, channel: '', thumb, duration: '', views: count ? count + ' videos' : '', published: '', snippet: '' });
+      out.push({ id, type: 'playlist', title, channel: '', channelHref: null, thumb, duration: '', views: count ? count + ' videos' : '', published: '', snippet: '' });
     });
     return out;
   };
@@ -1899,6 +2060,7 @@
         id: r.videoId,
         title: getTitle(r) || '',
         channel: getChannel(r) || '',
+        channelHref: getChannelHref(r),
         thumb: getThumb(r),
         duration: r.lengthText?.simpleText
           || (Array.isArray(r.lengthText?.runs) ? r.lengthText.runs.map((x) => x?.text || '').join('') : ''),
@@ -2002,6 +2164,7 @@
       return {
         id: legacy.commentId || null,
         author: legacy.authorText?.simpleText || legacy.authorText?.runs?.[0]?.text || '',
+        authorHref: channelHrefFrom(legacy.authorEndpoint),
         avatar: getCommentAvatar(legacy, null),
         text,
         published: legacy.publishedTimeText?.runs?.[0]?.text || legacy.publishedTimeText?.simpleText || '',
@@ -2023,6 +2186,8 @@
     return {
       id: props.commentId || payload?.key || key || null,
       author: author?.displayName || '',
+      authorHref: channelHrefFrom(author?.channelCommand)
+        || (typeof author?.channelId === 'string' && author.channelId ? '/channel/' + author.channelId : null),
       avatar: getCommentAvatar(null, author),
       text: props.content?.content || '',
       published: props.publishedTime || '',
@@ -2061,12 +2226,31 @@
     return (h ? h + ':' : '') + mm + ':' + String(sec).padStart(2, '0');
   };
 
+  const itemHref = (item) => (item.type === 'playlist'
+    ? '/playlist?list=' + encodeURIComponent(item.id)
+    : '/watch?v=' + encodeURIComponent(item.id));
+
+  const createItemLink = (item, cls) => {
+    const link = document.createElement('a');
+    link.className = cls;
+    link.href = itemHref(item);
+    link.setAttribute('aria-label', item.title || '');
+    return link;
+  };
+
+  const createChannelLink = (item, cls) => {
+    const href = item.channelHref || null;
+    const el = document.createElement(href ? 'a' : 'div');
+    el.className = cls;
+    if (href) el.href = href;
+    el.textContent = item.channel || handleFromHref(href);
+    return el;
+  };
+
   const createCard = (item) => {
-    const a = document.createElement('a');
+    const a = document.createElement('div');
     a.className = 'c';
-    a.href = item.type === 'playlist'
-      ? '/playlist?list=' + encodeURIComponent(item.id)
-      : '/watch?v=' + encodeURIComponent(item.id);
+    const link = createItemLink(item, 'c-link');
     const thumbWrap = document.createElement('div');
     thumbWrap.className = 'c-thumb';
     const img = document.createElement('img');
@@ -2094,20 +2278,18 @@
     const title = document.createElement('h3');
     title.className = 'c-title';
     title.textContent = item.title;
-    const chan = document.createElement('div');
-    chan.className = 'c-chan';
-    chan.textContent = item.channel || '';
+    const chan = createChannelLink(item, 'c-chan');
     const meta = document.createElement('div');
     meta.className = 'c-meta';
     meta.textContent = [item.views, item.published].filter(Boolean).join(' · ');
-    a.append(thumbWrap, title, chan, meta);
+    a.append(link, thumbWrap, title, chan, meta);
     return a;
   };
 
   const createCompactCard = (item) => {
-    const a = document.createElement('a');
+    const a = document.createElement('div');
     a.className = 'rc';
-    a.href = '/watch?v=' + encodeURIComponent(item.id);
+    const link = createItemLink(item, 'rc-link');
     const thumbWrap = document.createElement('div');
     thumbWrap.className = 'rc-thumb';
     const img = document.createElement('img');
@@ -2128,21 +2310,19 @@
     const title = document.createElement('h4');
     title.className = 'rc-title';
     title.textContent = item.title;
-    const chan = document.createElement('div');
-    chan.className = 'rc-chan';
-    chan.textContent = item.channel || '';
+    const chan = createChannelLink(item, 'rc-chan');
     const meta = document.createElement('div');
     meta.className = 'rc-meta';
     meta.textContent = [item.views, item.published].filter(Boolean).join(' · ');
     body.append(title, chan, meta);
-    a.append(thumbWrap, body);
+    a.append(link, thumbWrap, body);
     return a;
   };
 
   const createRowCard = (item) => {
-    const a = document.createElement('a');
+    const a = document.createElement('div');
     a.className = 'row';
-    a.href = '/watch?v=' + encodeURIComponent(item.id);
+    const link = createItemLink(item, 'row-link');
     const thumbWrap = document.createElement('div');
     thumbWrap.className = 'row-thumb';
     const img = document.createElement('img');
@@ -2163,9 +2343,7 @@
     const title = document.createElement('h3');
     title.className = 'row-title';
     title.textContent = item.title;
-    const chan = document.createElement('div');
-    chan.className = 'row-chan';
-    chan.textContent = item.channel || '';
+    const chan = createChannelLink(item, 'row-chan');
     const meta = document.createElement('div');
     meta.className = 'row-meta';
     meta.textContent = [item.views, item.published].filter(Boolean).join(' · ');
@@ -2176,7 +2354,7 @@
       desc.textContent = item.snippet;
       body.appendChild(desc);
     }
-    a.append(thumbWrap, body);
+    a.append(link, thumbWrap, body);
     return a;
   };
 
@@ -2190,14 +2368,24 @@
     avatar.setAttribute('loading', 'lazy');
     avatar.setAttribute('decoding', 'async');
     if (item.avatar) avatar.src = item.avatar;
+    let avatarEl = avatar;
+    if (item.authorHref) {
+      const avatarLink = document.createElement('a');
+      avatarLink.className = 'comment-avatar-link';
+      avatarLink.href = item.authorHref;
+      avatarLink.setAttribute('aria-label', item.author || '');
+      avatarLink.appendChild(avatar);
+      avatarEl = avatarLink;
+    }
 
     const bodyEl = document.createElement('div');
     bodyEl.className = 'comment-body';
 
     const head = document.createElement('div');
     head.className = 'comment-head';
-    const author = document.createElement('span');
+    const author = document.createElement(item.authorHref ? 'a' : 'span');
     author.className = 'comment-author';
+    if (item.authorHref) author.href = item.authorHref;
     author.textContent = item.author || '';
     const time = document.createElement('span');
     time.className = 'comment-time';
@@ -2251,8 +2439,31 @@
       bodyEl.appendChild(repliesBtn);
     }
 
-    row.append(avatar, bodyEl);
+    row.append(avatarEl, bodyEl);
     return row;
+  };
+
+  const createSignInBlock = (prompt) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'signin-state';
+    if (prompt.title) {
+      const heading = document.createElement('div');
+      heading.className = 'signin-title';
+      heading.textContent = prompt.title;
+      wrap.appendChild(heading);
+    }
+    if (prompt.message) {
+      const message = document.createElement('div');
+      message.className = 'signin-message';
+      message.textContent = prompt.message;
+      wrap.appendChild(message);
+    }
+    const btn = document.createElement('a');
+    btn.className = 'signin-btn';
+    btn.href = '/signin';
+    btn.textContent = 'Sign in';
+    wrap.appendChild(btn);
+    return wrap;
   };
 
   const root = document.createElement('div');
@@ -2285,18 +2496,21 @@
   searchWrap.append(searchIcon, search);
   const hdRight = document.createElement('div');
   hdRight.className = 'hd-right';
-  const bell = document.createElement('button');
-  bell.className = 'hd-icon-btn';
-  bell.type = 'button';
-  bell.setAttribute('aria-label', 'Notifications');
-  bell.appendChild(icon([
-    ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round', d: 'M4 6.5a4 4 0 0 1 8 0v3l1.3 2H2.7l1.3-2z' }],
-    ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M6.5 13.5a1.6 1.6 0 0 0 3 0' }],
-  ]));
+  const hdSignIn = document.createElement('a');
+  hdSignIn.className = 'hd-signin';
+  hdSignIn.href = '/signin';
+  hdSignIn.textContent = 'Sign in';
+  hdSignIn.style.display = 'none';
   const avatar = document.createElement('div');
   avatar.className = 'hd-avatar';
-  hdRight.append(bell, avatar);
+  hdRight.append(hdSignIn, avatar);
   header.append(hdLeft, searchWrap, hdRight);
+
+  const syncAccount = () => {
+    const out = loggedOut();
+    hdSignIn.style.display = out ? '' : 'none';
+    avatar.style.display = out ? 'none' : '';
+  };
 
   const nav = document.createElement('nav');
   nav.className = 'sidebar';
@@ -2589,6 +2803,10 @@
       try {
         const res = await fetchFn(seen);
         if (gen !== generation) return;
+        if (res && res.signIn) {
+          container.replaceChildren(createSignInBlock(res.signIn));
+          return;
+        }
         if (!res || (res.items.length === 0 && !res.token)) {
           showEmpty((res && res.message) || emptyMessage);
           return;
@@ -2607,6 +2825,9 @@
 
     return { container, spinner, seen, loadInitial, load, showEmpty, cleanup: () => io.disconnect() };
   };
+
+  const HOME_SIGNED_OUT = { title: 'Try searching to get started', message: 'Sign in to build a feed of videos you’ll love.' };
+  const WATCH_LATER_SIGNED_OUT = { title: 'Enjoy your favorite videos', message: 'Sign in to access videos that you’ve saved to Watch later.' };
 
   const mountHome = () => {
     const heading = document.createElement('h2');
@@ -2641,6 +2862,10 @@
         }
         const items = extractVideos(data, seen);
         heading.style.display = items.length ? '' : 'none';
+        if (!items.length && !resumeItems.length && loggedOut()) {
+          const prompt = feedSignInPrompt(data) || feedNudgePrompt(data) || HOME_SIGNED_OUT;
+          return { items: [], token: null, signIn: prompt };
+        }
         return { items, token: findContinuationToken(data) };
       },
       emptyMessage: 'Nothing here yet.',
@@ -2826,6 +3051,16 @@
     let activeTab = tabFromPath();
     const tabBtns = {};
 
+    let ownerName = '';
+    const fillOwner = (items) => {
+      for (const item of items) {
+        if (item.channelHref) continue;
+        item.channelHref = channelBase();
+        if (!item.channel) item.channel = ownerName;
+      }
+      return items;
+    };
+
     const list = createListView({
       itemClass: 'c',
       containerClass: 'grid',
@@ -2834,7 +3069,7 @@
         const res = await innertube('browse', { continuation: token });
         if (!res) return null;
         const extractor = activeTab === 'playlists' ? extractPlaylists : extractVideos;
-        return { items: extractor(res, seen), token: findContinuationToken(res) };
+        return { items: fillOwner(extractor(res, seen)), token: findContinuationToken(res) };
       },
       fetchInitial: async (seen) => {
         const params = tabParams(activeTab);
@@ -2842,7 +3077,7 @@
         if (!res) return null;
         paintHeader(res);
         const extractor = activeTab === 'playlists' ? extractPlaylists : extractVideos;
-        return { items: extractor(res, seen), token: findContinuationToken(res) };
+        return { items: fillOwner(extractor(res, seen)), token: findContinuationToken(res) };
       },
       emptyMessage: "Couldn't load this channel.",
     });
@@ -2902,6 +3137,7 @@
       const name = (typeof h?.title === 'string' ? h.title : null)
         || h?.title?.runs?.[0]?.text || h?.title?.simpleText
         || vm?.title?.dynamicTextViewModel?.text?.content || null;
+      if (name) ownerName = name;
       const handle = h?.channelHandleText?.runs?.[0]?.text || h?.channelHandleText?.simpleText
         || metaTexts.find((t) => t.startsWith('@')) || null;
       const avatarUrl = thumbFrom(h?.avatar) || imgFrom(vm?.image);
@@ -3022,10 +3258,17 @@
       }
     };
 
+    const signedOutPrompt = (res) => (loggedOut() ? feedSignInPrompt(res) : null);
+
     const fetchFromApi = async (seen) => {
       for (const id of ids) {
         const res = await innertube('browse', { browseId: id });
-        if (!res) continue;
+        if (!res) {
+          if (id === 'VLWL' && loggedOut()) return { items: [], token: null, signIn: WATCH_LATER_SIGNED_OUT };
+          continue;
+        }
+        const prompt = signedOutPrompt(res);
+        if (prompt) return { items: [], token: null, signIn: prompt };
         if (id.startsWith('VL')) setPlaylistTitle(res);
         const items = extractVideos(res, seen);
         const token = findContinuationToken(res);
@@ -3041,6 +3284,8 @@
       fetchInitial: async (seen) => {
         if (useInitialData && !spaNav) {
           const pageData = window.ytInitialData;
+          const prompt = signedOutPrompt(pageData);
+          if (prompt) return { items: [], token: null, signIn: prompt };
           const initialItems = pageData ? extractVideos(pageData, seen) : [];
           if (initialItems.length) {
             if (ids[0].startsWith('VL')) setPlaylistTitle(pageData);
@@ -3324,9 +3569,12 @@
     channelRow.className = 'watch-channel';
     const avatar = document.createElement('img');
     avatar.className = 'watch-avatar';
+    const avatarLink = document.createElement('a');
+    avatarLink.className = 'watch-avatar-link';
+    avatarLink.appendChild(avatar);
     const channelInfo = document.createElement('div');
     channelInfo.className = 'watch-channel-info';
-    const channelName = document.createElement('div');
+    const channelName = document.createElement('a');
     channelName.className = 'watch-channel-name';
     const subs = document.createElement('div');
     subs.className = 'watch-subs';
@@ -3350,7 +3598,22 @@
     const { btn: subscribeBtn, label: subscribeLabel } = pillButton(null, '', 'watch-subscribe');
 
     actions.append(likes, saveBtn, shareBtn, subscribeBtn);
-    channelRow.append(avatar, channelInfo, channelSpacer, actions);
+    channelRow.append(avatarLink, channelInfo, channelSpacer, actions);
+
+    const signInHint = document.createElement('div');
+    signInHint.className = 'watch-signin-hint';
+    signInHint.style.display = 'none';
+    const signInHintText = document.createElement('span');
+    const signInHintLink = document.createElement('a');
+    signInHintLink.className = 'signin-btn';
+    signInHintLink.href = '/signin';
+    signInHintLink.textContent = 'Sign in';
+    signInHint.append(signInHintText, signInHintLink);
+
+    const requireSignIn = (message) => {
+      signInHintText.textContent = message;
+      signInHint.style.display = '';
+    };
 
     let actionsVideoId = null;
     let actionsChannelId = null;
@@ -3385,6 +3648,7 @@
 
     likeBtn.addEventListener('click', async () => {
       if (likeBtn.disabled || likeBusy || !actionsVideoId) return;
+      if (loggedOut()) { requireSignIn('Sign in to like this video.'); return; }
       likeBusy = true;
       const prevLiked = liked;
       const prevDisliked = disliked;
@@ -3392,7 +3656,7 @@
       if (liked) disliked = false;
       setLikeUI();
       const res = await innertube(prevLiked ? 'like/removelike' : 'like/like', { target: { videoId: actionsVideoId } });
-      if (!res) {
+      if (!likeConfirmed(res)) {
         liked = prevLiked;
         disliked = prevDisliked;
         setLikeUI();
@@ -3402,6 +3666,7 @@
 
     dislikeBtn.addEventListener('click', async () => {
       if (dislikeBtn.disabled || likeBusy || !actionsVideoId) return;
+      if (loggedOut()) { requireSignIn('Sign in to dislike this video.'); return; }
       likeBusy = true;
       const prevLiked = liked;
       const prevDisliked = disliked;
@@ -3409,7 +3674,7 @@
       if (disliked) liked = false;
       setLikeUI();
       const res = await innertube(prevDisliked ? 'like/removelike' : 'like/dislike', { target: { videoId: actionsVideoId } });
-      if (!res) {
+      if (!likeConfirmed(res)) {
         liked = prevLiked;
         disliked = prevDisliked;
         setLikeUI();
@@ -3419,6 +3684,7 @@
 
     saveBtn.addEventListener('click', async () => {
       if (saveBtn.disabled || saveBusy || !actionsVideoId) return;
+      if (loggedOut()) { requireSignIn('Sign in to add this video to a playlist.'); return; }
       saveBusy = true;
       const prevSaved = saved;
       saved = !prevSaved;
@@ -3450,6 +3716,7 @@
 
     subscribeBtn.addEventListener('click', async () => {
       if (subscribeBtn.disabled || subscribeBusy || !actionsChannelId) return;
+      if (loggedOut()) { requireSignIn('Sign in to subscribe to this channel.'); return; }
       subscribeBusy = true;
       const prevSubscribed = subscribed;
       subscribed = !prevSubscribed;
@@ -3465,6 +3732,7 @@
     });
 
     const refreshActions = (data, details) => {
+      signInHint.style.display = 'none';
       actionsVideoId = resolveVideoId();
       actionsChannelId = resolveOwnerChannelId(data, details);
 
@@ -3508,7 +3776,7 @@
     unavailable.className = 'watch-unavailable';
     unavailable.textContent = "This video isn't available.";
     unavailable.style.display = 'none';
-    meta.append(unavailable, channelRow, metaDivider, stats, desc, descToggle);
+    meta.append(unavailable, channelRow, signInHint, metaDivider, stats, desc, descToggle);
 
     const commentsPanel = document.createElement('div');
     commentsPanel.className = 'comments';
@@ -3629,6 +3897,15 @@
       subs.textContent = owner?.subscriberCountText?.simpleText
         || owner?.subscriberCountText?.accessibility?.accessibilityData?.label
         || '';
+      const ownerId = resolveOwnerChannelId(data, details);
+      const ownerHref = channelHrefFrom(owner?.navigationEndpoint)
+        || channelHrefFrom(owner?.title?.runs?.[0]?.navigationEndpoint)
+        || (ownerId ? '/channel/' + ownerId : null);
+      for (const el of [avatarLink, channelName]) {
+        if (ownerHref) el.href = ownerHref;
+        else el.removeAttribute('href');
+      }
+      avatarLink.setAttribute('aria-label', channelName.textContent);
       const avatarUrl = getThumb(owner);
       if (avatarUrl) avatar.src = avatarUrl;
       refreshActions(data, details);
@@ -3676,7 +3953,8 @@
       for (const item of currentPlaylist.items) {
         const card = createCompactCard(item);
         card.classList.add('queue-item');
-        card.href = '/watch?v=' + encodeURIComponent(item.id) + '&list=' + encodeURIComponent(currentPlaylist.id);
+        const cardLink = card.querySelector('.rc-link');
+        if (cardLink) cardLink.href = '/watch?v=' + encodeURIComponent(item.id) + '&list=' + encodeURIComponent(currentPlaylist.id);
         if (item.id === videoId) card.classList.add('current');
         qList.appendChild(card);
       }
@@ -4583,6 +4861,7 @@
 
   const route = () => {
     renderGuideChannels();
+    syncAccount();
     const path = location.pathname;
     const info = routeInfo(path, location.search);
     if (info.type === 'shorts') { location.replace('/watch?v=' + encodeURIComponent(info.shortsId)); return; }
@@ -4660,4 +4939,7 @@
     if (watchBoot) spaRoute(); else route();
   });
   route();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', syncAccount, { once: true });
+  }
 })();

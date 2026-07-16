@@ -24,6 +24,9 @@ const {
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
+const { runChannelChecks } = require('./checks/channels');
+const { checkNodeBudget } = require('./checks/perf');
+const { checkGatedFeeds, checkHeaderSignIn, checkWatchActions } = require('./checks/signedout');
 
 const PAGES = {
   home: 'https://www.youtube.com/',
@@ -132,6 +135,17 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
     results.push({ name: 'responsive', violations });
   }
 
+  // Passive too: counts nodes, clicks nothing. `perfViolations` is held by
+  // reference: on the watch page a second pass appends to it once comments are
+  // on screen (they do not exist until something expands them, and expanding
+  // them here would break functional.js's "comments are collapsed by default"
+  // assertion).
+  let perfViolations = null;
+  if (want('perf')) {
+    perfViolations = await checkNodeBudget(page, pageName);
+    results.push({ name: 'perf', violations: perfViolations });
+  }
+
   if (want('functional')) {
     let violations = [];
     violations = violations.concat(await checkYtdAppHidden(page));
@@ -154,6 +168,32 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
       violations = violations.concat(await checkUnhandledLinkRouting(page));
     }
     results.push({ name: 'functional', violations });
+  }
+
+  // Channel links run after functional (which navigates away) and before
+  // hardnav, and they re-open the page under test themselves — they click
+  // through to a channel page, so they cannot leave the page where they found
+  // it.
+  // `unhandled` is the one page with no cards and no author anywhere on it by
+  // design, so there is nothing for these to assert.
+  if (want('channels') && pageName !== 'unhandled') {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await waitForApp(page, { timeout: 30000 });
+    await page.waitForSelector('.c, .rc, .row, #itube-stage', { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    const violations = await runChannelChecks(page, pageName, url);
+    results.push({ name: 'channels', violations });
+
+    // Comment rows are cards too, and they are the one card kind that does not
+    // exist at first paint. Budget them once they are actually rendered.
+    if (pageName === 'watch' && perfViolations) {
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await waitForApp(page, { timeout: 30000 });
+      const toggle = await page.$('.comments-toggle');
+      if (toggle) await toggle.click().catch(() => {});
+      await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 15000 }).catch(() => {});
+      for (const v of await checkNodeBudget(page, pageName)) perfViolations.push(v);
+    }
   }
 
   // Hard-navigation is its own check so it reads as its own row in the
@@ -240,9 +280,11 @@ async function main() {
 
   const context = await newContext(browser);
 
-  // `--check=ads` runs only the ad checks, which own their contexts — there is
-  // no point opening every page just to run zero per-page checks on it.
-  const pageNames = args.check === 'ads' ? [] : (args.page ? [args.page] : Object.keys(PAGES));
+  // `--check=ads` and `--check=signedout` run only their own suites, which own
+  // their contexts — there is no point opening every page just to run zero
+  // per-page checks on it.
+  const OWN_CONTEXT_CHECKS = new Set(['ads', 'signedout']);
+  const pageNames = OWN_CONTEXT_CHECKS.has(args.check) ? [] : (args.page ? [args.page] : Object.keys(PAGES));
   for (const name of pageNames) {
     if (!PAGES[name]) {
       console.error(`Unknown page "${name}". Known pages: ${Object.keys(PAGES).join(', ')}`);
@@ -293,6 +335,28 @@ async function main() {
     table.push({ page: 'shorts', check: 'functional', status, count: violations.length });
     console.log(`  shorts / functional: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=shorts ${fmt(v)}`);
+  }
+
+  // The signed-out suite runs once, in its own contexts: it opens the
+  // account-gated feeds (subscriptions/history/library/Watch later), which are
+  // not in PAGES because they render no content at all when logged out — which
+  // is the entire point of the check.
+  if (!args.page && (!args.check || args.check === 'signedout')) {
+    for (const [name, fn] of [['feeds', checkGatedFeeds], ['header', checkHeaderSignIn], ['actions', checkWatchActions]]) {
+      console.log(`\n--- signedout / ${name} ---`);
+      let res;
+      try {
+        res = await fn(browser);
+      } catch (err) {
+        console.error(`  ERROR running the signedout/${name} check: ${err.stack || err}`);
+        res = { violations: [{ check: 'signedout-' + name, detail: String(err.message || err).split('\n')[0] }], detail: '' };
+      }
+      const status = res.violations.length ? 'FAIL' : 'PASS';
+      if (status === 'FAIL') anyFail = true;
+      table.push({ page: 'signedout', check: name, status, count: res.violations.length });
+      console.log(`  signedout / ${name}: ${status} — ${res.detail}`);
+      for (const v of res.violations) console.log(`    page=signedout ${fmt(v)}`);
+    }
   }
 
   // Ad removal runs once, in its own contexts (it seeds a known volume into

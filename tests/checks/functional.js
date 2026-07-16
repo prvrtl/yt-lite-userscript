@@ -50,6 +50,28 @@ async function showBar(page) {
   await page.waitForTimeout(80);
 }
 
+// Clicks a card the way a human does: by pointing at a spot inside it.
+//
+// A card is no longer a single <a>. It is a container whose video link is an
+// overlay anchor stretched across it, with the channel name sitting ABOVE that
+// overlay as its own link. That is what makes the author reachable without
+// nesting one <a> inside another. The consequence for a test is that
+// `elementHandle.click()` on the card (or on its title/thumb) fails
+// actionability with "…intercepts pointer events" — Playwright is right, the
+// overlay does cover it, and that interception is the feature.
+//
+// So aim the mouse at the coordinates of a specific part of the card and let
+// the browser hit-test, exactly like a user. `part` picks WHICH part, which
+// matters: pointing at the channel name is supposed to open the CHANNEL, while
+// pointing at the title/thumbnail is supposed to open the VIDEO.
+async function clickCardPart(page, card, part) {
+  const target = await card.$(part);
+  const box = await (target || card).boundingBox();
+  if (!box) return false;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  return true;
+}
+
 // Runs the full watch-page functional suite. Assumes the harness already
 // navigated to a /watch URL and waitForApp() resolved.
 async function runWatchFunctional(page) {
@@ -455,7 +477,15 @@ async function checkWatchToWatchNavigation(page) {
     if (res.request().resourceType() === 'document' && res.frame() === mainFrame) docLoads++;
   };
   page.on('response', onResponse);
-  await related.click();
+  // Click the TITLE, not the card's centre: the centre of a compact related
+  // card lands on the channel-name link, which correctly opens the channel
+  // rather than the video.
+  const clicked = await clickCardPart(page, related, '.rc-title');
+  if (!clicked) {
+    violations.push({ check: 'related-card-exists', detail: 'the first .rc related card has no layout box to click' });
+    page.off('response', onResponse);
+    return violations;
+  }
   // renderWatchFor() awaits a fresh 'next' API fetch before updating
   // .watch-title, so poll for the change rather than a fixed sleep.
   await page.waitForFunction(
@@ -623,20 +653,16 @@ async function checkHomeNavigation(page) {
 async function checkFeedToWatchNavigation(page, pageName) {
   const violations = [];
 
-  // `.c` = grid card (home/channel/playlist), `.row` = list row (search). Both
-  // ARE the <a> themselves rather than containers wrapping one, so match the
-  // element directly as well as any nested link.
+  // `.c` = grid card (home/channel/playlist), `.row` = list row (search). Each
+  // is a CONTAINER whose video link is an overlay anchor stretched across it
+  // (the channel name is a sibling link on top) — so match the card by the
+  // video link it contains, and click it through the overlay by coordinates.
   //
   // NOTE: the logged-out home feed legitimately renders ZERO video cards —
   // plain YouTube serves a feedNudgeRenderer instead of a grid to a session
   // with no watch history — so there is nothing to click there and nothing to
   // assert. That is a property of YouTube, not a bug in the app.
-  const card = await page.$([
-    '#itube .c[href^="/watch"]',
-    '#itube .row[href^="/watch"]',
-    '#itube .c a[href^="/watch"]',
-    '#itube .row a[href^="/watch"]',
-  ].join(', '));
+  const card = await page.$('#itube .c:has(a[href^="/watch"]), #itube .row:has(a[href^="/watch"])');
   if (!card) {
     if (pageName !== 'home') {
       violations.push({ check: 'feed-card-exists', detail: `expected at least one video card linking to /watch on the ${pageName} page` });
@@ -655,7 +681,7 @@ async function checkFeedToWatchNavigation(page, pageName) {
   const rec = recordMainFrameDocLoads(page);
   let survived;
   try {
-    await card.click();
+    await clickCardPart(page, card, '.c-title, .row-title');
     await page.waitForFunction(() => location.pathname === '/watch', { timeout: 15000 }).catch(() => {});
     await page.waitForSelector('#itube-stage', { timeout: 15000 }).catch(() => {});
     // Hold the window open past WATCH_BOOT_TIMEOUT: the fallback reload this
