@@ -2208,8 +2208,73 @@ async function checkDislikeEstimate(browser) {
   return violations;
 }
 
+// Regression: YouTube migrated videoOwnerRenderer to viewModels on some videos —
+// the channel name moved to `attributedTitle.content`, the avatar to
+// `avatarStack…image.sources`, the channel id to a nested browseEndpoint, and the
+// subscriber line to a plain `content` node. The old extractors read the
+// pre-migration paths, so on those videos the owner came out empty. On a cold
+// load `videoDetails.author` still filled the name, but the AVATAR was an empty
+// <img> (a broken-image box — the reported "weird border"); on an SPA navigation
+// there is no videoDetails fallback, so the name was empty too and — because the
+// load skeleton only reveals once a name resolves — the meta stayed on the
+// shimmer FOREVER (video playing, title shown, channel row never revealing).
+//
+// This loads a video known to use the new shape and asserts the meta actually
+// reveals with a real name AND a loaded avatar. It SKIPs cleanly if the fixture
+// video ever stops loading (removed/geo) rather than hard-failing on YouTube.
+async function checkWatchMetaReveals(browser) {
+  const NEW_SHAPE_VIDEO = 'HZ9UHLTPmw0';
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=' + NEW_SHAPE_VIDEO);
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForFunction(() => {
+      const row = document.querySelector('.watch-channel');
+      const name = document.querySelector('.watch-channel-name');
+      return row && getComputedStyle(row).display !== 'none' && name && (name.textContent || '').trim();
+    }, { timeout: 15000 }).catch(() => {});
+    // Let the skeleton's ~220ms cross-fade finish before sampling, or the sample
+    // catches it mid-fade (display:flex, opacity mid-transition) and misreads a
+    // clean reveal as "still shown".
+    await page.waitForTimeout(600);
+    const s = await page.evaluate(() => {
+      const row = document.querySelector('.watch-channel');
+      const sk = document.querySelector('.watch-skeleton');
+      const name = document.querySelector('.watch-channel-name');
+      const av = document.querySelector('img.watch-avatar');
+      const title = document.querySelector('.watch-title');
+      return {
+        skeletonShown: !!sk && getComputedStyle(sk).display !== 'none' && Number(getComputedStyle(sk).opacity) > 0,
+        rowVisible: !!row && getComputedStyle(row).display !== 'none',
+        name: (name && name.textContent || '').trim(),
+        avatarW: av ? av.naturalWidth : 0,
+        titleText: (title && title.textContent || '').trim(),
+      };
+    });
+    if (!s.titleText) {
+      console.log('  watch-meta-reveals: SKIP — the new-shape fixture video did not load (removed/geo/unavailable), nothing to assert');
+      return violations;
+    }
+    if (s.skeletonShown || !s.rowVisible) {
+      violations.push({ check: 'watch-meta-not-stuck-on-skeleton', detail: `the watch meta is STILL on the skeleton on a playing video ("${s.titleText}") — the channel row never revealed (skeletonShown=${s.skeletonShown} rowVisible=${s.rowVisible}). The reveal must never get stuck on the shimmer.` });
+    }
+    if (!s.name) {
+      violations.push({ check: 'watch-meta-owner-name', detail: `channel name empty on a playing video ("${s.titleText}") — the owner extractor missed the current data shape (attributedTitle.content / videoDetails.author)` });
+    }
+    if (s.name && s.avatarW === 0) {
+      violations.push({ check: 'watch-meta-avatar-loads', detail: `the channel avatar did not load (naturalWidth 0) on "${s.titleText}" — an empty <img src> renders as a broken-image box; extract from owner.avatarStack when owner.thumbnail is absent` });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
+  checkWatchMetaReveals,
   checkDislikeEstimate,
   checkColdLoadSkeleton,
   checkBootLoaderColdLoad,

@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.10.0
+// @version      4.11.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -2174,7 +2174,8 @@
 
   const resolveOwnerChannelId = (data, details) => {
     const owner = findNode(data, (n) => n?.videoOwnerRenderer)?.videoOwnerRenderer;
-    const fromOwner = owner?.navigationEndpoint?.browseEndpoint?.browseId;
+    const fromOwner = owner?.navigationEndpoint?.browseEndpoint?.browseId
+      || findNode(owner, (n) => typeof n?.browseEndpoint?.browseId === 'string' && n.browseEndpoint.browseId.startsWith('UC'))?.browseEndpoint?.browseId;
     if (fromOwner) return fromOwner;
     return details?.channelId || null;
   };
@@ -4733,12 +4734,15 @@
       }
       unavailable.style.display = 'none';
       const owner = secondary?.owner?.videoOwnerRenderer;
-      const ownerName = owner?.title?.runs?.[0]?.text || details?.author || '';
-      if (!ownerName) { showMetaSkeleton(); return; }
+      const ownerName = owner?.title?.runs?.[0]?.text
+        || owner?.attributedTitle?.content?.trim()
+        || details?.author || '';
+      if (!ownerName && data === window.ytInitialData) { showMetaSkeleton(); return; }
       revealMetaContent();
       channelName.textContent = ownerName;
       subs.textContent = owner?.subscriberCountText?.simpleText
         || owner?.subscriberCountText?.accessibility?.accessibilityData?.label
+        || findNode(owner, (n) => typeof n?.content === 'string' && /subscriber/i.test(n.content))?.content
         || '';
       const ownerId = resolveOwnerChannelId(data, details);
       const ownerHref = channelHrefFrom(owner?.navigationEndpoint)
@@ -4749,8 +4753,11 @@
         else el.removeAttribute('href');
       }
       avatarLink.setAttribute('aria-label', channelName.textContent);
-      const avatarUrl = getThumb(owner);
+      const avatarUrl = getThumb(owner)
+        || owner?.avatarStack?.avatarStackViewModel?.avatars?.[0]?.avatarViewModel?.image?.sources?.[0]?.url
+        || null;
       if (avatarUrl) avatar.src = avatarUrl;
+      else avatar.removeAttribute('src');
       refreshActions(data, details);
       const viewsText = primary?.viewCount?.videoViewCountRenderer?.viewCount?.simpleText
         || (details?.viewCount ? details.viewCount + ' views' : '');

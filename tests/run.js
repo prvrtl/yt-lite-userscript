@@ -40,6 +40,7 @@ const {
   checkBootLoaderNoSpaReappear,
   checkAudioTrackSelector,
   checkDislikeEstimate,
+  checkWatchMetaReveals,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -423,6 +424,24 @@ async function main() {
     table.push({ page: 'dislikeestimate', check: 'functional', status, count: violations.length });
     console.log(`  dislike estimate / functional: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=dislikeestimate ${fmt(v)}`);
+  }
+
+  // Watch meta must reveal on the migrated videoOwnerRenderer (viewModel) shape —
+  // runs once against a fixture video known to use it, so it needs its own page.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- watch meta reveals (viewModel owner shape) ---');
+    let violations;
+    try {
+      violations = await checkWatchMetaReveals(browser);
+    } catch (err) {
+      console.error(`  ERROR running the watch-meta-reveals check: ${err.stack || err}`);
+      violations = [{ check: 'watch-meta-reveals', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'watchmeta', check: 'reveals', status, count: violations.length });
+    console.log(`  watch meta reveals: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=watchmeta ${fmt(v)}`);
   }
 
   // The cold-load watch skeleton runs once, in its own freshly-opened page: it
