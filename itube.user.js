@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.8.0
+// @version      4.9.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -4251,6 +4251,7 @@
       speed.appendChild(o);
     }
     const quality = el('select', 'itube-quality');
+    const audio = el('select', 'itube-audio');
     const cc = el('select', 'itube-cc');
     cc.appendChild(new Option('CC', ''));
     const auto = el('button', 'itube-auto', 'Auto');
@@ -4277,7 +4278,9 @@
       r.append(s, control);
       return r;
     };
-    menu.append(row('Speed', speed), row('Quality', quality), row('Captions', cc), row('Autoplay', auto));
+    const audioRow = row('Audio', audio);
+    audioRow.style.display = 'none';
+    menu.append(row('Speed', speed), row('Quality', quality), audioRow, row('Captions', cc), row('Autoplay', auto));
     left.append(prev, play, next, timeCur);
     center.append(live);
     right.append(timeDur, mute, vol, more, pip, fs);
@@ -4286,7 +4289,7 @@
     stage.appendChild(cue);
     return {
       bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol,
-      speed, quality, cc, auto, pip, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
+      speed, quality, audio, audioRow, cc, auto, pip, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
     };
   };
 
@@ -5101,6 +5104,29 @@
       }
     };
 
+    const audioMeta = (t) => t && Object.values(t).find((v) => v && typeof v === 'object' && !Array.isArray(v) && typeof v.name === 'string' && typeof v.isDefault === 'boolean' && typeof v.id === 'string');
+
+    let audioTracks = [];
+    const populateAudioTracks = (p) => {
+      if (!ui) return;
+      const tracks = typeof p.getAvailableAudioTracks === 'function' ? p.getAvailableAudioTracks() || [] : [];
+      audioTracks = tracks;
+      if (tracks.length <= 1) {
+        ui.audioRow.style.display = 'none';
+        return;
+      }
+      ui.audioRow.style.display = 'flex';
+      const cur = typeof p.getAudioTrack === 'function' ? p.getAudioTrack() : null;
+      const curId = audioMeta(cur)?.id;
+      ui.audio.replaceChildren();
+      tracks.forEach((t, i) => {
+        const meta = audioMeta(t);
+        const id = meta?.id;
+        const label = meta?.name || t?.id || `Audio ${i + 1}`;
+        ui.audio.appendChild(new Option(label, String(i), false, !!curId && id === curId));
+      });
+    };
+
     const populateTracks = (p) => {
       if (!ui || ui.cc.options.length > 1) return;
       const wasOn = p.isSubtitlesOn?.();
@@ -5121,7 +5147,7 @@
       ui.more.addEventListener('click', (e) => {
         e.stopPropagation();
         const open = ui.menu.style.display !== 'block';
-        if (open) { populateQuality(p); populateTracks(p); ui.syncAuto?.(); }
+        if (open) { populateQuality(p); populateAudioTracks(p); populateTracks(p); ui.syncAuto?.(); }
         setMenu(open);
       });
       ui.menu.addEventListener('change', () => setMenu(false));
@@ -5169,6 +5195,10 @@
       ui.quality.addEventListener('change', () => {
         p.setPlaybackQualityRange?.(ui.quality.value, ui.quality.value);
         localStorage.setItem('itube-quality', ui.quality.value);
+      });
+      ui.audio.addEventListener('change', () => {
+        const t = audioTracks[Number(ui.audio.value)];
+        if (t) p.setAudioTrack?.(t);
       });
       ui.cc.addEventListener('mousedown', () => populateTracks(p));
       ui.cc.addEventListener('change', () => {

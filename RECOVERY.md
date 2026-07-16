@@ -111,7 +111,10 @@ no-ops or falls back to the raw `<video>`. Key ones: `getVolume`/`setVolume`/
 `get/setPlaybackRate` (5161/5062), `toggleSubtitles`/`getOption('captions',…)`
 (4999, UNGUARDED), `seekToLiveHead` (5027, UNGUARDED), `previous/nextVideo`
 (5052, UNGUARDED), `getPlayerResponse().storyboards…` (4106, UNGUARDED),
-`.classList.contains('ad-showing')` (3960).
+`.classList.contains('ad-showing')` (3960), `getAvailableAudioTracks`/
+`getAudioTrack`/`setAudioTrack` (populateAudioTracks, UNGUARDED via optional-
+chaining — feeds the Audio row in the player menu, hidden unless the video
+exposes more than one track).
 `<video>`: `.currentTime/.duration/.paused/.readyState/.volume/.muted/.buffered`
 and `.requestVideoFrameCallback` (4071, crossfade).
 **Invariant:** `#movie_player` shadows `addEventListener` — bind its (and the

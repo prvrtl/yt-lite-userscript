@@ -38,6 +38,7 @@ const {
   checkBootLoaderFeedColdLoad,
   checkBootLoaderReducedMotion,
   checkBootLoaderNoSpaReappear,
+  checkAudioTrackSelector,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -69,6 +70,10 @@ const SCROLLING_PAGES = new Set(['search', 'channel']);
 // A regular video used for the /shorts/<id> redirect check (the redirect is
 // id-preserving, so any watchable id proves it).
 const SHORTS_REDIRECT_ID = 'aircAruvnKk';
+
+// A known 24-audio-track video (dubbed languages + original), used by
+// checkAudioTrackSelector — the default watch fixture above is single-track.
+const MULTI_AUDIO_VIDEO_ID = '0e3GPea1Tyg';
 
 const ERROR_PATTERN = /itube|innerHTML|Trusted Types/i;
 
@@ -376,6 +381,27 @@ async function main() {
     table.push({ page: 'shorts', check: 'functional', status, count: violations.length });
     console.log(`  shorts / functional: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=shorts ${fmt(v)}`);
+  }
+
+  // The audio-track selector needs a SPECIFIC multi-track video (the default
+  // watch fixture is single-track and is covered instead by the
+  // 'audio-row-hidden-single-track' assertion inside runWatchFunctional), so
+  // it runs once, in its own context, rather than per-page. A SKIP (not a
+  // FAIL) means YouTube stopped serving multiple tracks on that id.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log(`\n--- audio track selector (https://www.youtube.com/watch?v=${MULTI_AUDIO_VIDEO_ID}) ---`);
+    let res;
+    try {
+      res = await checkAudioTrackSelector(browser);
+    } catch (err) {
+      console.error(`  ERROR running the audio track selector check: ${err.stack || err}`);
+      res = { violations: [{ check: 'audio-track-selector', detail: String(err.message || err).split('\n')[0] }], skipped: false, detail: '' };
+    }
+    const status = res.violations.length ? 'FAIL' : (res.skipped ? 'SKIP' : 'PASS');
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'audiotrack', check: 'functional', status, count: res.violations.length });
+    console.log(`  audiotrack / functional: ${status} — ${res.detail}`);
+    for (const v of res.violations) console.log(`    page=audiotrack ${fmt(v)}`);
   }
 
   // The cold-load watch skeleton runs once, in its own freshly-opened page: it

@@ -3,7 +3,14 @@
 // about state (e.g. "liked" when the like call actually failed).
 'use strict';
 
-const { waitForApp, openPage } = require('../lib/harness');
+const { waitForApp, openPage, newContext } = require('../lib/harness');
+
+// A known 24-audio-track video (dubbed languages + original). This is the
+// only page in the suite that needs a SPECIFIC video rather than any watch
+// URL, so it runs once, in its own context, rather than as part of
+// runWatchFunctional (which runs against the default single-track video and
+// must see the Audio row hidden — see 'audio-row-hidden-single-track').
+const MULTI_AUDIO_VIDEO_ID = '0e3GPea1Tyg';
 
 async function getPlayerVolume(page) {
   return page.evaluate(() => {
@@ -368,6 +375,30 @@ async function runWatchFunctional(page) {
       report('quality-options', `expected every #itube-quality value to be a YouTube quality level id, got: [${badValues.map((o) => o.value).join(', ')}]`);
     }
   }
+  // aircAruvnKk is not reliably single-track (it currently serves 9 auto-dub
+  // tracks), so this can't just assert on whatever the fixture happens to be
+  // today. Instead force the deterministic shape: stub getAvailableAudioTracks
+  // to return exactly one track (the current one), reopen the menu, and the
+  // Audio row must stay hidden — most videos ARE single-track, and a row with
+  // nothing to switch between must not appear. The multi-track case (row
+  // visible, options populated with real language names, switching works) is
+  // covered separately by checkAudioTrackSelector against a known multi-track
+  // video.
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
+  await page.evaluate(() => {
+    const p = document.getElementById('movie_player');
+    if (p) p.getAvailableAudioTracks = () => [(p.getAudioTrack && p.getAudioTrack()) || {}];
+  });
+  await page.click('#itube-more', { timeout: 2000 }).catch(() => {});
+  await page.waitForTimeout(200);
+  const audioRowDisplay = await page.evaluate(() => {
+    const row = document.getElementById('itube-audio')?.parentElement;
+    return row ? getComputedStyle(row).display : null;
+  });
+  if (audioRowDisplay !== 'none') {
+    report('audio-row-hidden-single-track', `expected the Audio menu row to be display:none when getAvailableAudioTracks() returns exactly one track, got display:${audioRowDisplay}`);
+  }
   await page.keyboard.press('Escape');
 
   // --- comments collapsed by default, expand on click ---
@@ -411,11 +442,21 @@ async function runWatchFunctional(page) {
   // !actionsVideoId`, so a disabled like button means the video id could not
   // be resolved from the page. Skipping the assertion in that case meant the
   // check passed on its own failure mode.
+  //
+  // Wait for the button to be VISIBLE first: the actions row lives inside
+  // .watch-channel, which the load skeleton (v4.6.0) sets display:none until the
+  // owner data arrives. Under full-suite load that reveal can lag the video
+  // being ready, so a bare .click() here would sit 30s on a display:none button.
+  // A genuine "meta never loaded" still surfaces — the button stays hidden, the
+  // wait lapses, and the existence/disabled checks below report it.
+  await page.waitForSelector('.watch-like-btn', { state: 'visible', timeout: 15000 }).catch(() => {});
   const likeBtn = await page.$('.watch-like-btn');
   if (!likeBtn) {
     report('like-button-exists', 'expected .watch-like-btn to exist');
   } else if (await page.evaluate((el) => el.disabled, likeBtn)) {
     report('like-button-disabled', 'the .watch-like-btn is disabled on a normal video — the app only disables it when it could not resolve the video id (actionsVideoId), so the actions row is wired to nothing');
+  } else if (!(await likeBtn.isVisible())) {
+    report('like-button-hidden', 'the .watch-like-btn stayed hidden past the 15s wait — the watch meta never revealed past the load skeleton, so the actions row is unreachable');
   } else {
     await likeBtn.click();
     // Optimistic UI flips immediately, then the failed (logged-out)
@@ -1838,8 +1879,12 @@ async function checkBootLoaderColdLoad(context) {
     }
     if (res.removedAt === null) {
       violations.push({ check: 'boot-loader-removed', detail: 'expected #itube-boot to be removed from the DOM once the video had a real frame, it never was (stuck overlay)' });
-    } else if (res.videoReadyAtFade != null && res.videoReadyAtFade < 2) {
-      violations.push({ check: 'boot-loader-no-black-stage', detail: `boot loader faded while video.readyState was ${res.videoReadyAtFade} (<2) — the stage would have shown black underneath it` });
+    } else if (res.videoReadyAtFade != null && res.videoReadyAtFade < 2 && res.removedAt < 7500) {
+      // Only a defect if the loader gave up EARLY with no frame. A readyState<2
+      // fade at ~8s is the deliberate hard-fallback firing on a genuinely slow
+      // load (the safety net that stops the overlay ever sticking forever) —
+      // revealing the stage then is intended, not a black-stage regression.
+      violations.push({ check: 'boot-loader-no-black-stage', detail: `boot loader faded early (${res.removedAt}ms) while video.readyState was ${res.videoReadyAtFade} (<2) — the stage would have shown black underneath it` });
     }
     if (res.overlayPosition !== 'fixed') {
       violations.push({ check: 'boot-loader-no-layout-shift', detail: `expected #itube-boot to be position:fixed so it is out of flow and can never reflow the app on handoff, got position:${res.overlayPosition}` });
@@ -1986,6 +2031,113 @@ async function checkBootLoaderNoSpaReappear(page) {
   return violations;
 }
 
+// Exercises the Audio menu row against a real multi-track video: the row
+// must appear, the <select> must list every track, and picking a non-default
+// option must actually switch the player's audio track. Returns
+// { violations, skipped, detail } — a SKIP (not a fail) if this specific
+// video no longer has multiple tracks, since that is YouTube's data changing
+// underneath a fixed id, not a regression in the app.
+async function checkAudioTrackSelector(browser) {
+  const context = await newContext(browser);
+  try {
+    const { page } = await openPage(context, `https://www.youtube.com/watch?v=${MULTI_AUDIO_VIDEO_ID}`);
+    await waitForApp(page, { timeout: 30000 });
+    await page.waitForFunction(() => {
+      const v = document.querySelector('#itube-stage video');
+      return v && v.readyState >= 2;
+    }, { timeout: 15000 }).catch(() => {});
+
+    let menuOpen = false;
+    for (let attempt = 0; attempt < 3 && !menuOpen; attempt++) {
+      await page.hover('#itube-stage', { position: { x: 200, y: 200 } });
+      await page.waitForTimeout(100);
+      try {
+        await page.click('#itube-more', { timeout: 2000 });
+      } catch {
+        continue;
+      }
+      await page.waitForTimeout(200);
+      menuOpen = await page.evaluate(() => getComputedStyle(document.getElementById('itube-menu')).display !== 'none');
+    }
+    if (!menuOpen) {
+      return { violations: [{ check: 'audio-track-menu-opens', detail: 'expected #itube-menu to be visible after clicking #itube-more' }], skipped: false, detail: '' };
+    }
+
+    await page.waitForTimeout(300);
+    const audioRowDisplay = await page.evaluate(() => {
+      const row = document.getElementById('itube-audio')?.parentElement;
+      return row ? getComputedStyle(row).display : null;
+    });
+    const options = await page.evaluate(() => {
+      const sel = document.getElementById('itube-audio');
+      return sel ? [...sel.options].map((o) => ({ value: o.value, label: o.textContent, selected: o.selected })) : null;
+    });
+
+    if (!options || options.length <= 1) {
+      return {
+        violations: [],
+        skipped: true,
+        detail: `${MULTI_AUDIO_VIDEO_ID} no longer exposes multiple audio tracks (got ${options ? options.length : 0}) — nothing to assert`,
+        options,
+      };
+    }
+
+    const violations = [];
+    if (audioRowDisplay !== 'flex' && audioRowDisplay !== 'block') {
+      violations.push({ check: 'audio-row-visible-multi-track', detail: `expected the Audio menu row to be visible on a multi-track video, got display:${audioRowDisplay}` });
+    }
+
+    // The labels are the part that actually catches a regression to the
+    // hardcoded `.CE` property lookup: when the minified metadata key doesn't
+    // match, every option silently falls back to the same literal string
+    // ('Track') instead of throwing, so a naive ">1 option" check stays green
+    // on completely useless output. Assert the option text is real language
+    // names — plural distinct values, none the old fallback literal, and at
+    // least one that looks like a word rather than an id/index.
+    const labels = options.map((o) => o.label);
+    const distinctLabels = new Set(labels);
+    if (distinctLabels.size < 2) {
+      violations.push({ check: 'audio-option-labels-distinct', detail: `expected >=2 distinct #itube-audio option labels, got ${distinctLabels.size}: [${labels.join(', ')}]` });
+    }
+    if (labels.some((l) => l === 'Track')) {
+      violations.push({ check: 'audio-option-labels-not-fallback', detail: `expected no #itube-audio option labeled the literal fallback 'Track' (a sign the metadata key lookup failed), got: [${labels.join(', ')}]` });
+    }
+    if (!labels.some((l) => /[A-Za-z]{3,}/.test(l) && l !== 'Track')) {
+      violations.push({ check: 'audio-option-labels-real-names', detail: `expected at least one #itube-audio option label to look like a real language name, got: [${labels.join(', ')}]` });
+    }
+
+    const readCurrentMetaId = () => page.evaluate(() => {
+      const audioMeta = (t) => t && Object.values(t).find((v) => v && typeof v === 'object' && !Array.isArray(v) && typeof v.name === 'string' && typeof v.isDefault === 'boolean' && typeof v.id === 'string');
+      const p = document.getElementById('movie_player');
+      const t = p?.getAudioTrack?.();
+      return audioMeta(t)?.id ?? null;
+    });
+
+    const before = await readCurrentMetaId();
+
+    const targetIndex = options.findIndex((o) => !o.selected);
+    if (targetIndex === -1) {
+      violations.push({ check: 'audio-track-switch', detail: 'expected at least one non-selected option to switch to' });
+    } else {
+      await page.selectOption('#itube-audio', options[targetIndex].value);
+      await page.waitForTimeout(500);
+      const after = await readCurrentMetaId();
+      if (after === before || after === null) {
+        violations.push({ check: 'audio-track-switch', detail: `expected getAudioTrack()'s metadata id to change after selecting a different Audio option, stayed at ${before} (after=${after})` });
+      }
+    }
+
+    return {
+      violations,
+      skipped: false,
+      detail: `${MULTI_AUDIO_VIDEO_ID}: ${options.length} tracks [${labels.join(', ')}], switched from ${before}`,
+      options,
+    };
+  } finally {
+    await context.close();
+  }
+}
+
 module.exports = {
   runWatchFunctional,
   checkColdLoadSkeleton,
@@ -2014,4 +2166,5 @@ module.exports = {
   checkCrossfadeSkipsWithPiP,
   checkWatchLoadSkeleton,
   checkSkeletonReducedMotion,
+  checkAudioTrackSelector,
 };
