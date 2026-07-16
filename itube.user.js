@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.14.0
+// @version      4.15.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -47,46 +47,46 @@
   };
   const THUMB_D = 'M6 13h4.6c.66 0 1.22-.47 1.33-1.12l.82-4.6A1.2 1.2 0 0 0 11.58 6H8.2l.46-2.62a1.1 1.1 0 0 0-1.98-.85L4.6 6.1V12a1 1 0 0 0 1 1z';
   const ICONS = {
-    home: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round', d: 'M2.2 7.2 8 2.6l5.8 4.6V13a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z' }]]),
+    home: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linejoin': 'round', d: 'M2.2 7.2 8 2.6l5.8 4.6V13a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z' }]]),
     subs: () => icon([
-      ['rect', { x: '1.6', y: '3.4', width: '12.8', height: '9.2', rx: '2', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
+      ['rect', { x: '1.6', y: '3.4', width: '12.8', height: '9.2', rx: '2', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75' }],
       ['path', { fill: 'currentColor', d: 'M6.7 5.9 10.6 8l-3.9 2.1z' }],
     ]),
     later: () => icon([
-      ['circle', { cx: '8', cy: '8', r: '5.9', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
-      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M8 4.6V8l2.4 1.5' }],
+      ['circle', { cx: '8', cy: '8', r: '5.9', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', 'stroke-linejoin': 'round', d: 'M8 4.6V8l2.4 1.5' }],
     ]),
     history: () => icon([
-      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M2.6 6.2A5.8 5.8 0 1 1 2.2 8' }],
-      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M1.2 3.6v2.8h2.8' }],
-      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M8 5.1V8l2.1 1.3' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', d: 'M2.6 6.2A5.8 5.8 0 1 1 2.2 8' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', 'stroke-linejoin': 'round', d: 'M1.2 3.6v2.8h2.8' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', 'stroke-linejoin': 'round', d: 'M8 5.1V8l2.1 1.3' }],
     ]),
     play: () => icon([['path', { fill: 'currentColor', d: 'M4 2.5v11l9-5.5z' }]]),
     pause: () => icon([['path', { fill: 'currentColor', d: 'M4 2h3v12H4zM9 2h3v12H9z' }]]),
     vol: () => icon([
       ['path', { fill: 'currentColor', d: 'M2 6h3l4-3.5v11L5 10H2z' }],
-      ['path', { stroke: 'currentColor', 'stroke-width': '1.3', fill: 'none', d: 'M11 5.5a3 3 0 010 5' }],
+      ['path', { stroke: 'currentColor', 'stroke-width': '1.65', fill: 'none', d: 'M11 5.5a3 3 0 010 5' }],
     ]),
     muted: () => icon([
       ['path', { fill: 'currentColor', d: 'M2 6h3l4-3.5v11L5 10H2z' }],
-      ['path', { stroke: 'currentColor', 'stroke-width': '1.3', d: 'M11 6l4 4m0-4l-4 4' }],
+      ['path', { stroke: 'currentColor', 'stroke-width': '1.65', d: 'M11 6l4 4m0-4l-4 4' }],
     ]),
     pip: () => icon([
-      ['rect', { x: '1.5', y: '3', width: '13', height: '10', rx: '1.5', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.3' }],
+      ['rect', { x: '1.5', y: '3', width: '13', height: '10', rx: '1.5', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.65' }],
       ['rect', { x: '8', y: '8', width: '5', height: '3.5', rx: '0.8', fill: 'currentColor' }],
     ]),
-    fs: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', d: 'M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4' }]]),
+    fs: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', d: 'M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4' }]]),
     seekFwd: () => icon([
-      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M3.4 8a4.6 4.6 0 1 1 1.3 3.2' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', d: 'M3.4 8a4.6 4.6 0 1 1 1.3 3.2' }],
       ['path', { fill: 'currentColor', d: 'M5.4 12.6 3.6 10.4 2 12.3z' }],
     ]),
     seekBack: () => icon([
-      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M3.4 8a4.6 4.6 0 1 1 1.3 3.2', transform: 'translate(16,0) scale(-1,1)' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', d: 'M3.4 8a4.6 4.6 0 1 1 1.3 3.2', transform: 'translate(16,0) scale(-1,1)' }],
       ['path', { fill: 'currentColor', d: 'M5.4 12.6 3.6 10.4 2 12.3z', transform: 'translate(16,0) scale(-1,1)' }],
     ]),
     speed: () => icon([
-      ['circle', { cx: '8', cy: '8', r: '5.9', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
-      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M8 8 10.6 5.4' }],
+      ['circle', { cx: '8', cy: '8', r: '5.9', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', d: 'M8 8 10.6 5.4' }],
     ]),
     prev: () => icon([
       ['path', { fill: 'currentColor', d: 'M4 2.5h1.6v11H4z' }],
@@ -102,10 +102,10 @@
       ['circle', { cx: '13', cy: '8', r: '1.5', fill: 'currentColor' }],
     ]),
     chevron: () => icon([
-      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M4.5 6.2 8 9.7l3.5-3.5' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', 'stroke-linejoin': 'round', d: 'M4.5 6.2 8 9.7l3.5-3.5' }],
     ]),
     explore: () => icon([
-      ['circle', { cx: '8', cy: '8', r: '5.9', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
+      ['circle', { cx: '8', cy: '8', r: '5.9', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75' }],
       ['path', { fill: 'currentColor', d: 'M10.6 5.4 9.1 9.1 5.4 10.6 6.9 6.9z' }],
     ]),
     thumbsUp: () => icon([
@@ -117,16 +117,16 @@
       ['path', { fill: 'currentColor', d: THUMB_D, transform: 'translate(0,16) scale(1,-1)' }],
     ]),
     save: () => icon([
-      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round', d: 'M4 2.6h8v10.8l-4-2.8-4 2.8z' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linejoin': 'round', d: 'M4 2.6h8v10.8l-4-2.8-4 2.8z' }],
     ]),
     share: () => icon([
       ['circle', { cx: '12', cy: '3.6', r: '1.7', fill: 'currentColor' }],
       ['circle', { cx: '12', cy: '12.4', r: '1.7', fill: 'currentColor' }],
       ['circle', { cx: '4', cy: '8', r: '1.7', fill: 'currentColor' }],
-      ['path', { stroke: 'currentColor', 'stroke-width': '1.3', fill: 'none', d: 'M5.5 7.1 10.5 4.3M5.5 8.9l5 2.8' }],
+      ['path', { stroke: 'currentColor', 'stroke-width': '1.65', fill: 'none', d: 'M5.5 7.1 10.5 4.3M5.5 8.9l5 2.8' }],
     ]),
     check: () => icon([
-      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M3 8.3 6.3 11.6 13 4.5' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.9', 'stroke-linecap': 'square', 'stroke-linejoin': 'round', d: 'M3 8.3 6.3 11.6 13 4.5' }],
     ]),
   };
 
@@ -219,11 +219,6 @@
       border-color: var(--accent);
       box-shadow: var(--glow-soft);
       color: var(--text);
-    }
-    #itube .c:hover,
-    #itube .rc:hover,
-    #itube .row:hover {
-      box-shadow: var(--glow-soft);
     }
     #itube button:active:not(:disabled),
     #itube .watch-subscribe:active:not(:disabled) {
@@ -1647,9 +1642,11 @@
       gap: 8px 12px;
       padding: 16px 16px 14px;
       border-radius: 0 0 var(--r-lg) var(--r-lg);
-      background: linear-gradient(to top, rgba(10, 10, 14, .78), rgba(10, 10, 14, .40) 62%, rgba(10, 10, 14, 0));
+      background: linear-gradient(to top, rgba(10, 10, 14, .82), rgba(10, 10, 14, .42) 62%, rgba(10, 10, 14, 0));
       backdrop-filter: blur(14px) saturate(1.4);
       -webkit-backdrop-filter: blur(14px) saturate(1.4);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 9px);
+      mask-image: linear-gradient(to bottom, transparent 0, #000 9px);
       border: none;
       color: #fff;
       font: 500 12px -apple-system, system-ui, sans-serif;
@@ -3004,8 +3001,8 @@
   const searchWrap = document.createElement('div');
   searchWrap.className = 'search-wrap';
   const searchIcon = icon([
-    ['circle', { cx: '6.2', cy: '6.2', r: '4.4', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }],
-    ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linecap': 'round', d: 'M9.6 9.6 13 13' }],
+    ['circle', { cx: '6.2', cy: '6.2', r: '4.4', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75' }],
+    ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', d: 'M9.6 9.6 13 13' }],
   ]);
   searchIcon.classList.add('search-icon');
   const search = document.createElement('input');
