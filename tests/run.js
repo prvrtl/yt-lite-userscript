@@ -42,6 +42,7 @@ const {
   checkThumbFlyAnimation,
   checkTheaterMode,
   checkAbLoop,
+  checkPlaybackSpeed,
   checkAccountMenu,
   checkDislikeEstimate,
   checkSponsorBlock,
@@ -530,6 +531,24 @@ async function main() {
     table.push({ page: 'toggle', check: 'functional', status, count: violations.length });
     console.log(`  itube toggle: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=toggle ${fmt(v)}`);
+  }
+
+  // Playback speed beyond 2x + remembered default: reloads to check persistence,
+  // so it runs once in its own context.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- playback speed ---');
+    let violations;
+    try {
+      violations = await checkPlaybackSpeed(browser);
+    } catch (err) {
+      console.error(`  ERROR running the playback-speed check: ${err.stack || err}`);
+      violations = [{ check: 'playback-speed', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'speed', check: 'functional', status, count: violations.length });
+    console.log(`  playback speed: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=speed ${fmt(v)}`);
   }
 
   // The account menu (avatar dropdown) runs once on the home page; the avatar is

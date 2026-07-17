@@ -2656,11 +2656,64 @@ async function checkAccountMenu(browser) {
   return violations;
 }
 
+// Playback speed must be able to exceed YouTube's 2x cap and the chosen speed
+// must be remembered as a global default applied to the next video. The real
+// signal is the underlying <video>.playbackRate (the YT player clamps its own
+// setPlaybackRate to <=2, so iTube drives the element directly and re-asserts
+// it): this guards both the >2x capability regressing to a clamp and the
+// remembered default not surviving a reload.
+async function checkPlaybackSpeed(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-speed', { timeout: 15000 }).catch(() => {});
+    const set = await page.evaluate(async () => {
+      const v = document.querySelector('#itube-stage video');
+      if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
+      const sel = document.getElementById('itube-speed');
+      sel.value = '3';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 1600));
+      return {
+        playback: v ? v.playbackRate : null,
+        stored: (() => { try { return localStorage.getItem('itube-speed'); } catch (e) { return null; } })(),
+      };
+    });
+    if (Math.abs((set.playback || 0) - 3) > 0.01) {
+      violations.push({ check: 'speed-beyond-2x', detail: `expected video.playbackRate 3 (past YouTube's 2x cap), got ${set.playback}` });
+    }
+    if (set.stored !== '3') {
+      violations.push({ check: 'speed-persists', detail: `expected localStorage itube-speed=3, got ${set.stored}` });
+    }
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    const after = await page.evaluate(async () => {
+      const v = document.querySelector('#itube-stage video');
+      if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
+      await new Promise((r) => setTimeout(r, 1600));
+      return v ? v.playbackRate : null;
+    });
+    if (Math.abs((after || 0) - 3) > 0.01) {
+      violations.push({ check: 'speed-default-applied', detail: `after reload the remembered 3x default was not applied, got ${after}` });
+    }
+  } finally {
+    await page.evaluate(() => { try { localStorage.removeItem('itube-speed'); } catch (e) {} }).catch(() => {});
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
   checkAbLoop,
   checkTheaterMode,
+  checkPlaybackSpeed,
   checkAccountMenu,
   checkItubeToggle,
   checkSubscribeConfirmsOnPopup,

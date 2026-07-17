@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.27.0
+// @version      4.28.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -185,7 +185,7 @@
     return { btn, icon: iconEl, label: labelEl };
   };
 
-  const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5];
   const MAX_COMMENTS = 50;
   const COMMENTS_PAGE = 20;
   const MAX_REPLIES = 10;
@@ -5574,6 +5574,16 @@
         }
       }
     };
+    let desiredRate = (() => { const v = parseFloat(localStorage.getItem('itube-speed')); return v >= 0.1 && v <= 5 ? v : 1; })();
+    const applyRate = (rate) => {
+      rate = Math.min(5, Math.max(0.1, rate));
+      desiredRate = rate;
+      const video = stage.querySelector('video');
+      if (video) video.playbackRate = rate;
+      if (rate <= 2) player()?.setPlaybackRate?.(rate);
+      if (ui) ui.speed.value = String(rate);
+      try { localStorage.setItem('itube-speed', String(rate)); } catch (e) {}
+    };
     let abA = null;
     let abB = null;
     const renderAbMarkers = () => {
@@ -5941,7 +5951,7 @@
       });
       ui.mute.addEventListener('click', () => { setMuted(!isMuted()); });
       ui.vol.addEventListener('input', () => { setPlayerVolume(Number(ui.vol.value)); });
-      ui.speed.addEventListener('change', () => { p.setPlaybackRate?.(Number(ui.speed.value)); });
+      ui.speed.addEventListener('change', () => applyRate(Number(ui.speed.value)));
       ui.quality.addEventListener('mousedown', () => populateQuality(p));
       ui.quality.addEventListener('change', () => {
         p.setPlaybackQualityRange?.(ui.quality.value, ui.quality.value);
@@ -6043,6 +6053,7 @@
       syncAdState();
       resumePlayback();
       if (video) sbSkipCheck(video);
+      if (video && !adActive && video.playbackRate !== desiredRate) video.playbackRate = desiredRate;
 
       const vid = p.getVideoData?.()?.video_id;
       if (vid) sbLoad(vid);
@@ -6052,7 +6063,8 @@
         if (saved && saved !== 'auto') p.setPlaybackQualityRange?.(saved, saved);
         populateQuality(p);
         if (saved) ui.quality.value = saved;
-        ui.speed.value = String(p.getPlaybackRate?.() || 1);
+        ui.speed.value = String(desiredRate);
+        if (video) video.playbackRate = desiredRate;
         ui.prev.style.display = p.getPlaylist?.()?.length ? '' : 'none';
         ui.cc.replaceChildren(new Option('CC', ''));
         ui.syncAuto?.();
@@ -6080,6 +6092,11 @@
       if (wired === video) return;
       wired = video;
 
+      video.playbackRate = desiredRate;
+      video.addEventListener('ratechange', () => {
+        if (adActive) return;
+        if (video.playbackRate !== desiredRate) video.playbackRate = desiredRate;
+      }, bound);
       video.addEventListener('ended', () => {
         if (!autoplayEnabled) return;
         const curId = p.getVideoData?.()?.video_id;
@@ -6228,22 +6245,16 @@
           showOSD(ICONS.loop, 'Loop off');
           break;
         case '<': {
-          const p = player();
-          const cur = p?.getPlaybackRate?.() ?? 1;
-          const idx = SPEEDS.indexOf(cur);
+          const idx = SPEEDS.indexOf(desiredRate);
           const next = SPEEDS[Math.max(0, (idx === -1 ? SPEEDS.indexOf(1) : idx) - 1)];
-          p?.setPlaybackRate?.(next);
-          if (ui) ui.speed.value = String(next);
+          applyRate(next);
           showOSD(ICONS.speed, next + '×');
           break;
         }
         case '>': {
-          const p = player();
-          const cur = p?.getPlaybackRate?.() ?? 1;
-          const idx = SPEEDS.indexOf(cur);
+          const idx = SPEEDS.indexOf(desiredRate);
           const next = SPEEDS[Math.min(SPEEDS.length - 1, (idx === -1 ? SPEEDS.indexOf(1) : idx) + 1)];
-          p?.setPlaybackRate?.(next);
-          if (ui) ui.speed.value = String(next);
+          applyRate(next);
           showOSD(ICONS.speed, next + '×');
           break;
         }
