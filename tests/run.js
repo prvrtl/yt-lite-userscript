@@ -46,6 +46,7 @@ const {
   checkVolumeBoost,
   checkToolsRow,
   checkAccountMenu,
+  checkSettings,
   checkDislikeEstimate,
   checkSponsorBlock,
   checkWatchMetaReveals,
@@ -608,6 +609,24 @@ async function main() {
     table.push({ page: 'account', check: 'functional', status, count: violations.length });
     console.log(`  account menu: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=account ${fmt(v)}`);
+  }
+
+  // The Settings panel (accent picker, playback prefs, reduce-motion) runs
+  // once on the home page, mirroring the account-menu block above.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- settings ---');
+    let violations;
+    try {
+      violations = await checkSettings(browser);
+    } catch (err) {
+      console.error(`  ERROR running the settings check: ${err.stack || err}`);
+      violations = [{ check: 'settings', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'settings', check: 'functional', status, count: violations.length });
+    console.log(`  settings: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=settings ${fmt(v)}`);
   }
 
   // Theater mode toggles a full-screen cinema layout + ambient canvas and

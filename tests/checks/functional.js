@@ -2656,6 +2656,106 @@ async function checkAccountMenu(browser) {
   return violations;
 }
 
+// The Settings panel is the hero feature of the accent-color refactor: this
+// check exists to catch the case where the CSS variable plumbing (--accent /
+// --accent-rgb) silently stops reaching the elements that are supposed to
+// retint, or where the panel's open/close wiring regresses. It runs once on
+// the home page, in its own context, mirroring checkAccountMenu.
+async function checkSettings(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    const navBtn = await page.$('.nav-settings');
+    if (!navBtn) {
+      violations.push({ check: 'settings-nav-exists', detail: 'expected a .nav-settings sidebar button to exist' });
+      return violations;
+    }
+    await navBtn.click();
+    const openedAfterClick = await page.evaluate(() => document.querySelector('.settings-overlay')?.classList.contains('open'));
+    if (!openedAfterClick) {
+      violations.push({ check: 'settings-opens', detail: 'clicking .nav-settings did not add .open to .settings-overlay' });
+    }
+
+    const swatchCount = await page.evaluate(() => document.querySelectorAll('.settings-swatch').length);
+    if (swatchCount !== 8) {
+      violations.push({ check: 'settings-swatches-render', detail: `expected 8 .settings-swatch buttons (one per ACCENT_PRESETS entry), got ${swatchCount}` });
+    }
+
+    // Click the Violet swatch and confirm the CSS variables that drive the
+    // whole app's accent color actually changed — this is the real signal
+    // that the var(--accent-rgb) refactor is wired end-to-end, not just that
+    // a click handler ran.
+    const violetClicked = await page.evaluate(() => {
+      const sw = [...document.querySelectorAll('.settings-swatch')].find((s) => s.title === 'Violet');
+      if (!sw) return false;
+      sw.click();
+      return true;
+    });
+    if (!violetClicked) {
+      violations.push({ check: 'settings-swatches-render', detail: 'expected a .settings-swatch with title "Violet" among ACCENT_PRESETS' });
+    } else {
+      await page.waitForTimeout(150);
+      const after = await page.evaluate(() => {
+        const root = document.getElementById('itube');
+        const cs = getComputedStyle(root);
+        return {
+          accent: cs.getPropertyValue('--accent').trim(),
+          accentRgb: cs.getPropertyValue('--accent-rgb').trim(),
+          stored: (() => { try { return localStorage.getItem('itube-accent'); } catch (e) { return null; } })(),
+        };
+      });
+      if (after.accent !== '#8b5cf6') {
+        violations.push({ check: 'accent-applies', detail: `expected #itube's --accent to be #8b5cf6 after picking Violet, got "${after.accent}"` });
+      }
+      if (after.accentRgb !== '139, 92, 246') {
+        violations.push({ check: 'accent-applies', detail: `expected #itube's --accent-rgb to be "139, 92, 246" after picking Violet, got "${after.accentRgb}"` });
+      }
+      if (after.stored !== '#8b5cf6') {
+        violations.push({ check: 'accent-applies', detail: `expected localStorage itube-accent to be "#8b5cf6" after picking Violet, got "${after.stored}"` });
+      }
+    }
+
+    // Reduce motion toggle: flips the root class and persists.
+    const motion = await page.evaluate(() => {
+      const row = [...document.querySelectorAll('.settings-row')].find((r) => r.querySelector('.settings-row-label')?.textContent === 'Reduce motion');
+      const toggle = row?.querySelector('.settings-toggle');
+      if (!toggle) return { found: false };
+      toggle.click();
+      return {
+        found: true,
+        hasClass: document.getElementById('itube').classList.contains('itube-reduce-motion'),
+        stored: (() => { try { return localStorage.getItem('itube-reduce-motion'); } catch (e) { return null; } })(),
+      };
+    });
+    if (!motion.found) {
+      violations.push({ check: 'settings-reduce-motion', detail: 'expected a "Reduce motion" .settings-row with a .settings-toggle control' });
+    } else {
+      if (!motion.hasClass) {
+        violations.push({ check: 'settings-reduce-motion', detail: 'expected #itube to gain .itube-reduce-motion after toggling Reduce motion on' });
+      }
+      if (motion.stored !== '1') {
+        violations.push({ check: 'settings-reduce-motion', detail: `expected localStorage itube-reduce-motion === "1", got "${motion.stored}"` });
+      }
+    }
+
+    await page.keyboard.press('Escape');
+    const closedAfterEscape = await page.evaluate(() => document.querySelector('.settings-overlay')?.classList.contains('open'));
+    if (closedAfterEscape) {
+      violations.push({ check: 'settings-closes-on-escape', detail: 'expected Escape to remove .open from .settings-overlay' });
+    }
+  } finally {
+    await page.evaluate(() => {
+      try { localStorage.removeItem('itube-accent'); } catch (e) {}
+      try { localStorage.removeItem('itube-reduce-motion'); } catch (e) {}
+    }).catch(() => {});
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 // Playback speed must be able to exceed YouTube's 2x cap and the chosen speed
 // must be remembered as a global default applied to the next video. The real
 // signal is the underlying <video>.playbackRate (the YT player clamps its own
@@ -2873,6 +2973,7 @@ module.exports = {
   checkVolumeBoost,
   checkToolsRow,
   checkAccountMenu,
+  checkSettings,
   checkItubeToggle,
   checkSubscribeConfirmsOnPopup,
   checkWatchMetaReveals,

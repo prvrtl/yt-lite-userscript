@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.31.0
+// @version      4.32.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -176,6 +176,10 @@
       ['circle', { cx: '9', cy: '4.5', r: '1.8', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6' }],
       ['circle', { cx: '6', cy: '11.5', r: '1.8', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6' }],
     ]),
+    settings: () => icon([
+      ['circle', { cx: '8', cy: '8', r: '2.3', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linejoin': 'round', d: 'M8 1.4v1.7M8 12.9v1.7M14.6 8h-1.7M3.1 8H1.4M12.7 3.3l-1.2 1.2M4.5 11.5l-1.2 1.2M12.7 12.7l-1.2-1.2M4.5 4.5 3.3 3.3' }],
+    ]),
   };
 
   const pillButton = (iconFn, label, className) => {
@@ -229,16 +233,17 @@
       --accent: #3dff6e;
       --accent-solid: #2ee85f;
       --on-accent: #03170b;
-      --hairline: rgba(130, 255, 175, .12);
-      --surface: rgba(150, 255, 190, .05);
-      --hover: rgba(61, 255, 110, .09);
+      --accent-rgb: 61, 255, 110;
+      --hairline: rgba(var(--accent-rgb), .12);
+      --surface: rgba(var(--accent-rgb), .05);
+      --hover: rgba(var(--accent-rgb), .09);
       --r-xs: 6px;
       --r-sm: 8px;
       --r-md: 9px;
       --r-lg: 11px;
       --r-pill: 8px;
-      --glow: 0 0 0 1px rgba(61, 255, 110, .45), 0 0 10px -5px rgba(61, 255, 110, .4);
-      --glow-soft: 0 0 8px -5px rgba(61, 255, 110, .32);
+      --glow: 0 0 0 1px rgba(var(--accent-rgb), .45), 0 0 10px -5px rgba(var(--accent-rgb), .4);
+      --glow-soft: 0 0 8px -5px rgba(var(--accent-rgb), .32);
       --tr: .16s ease;
     }
     #itube button,
@@ -393,7 +398,7 @@
       display: block;
       overflow: hidden;
       cursor: pointer;
-      box-shadow: 0 0 0 0 rgba(61, 255, 110, 0);
+      box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0);
       transition: box-shadow var(--tr);
     }
     #itube .hd-avatar:hover {
@@ -574,7 +579,7 @@
       color: var(--muted);
     }
     #itube .nav-row.active {
-      background: rgba(61, 255, 110, .16);
+      background: rgba(var(--accent-rgb), .16);
     }
     #itube .nav-row.active svg,
     #itube .nav-row.active span {
@@ -1170,7 +1175,7 @@
       background: var(--surface);
     }
     #itube .watch-action-btn.active {
-      background: rgba(61, 255, 110, .16);
+      background: rgba(var(--accent-rgb), .16);
       border-color: transparent;
       color: var(--accent);
     }
@@ -1264,8 +1269,8 @@
       color: #ff4d55;
     }
     #itube .watch-like-btn.active {
-      background: rgba(61, 255, 110, .16);
-      color: #3dff6e;
+      background: rgba(var(--accent-rgb), .16);
+      color: var(--accent);
     }
     #itube .watch-dislike-btn.active {
       background: rgba(255, 77, 85, .16);
@@ -1481,8 +1486,8 @@
       cursor: pointer;
     }
     #itube .comments-sort-btn.active {
-      background: rgba(61, 255, 110, .14);
-      border-color: rgba(61, 255, 110, .45);
+      background: rgba(var(--accent-rgb), .14);
+      border-color: rgba(var(--accent-rgb), .45);
       color: var(--accent);
     }
     #itube .comments-body {
@@ -1509,8 +1514,8 @@
       contain: layout paint style;
     }
     #itube .comment-row:hover {
-      border-color: rgba(61, 255, 110, .28);
-      background: rgba(61, 255, 110, .04);
+      border-color: rgba(var(--accent-rgb), .28);
+      background: rgba(var(--accent-rgb), .04);
     }
     #itube .comment-replies .comment-row {
       background: none;
@@ -1785,7 +1790,7 @@
       height: 34px;
       padding: 0 16px;
       border-radius: var(--r-pill);
-      background: rgba(61, 255, 110, .16);
+      background: rgba(var(--accent-rgb), .16);
       color: var(--accent);
       font-size: 13px;
       font-weight: 600;
@@ -1793,7 +1798,7 @@
       cursor: pointer;
     }
     #itube .signin-btn:hover {
-      background: rgba(61, 255, 110, .24);
+      background: rgba(var(--accent-rgb), .24);
     }
     #itube .hd-signin {
       display: flex;
@@ -1801,7 +1806,7 @@
       height: 28px;
       padding: 0 12px;
       border-radius: var(--r-pill);
-      background: rgba(61, 255, 110, .16);
+      background: rgba(var(--accent-rgb), .16);
       color: var(--accent);
       font-size: 13px;
       font-weight: 600;
@@ -1810,7 +1815,7 @@
       flex: none;
     }
     #itube .hd-signin:hover {
-      background: rgba(61, 255, 110, .24);
+      background: rgba(var(--accent-rgb), .24);
     }
     #itube .watch-signin-hint {
       display: flex;
@@ -1949,7 +1954,7 @@
       padding: 14px 16px;
       border-radius: 0 0 var(--r-lg) var(--r-lg);
       background: linear-gradient(to top, rgba(7, 8, 13, .97) 20%, rgba(7, 8, 13, .82) 60%, rgba(7, 8, 13, .55));
-      box-shadow: inset 0 1px 0 rgba(61, 255, 110, .22);
+      box-shadow: inset 0 1px 0 rgba(var(--accent-rgb), .22);
       border: none;
       color: #fff;
       font: 500 12px -apple-system, system-ui, sans-serif;
@@ -2100,7 +2105,7 @@
       transform: translateY(-50%);
       height: 5px;
       border-radius: 2px;
-      background: rgba(61, 255, 110, .28);
+      background: rgba(var(--accent-rgb), .28);
       pointer-events: none;
       z-index: 2;
     }
@@ -2195,7 +2200,7 @@
       font: 500 11px -apple-system, system-ui, sans-serif;
     }
     #itube-menu #itube-auto.active {
-      background: rgba(61, 255, 110, .3);
+      background: rgba(var(--accent-rgb), .3);
       color: #fff;
     }
     #itube-menu #itube-skip-sponsors {
@@ -2207,7 +2212,7 @@
       font: 500 11px -apple-system, system-ui, sans-serif;
     }
     #itube-menu #itube-skip-sponsors.active {
-      background: rgba(61, 255, 110, .3);
+      background: rgba(var(--accent-rgb), .3);
       color: var(--accent);
     }
     #itube-menu #itube-boost {
@@ -2389,6 +2394,139 @@
         left: 0;
         width: 100%;
       }
+    }
+    #itube.itube-reduce-motion * {
+      transition: none !important;
+      animation: none !important;
+    }
+    #itube .nav-settings {
+      width: 100%;
+      background: none;
+      border: none;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    #itube .settings-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .6);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 12000;
+    }
+    #itube .settings-overlay.open {
+      display: flex;
+    }
+    #itube .settings-panel {
+      width: min(520px, 92vw);
+      max-width: 520px;
+      max-height: 86vh;
+      overflow-y: auto;
+      background: var(--raised);
+      border: 1px solid var(--hairline);
+      border-radius: var(--r-lg);
+      box-shadow: 0 24px 60px -16px rgba(0, 0, 0, .7);
+      padding: 20px 22px 26px;
+    }
+    #itube .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    #itube .settings-title {
+      font-weight: 700;
+      font-size: 18px;
+    }
+    #itube .settings-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1;
+      padding: 6px;
+      border-radius: var(--r-xs);
+      cursor: pointer;
+    }
+    #itube .settings-close:hover {
+      background: var(--hover);
+      color: var(--text);
+    }
+    #itube .settings-section-heading {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin: 22px 0 8px;
+    }
+    #itube .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 0;
+    }
+    #itube .settings-row-label {
+      color: var(--text);
+      font-size: 14px;
+    }
+    #itube .settings-swatches {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+    #itube .settings-swatch {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      padding: 0;
+      cursor: pointer;
+    }
+    #itube .settings-swatch.selected {
+      border-color: var(--text);
+      box-shadow: 0 0 0 2px var(--raised);
+    }
+    #itube .settings-color {
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border: 1px solid var(--hairline);
+      border-radius: 50%;
+      background: none;
+      cursor: pointer;
+    }
+    #itube .settings-select {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 32px;
+      padding: 0 12px;
+      border-radius: var(--r-pill);
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      color: var(--text);
+      font: 500 13px -apple-system, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    #itube .settings-toggle {
+      width: 52px;
+      height: 28px;
+      padding: 0;
+      border-radius: var(--r-pill);
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      color: var(--muted);
+      font: 600 12px -apple-system, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    #itube .settings-toggle.active {
+      background: var(--accent-solid);
+      border-color: var(--accent-solid);
+      color: var(--on-accent);
     }
   `;
 
@@ -3411,6 +3549,36 @@
   const root = document.createElement('div');
   root.id = 'itube';
 
+  const ACCENT_PRESETS = [
+    { name: 'Green', hex: '#3dff6e' },
+    { name: 'Cyan', hex: '#29e0ff' },
+    { name: 'Violet', hex: '#8b5cf6' },
+    { name: 'Magenta', hex: '#ff4d9d' },
+    { name: 'Amber', hex: '#ffb020' },
+    { name: 'Coral', hex: '#ff6a4d' },
+    { name: 'Sky', hex: '#38bdf8' },
+    { name: 'Emerald', hex: '#10d98a' },
+  ];
+  const savedAccent = () => { try { return localStorage.getItem('itube-accent'); } catch (e) { return null; } };
+  const hexToRgb = (hex) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const setAccent = (hex, persist) => {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return;
+    const accentRoot = document.getElementById('itube');
+    if (!accentRoot) return;
+    const lum = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
+    accentRoot.style.setProperty('--accent', hex);
+    accentRoot.style.setProperty('--accent-rgb', rgb.join(', '));
+    accentRoot.style.setProperty('--accent-solid', hex);
+    accentRoot.style.setProperty('--on-accent', lum > 0.6 ? '#04140a' : '#ffffff');
+    if (persist) { try { localStorage.setItem('itube-accent', hex); } catch (e) {} }
+  };
+
   const hdLeft = document.createElement('div');
   hdLeft.className = 'sidebar-logo-row';
   const searchWrap = document.createElement('div');
@@ -3741,6 +3909,173 @@
   const subsSection = document.createElement('div');
   subsSection.className = 'nav-subs';
   nav.appendChild(subsSection);
+
+  const settingsRow = document.createElement('button');
+  settingsRow.type = 'button';
+  settingsRow.className = 'nav-row nav-settings';
+  const settingsLabel = document.createElement('span');
+  settingsLabel.textContent = 'Settings';
+  settingsRow.append(ICONS.settings(), settingsLabel);
+  nav.appendChild(settingsRow);
+
+  const settingsRowEl = (labelText, control) => {
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    const label = document.createElement('div');
+    label.className = 'settings-row-label';
+    label.textContent = labelText;
+    row.append(label, control);
+    return row;
+  };
+
+  const settingsSectionHeading = (text) => {
+    const h = document.createElement('div');
+    h.className = 'settings-section-heading';
+    h.textContent = text;
+    return h;
+  };
+
+  const settingsToggle = (getOn, setOn) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'settings-toggle';
+    const sync = () => {
+      const on = getOn();
+      btn.classList.toggle('active', on);
+      btn.textContent = on ? 'On' : 'Off';
+    };
+    btn.addEventListener('click', () => { setOn(!getOn()); sync(); });
+    sync();
+    return { el: btn, sync };
+  };
+
+  const settingsOverlay = document.createElement('div');
+  settingsOverlay.className = 'settings-overlay';
+  const settingsPanel = document.createElement('div');
+  settingsPanel.className = 'settings-panel';
+
+  const settingsHeader = document.createElement('div');
+  settingsHeader.className = 'settings-header';
+  const settingsTitle = document.createElement('div');
+  settingsTitle.className = 'settings-title';
+  settingsTitle.textContent = 'Settings';
+  const settingsClose = document.createElement('button');
+  settingsClose.type = 'button';
+  settingsClose.className = 'settings-close';
+  settingsClose.setAttribute('aria-label', 'Close settings');
+  settingsClose.textContent = '✕';
+  settingsHeader.append(settingsTitle, settingsClose);
+  settingsPanel.appendChild(settingsHeader);
+
+  settingsPanel.appendChild(settingsSectionHeading('Appearance'));
+
+  const swatchesWrap = document.createElement('div');
+  swatchesWrap.className = 'settings-swatches';
+  const swatchEls = ACCENT_PRESETS.map((preset) => {
+    const sw = document.createElement('button');
+    sw.type = 'button';
+    sw.className = 'settings-swatch';
+    sw.style.background = preset.hex;
+    sw.title = preset.name;
+    sw.addEventListener('click', () => {
+      setAccent(preset.hex, true);
+      syncSettingsAccent();
+    });
+    swatchesWrap.appendChild(sw);
+    return { hex: preset.hex, el: sw };
+  });
+  const accentColorInput = document.createElement('input');
+  accentColorInput.type = 'color';
+  accentColorInput.className = 'settings-color';
+  accentColorInput.addEventListener('input', () => {
+    setAccent(accentColorInput.value, true);
+    syncSettingsAccent();
+  });
+  swatchesWrap.appendChild(accentColorInput);
+  const syncSettingsAccent = () => {
+    const current = savedAccent() || '#3dff6e';
+    for (const { hex, el } of swatchEls) el.classList.toggle('selected', hex.toLowerCase() === current.toLowerCase());
+    accentColorInput.value = current;
+  };
+  settingsPanel.appendChild(settingsRowEl('Accent color', swatchesWrap));
+
+  settingsPanel.appendChild(settingsSectionHeading('Playback'));
+
+  const speedSelect = document.createElement('select');
+  speedSelect.className = 'settings-select';
+  for (const s of SPEEDS) {
+    const opt = document.createElement('option');
+    opt.value = String(s);
+    opt.textContent = s + '×';
+    speedSelect.appendChild(opt);
+  }
+  speedSelect.addEventListener('change', () => {
+    try { localStorage.setItem('itube-speed', speedSelect.value); } catch (e) {}
+  });
+  settingsPanel.appendChild(settingsRowEl('Default playback speed', speedSelect));
+
+  const autoplayToggle = settingsToggle(
+    () => { try { return localStorage.getItem('itube-autoplay') !== '0'; } catch (e) { return true; } },
+    (on) => { try { localStorage.setItem('itube-autoplay', on ? '1' : '0'); } catch (e) {} },
+  );
+  settingsPanel.appendChild(settingsRowEl('Autoplay', autoplayToggle.el));
+
+  const skipSponsorsToggle = settingsToggle(
+    () => sponsorSkipOn(),
+    (on) => setSponsorSkipOn(on),
+  );
+  settingsPanel.appendChild(settingsRowEl('Skip sponsors', skipSponsorsToggle.el));
+
+  const qualitySelect = document.createElement('select');
+  qualitySelect.className = 'settings-select';
+  const QUALITY_OPTIONS = [
+    { value: 'auto', label: 'Auto' },
+    { value: 'hd2160', label: '2160p' },
+    { value: 'hd1440', label: '1440p' },
+    { value: 'hd1080', label: '1080p' },
+    { value: 'hd720', label: '720p' },
+    { value: 'large', label: '480p' },
+    { value: 'medium', label: '360p' },
+  ];
+  for (const { value, label } of QUALITY_OPTIONS) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    qualitySelect.appendChild(opt);
+  }
+  qualitySelect.addEventListener('change', () => {
+    try { localStorage.setItem('itube-quality', qualitySelect.value); } catch (e) {}
+  });
+  settingsPanel.appendChild(settingsRowEl('Preferred quality', qualitySelect));
+
+  const reduceMotionToggle = settingsToggle(
+    () => { try { return localStorage.getItem('itube-reduce-motion') === '1'; } catch (e) { return false; } },
+    (on) => {
+      try { localStorage.setItem('itube-reduce-motion', on ? '1' : '0'); } catch (e) {}
+      root.classList.toggle('itube-reduce-motion', on);
+    },
+  );
+  settingsPanel.appendChild(settingsRowEl('Reduce motion', reduceMotionToggle.el));
+
+  settingsOverlay.appendChild(settingsPanel);
+  root.appendChild(settingsOverlay);
+
+  const openSettings = () => {
+    syncSettingsAccent();
+    speedSelect.value = (() => { try { return localStorage.getItem('itube-speed') || '1'; } catch (e) { return '1'; } })();
+    qualitySelect.value = (() => { try { return localStorage.getItem('itube-quality') || 'auto'; } catch (e) { return 'auto'; } })();
+    autoplayToggle.sync();
+    skipSponsorsToggle.sync();
+    reduceMotionToggle.sync();
+    settingsOverlay.classList.add('open');
+  };
+  const closeSettings = () => { settingsOverlay.classList.remove('open'); };
+  settingsRow.addEventListener('click', openSettings);
+  settingsClose.addEventListener('click', closeSettings);
+  settingsPanel.addEventListener('click', (e) => { e.stopPropagation(); });
+  settingsOverlay.addEventListener('click', closeSettings);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSettings(); });
+
   const idle = window.requestIdleCallback
     ? (cb) => window.requestIdleCallback(cb, { timeout: 1500 })
     : (cb) => setTimeout(cb, 200);
@@ -3850,6 +4185,9 @@
   const mountRoot = () => {
     if (!document.body) { setTimeout(mountRoot, 0); return; }
     document.body.appendChild(root);
+    const a = savedAccent();
+    if (a) setAccent(a, false);
+    try { if (localStorage.getItem('itube-reduce-motion') === '1') root.classList.add('itube-reduce-motion'); } catch (e) {}
   };
   mountRoot();
 
@@ -6791,6 +7129,7 @@
 
   const spaRoute = () => { spaNav = true; route(); };
   const prefersReducedMotion = () => {
+    try { if (localStorage.getItem('itube-reduce-motion') === '1') return true; } catch (e) {}
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
     catch (e) { return false; }
   };
