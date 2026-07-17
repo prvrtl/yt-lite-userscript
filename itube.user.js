@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.25.0
+// @version      4.26.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -27,6 +27,8 @@
   const setItubeOff = (off) => { try { localStorage.setItem('itube-off', off ? '1' : '0'); } catch (e) {} location.reload(); };
   const theaterPref = () => { try { return localStorage.getItem('itube-theater') === '1'; } catch (e) { return false; } };
   const setTheaterPref = (on) => { try { localStorage.setItem('itube-theater', on ? '1' : '0'); } catch (e) {} };
+  const sponsorSkipOn = () => { try { return localStorage.getItem('itube-skip-sponsors') !== '0'; } catch (e) { return true; } };
+  const setSponsorSkipOn = (on) => { try { localStorage.setItem('itube-skip-sponsors', on ? '1' : '0'); } catch (e) {} };
 
   if (itubeOff()) {
     const mountReenable = () => {
@@ -2022,6 +2024,17 @@
       background: rgba(10, 10, 14, .55);
       pointer-events: none;
     }
+    #itube .itube-sb-marker {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      height: 5px;
+      min-width: 2px;
+      border-radius: 2px;
+      pointer-events: none;
+      z-index: 3;
+      opacity: .9;
+    }
     #itube-vol { width: 56px; flex: none; }
     #itube-preview {
       position: absolute;
@@ -2101,6 +2114,18 @@
     #itube-menu #itube-auto.active {
       background: rgba(61, 255, 110, .3);
       color: #fff;
+    }
+    #itube-menu #itube-skip-sponsors {
+      width: auto;
+      height: 22px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .12);
+      font: 500 11px -apple-system, system-ui, sans-serif;
+    }
+    #itube-menu #itube-skip-sponsors.active {
+      background: rgba(61, 255, 110, .3);
+      color: var(--accent);
     }
     ytd-app {
       position: fixed !important;
@@ -2333,6 +2358,11 @@
     const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(data));
     const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
     return 'SAPISIDHASH ' + ts + '_' + hex;
+  };
+
+  const sha256Hex = async (str) => {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
   };
 
   const innertube = async (endpoint, body) => {
@@ -4752,6 +4782,7 @@
     const cc = el('select', 'itube-cc');
     cc.appendChild(new Option('CC', ''));
     const auto = el('button', 'itube-auto', 'Auto');
+    const skipSponsors = el('button', 'itube-skip-sponsors', 'On');
     const pip = el('button', 'itube-pip', ICONS.pip());
     const theater = el('button', 'itube-theater', ICONS.theater());
     theater.setAttribute('aria-label', 'Theater mode');
@@ -4780,7 +4811,7 @@
     };
     const audioRow = row('Audio', audio);
     audioRow.style.display = 'none';
-    menu.append(row('Speed', speed), row('Quality', quality), audioRow, row('Captions', cc), row('Autoplay', auto));
+    menu.append(row('Speed', speed), row('Quality', quality), audioRow, row('Captions', cc), row('Autoplay', auto), row('Skip sponsors', skipSponsors));
     left.append(prev, play, next, timeCur);
     center.append(live);
     right.append(timeDur, mute, vol, more, pip, theater, fs);
@@ -4789,7 +4820,7 @@
     stage.appendChild(cue);
     return {
       bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol,
-      speed, quality, audio, audioRow, cc, auto, pip, theater, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
+      speed, quality, audio, audioRow, cc, auto, skipSponsors, pip, theater, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
     };
   };
 
@@ -5444,6 +5475,73 @@
     const mountAbort = new AbortController();
     const bound = { signal: mountAbort.signal };
     let autoplayEnabled = localStorage.getItem('itube-autoplay') !== '0';
+    let sbEnabled = sponsorSkipOn();
+    let sbSegments = [];
+    let sbVideoId = null;
+    let sbAbort = null;
+    const sbCache = new Map();
+    const SB_CATS = ['sponsor', 'selfpromo', 'interaction'];
+    const sbLoad = async (videoId) => {
+      if (!videoId || videoId === sbVideoId) return;
+      sbVideoId = videoId;
+      sbSegments = [];
+      renderSbMarkers();
+      if (sbCache.has(videoId)) { sbSegments = sbCache.get(videoId); renderSbMarkers(); return; }
+      try {
+        if (sbAbort) sbAbort.abort();
+        sbAbort = new AbortController();
+        const to = setTimeout(() => sbAbort.abort(), 5000);
+        const prefix = (await sha256Hex(videoId)).slice(0, 4);
+        const url = 'https://sponsor.ajay.app/api/skipSegments/' + prefix + '?categories=' + encodeURIComponent(JSON.stringify(SB_CATS)) + '&actionType=skip';
+        const res = await fetch(url, { credentials: 'omit', signal: sbAbort.signal });
+        clearTimeout(to);
+        if (!res.ok) { sbCache.set(videoId, []); return; }
+        const data = await res.json();
+        if (sbVideoId !== videoId) return;
+        const segs = [];
+        if (Array.isArray(data)) {
+          for (const entry of data) {
+            if (!entry || entry.videoID !== videoId || !Array.isArray(entry.segments)) continue;
+            for (const s of entry.segments) {
+              if (s && s.actionType === 'skip' && Array.isArray(s.segment) && s.segment.length === 2) {
+                segs.push({ start: +s.segment[0], end: +s.segment[1], category: s.category });
+              }
+            }
+          }
+        }
+        segs.sort((a, b) => a.start - b.start);
+        sbCache.set(videoId, segs);
+        sbSegments = segs;
+        renderSbMarkers();
+      } catch (e) {}
+    };
+    const SB_COLORS = { sponsor: '#00d46a', selfpromo: '#ffd000', interaction: '#c14bff' };
+    const renderSbMarkers = () => {
+      if (!ui) return;
+      ui.seekwrap.querySelectorAll('.itube-sb-marker').forEach((m) => m.remove());
+      const video = stage.querySelector('video');
+      const dur = video && isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+      if (!dur || !sbSegments.length) return;
+      for (const s of sbSegments) {
+        const m = document.createElement('div');
+        m.className = 'itube-sb-marker';
+        m.style.left = (Math.max(0, s.start) / dur * 100) + '%';
+        m.style.width = (Math.max(0, s.end - s.start) / dur * 100) + '%';
+        m.style.background = SB_COLORS[s.category] || '#00d46a';
+        ui.seekwrap.appendChild(m);
+      }
+    };
+    const sbSkipCheck = (video) => {
+      if (!sbEnabled || !sbSegments.length || !video || video.paused) return;
+      const t = video.currentTime;
+      for (const s of sbSegments) {
+        if (t >= s.start && t < s.end - 0.4) {
+          video.currentTime = s.end;
+          if (typeof showOSD === 'function') showOSD(ICONS.next, 'Skipped ' + (s.category === 'selfpromo' ? 'self-promo' : s.category));
+          break;
+        }
+      }
+    };
     let theaterOn = false;
     let theaterBtn = null;
     let ambientCtx = null;
@@ -5707,7 +5805,7 @@
       ui.more.addEventListener('click', (e) => {
         e.stopPropagation();
         const open = ui.menu.style.display !== 'block';
-        if (open) { populateQuality(p); populateAudioTracks(p); populateTracks(p); ui.syncAuto?.(); }
+        if (open) { populateQuality(p); populateAudioTracks(p); populateTracks(p); ui.syncAuto?.(); ui.syncSkipSponsors?.(); }
         setMenu(open);
       });
       ui.menu.addEventListener('change', () => setMenu(false));
@@ -5729,6 +5827,19 @@
         showOSD(ICONS.next, autoplayEnabled ? 'Autoplay on' : 'Autoplay off');
       });
       ui.syncAuto();
+
+      ui.syncSkipSponsors = () => {
+        ui.skipSponsors.classList.toggle('active', sbEnabled);
+        ui.skipSponsors.setAttribute('aria-pressed', String(sbEnabled));
+        ui.skipSponsors.textContent = sbEnabled ? 'On' : 'Off';
+      };
+      ui.skipSponsors.addEventListener('click', () => {
+        sbEnabled = !sbEnabled;
+        setSponsorSkipOn(sbEnabled);
+        ui.syncSkipSponsors();
+        showOSD(ICONS.next, sbEnabled ? 'Skip sponsors on' : 'Skip sponsors off');
+      });
+      ui.syncSkipSponsors();
 
       ui.seekwrap.addEventListener('pointerenter', () => {
         if (storyboard && !ui.isLive) ui.preview.style.display = 'block';
@@ -5807,6 +5918,7 @@
         if (adActive) { killAd(video); return; }
         ui.timeDur.textContent = fmt(video.duration);
         renderTicks();
+        renderSbMarkers();
       }, bound);
       video.addEventListener('progress', () => paintSeek(video), bound);
       ui.play.replaceChildren(video.paused ? ICONS.play() : ICONS.pause());
@@ -5848,8 +5960,10 @@
       }
       syncAdState();
       resumePlayback();
+      if (video) sbSkipCheck(video);
 
       const vid = p.getVideoData?.()?.video_id;
+      if (vid) sbLoad(vid);
       if (vid && vid !== lastVideoId) {
         lastVideoId = vid;
         const saved = localStorage.getItem('itube-quality');
@@ -6077,6 +6191,10 @@
     return () => {
       clearInterval(timer);
       mountAbort.abort();
+      if (sbAbort) sbAbort.abort();
+      sbSegments = [];
+      sbVideoId = null;
+      ui?.seekwrap.querySelectorAll('.itube-sb-marker').forEach((m) => m.remove());
       teardownCrossfade(true);
       adObserver?.disconnect();
       adObserver = null;

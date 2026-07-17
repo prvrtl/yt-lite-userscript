@@ -43,6 +43,7 @@ const {
   checkTheaterMode,
   checkAccountMenu,
   checkDislikeEstimate,
+  checkSponsorBlock,
   checkWatchMetaReveals,
   checkSubscribeConfirmsOnPopup,
   checkItubeToggle,
@@ -453,6 +454,26 @@ async function main() {
     table.push({ page: 'dislikeestimate', check: 'functional', status, count: violations.length });
     console.log(`  dislike estimate / functional: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=dislikeestimate ${fmt(v)}`);
+  }
+
+  // SponsorBlock auto-skip is mocked (own context, own routed response) rather
+  // than read off the live third-party API, so it runs once rather than
+  // per-page — the real network call is a fire-and-forget best effort, not
+  // something the rest of the suite should depend on.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- sponsorblock auto-skip (mocked) ---');
+    let violations;
+    try {
+      ({ violations } = await checkSponsorBlock(browser));
+    } catch (err) {
+      console.error(`  ERROR running the sponsorblock check: ${err.stack || err}`);
+      violations = [{ check: 'sponsorblock', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'sponsorblock', check: 'functional', status, count: violations.length });
+    console.log(`  sponsorblock / functional: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=sponsorblock ${fmt(v)}`);
   }
 
   // Watch meta must reveal on the migrated videoOwnerRenderer (viewModel) shape —

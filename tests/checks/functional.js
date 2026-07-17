@@ -2226,6 +2226,62 @@ async function checkDislikeEstimate(browser) {
   return violations;
 }
 
+// SponsorBlock auto-skip: segments come from a third-party API (privacy
+// hash-prefix endpoint, mocked here rather than hit live) and must (1) paint
+// as colored markers on the seek bar once the video's duration is known, and
+// (2) actually seek the <video> past a segment once the playhead enters it,
+// while the feature is enabled. A regression here would silently stop
+// skipping sponsors (annoying) or, worse, spin the fetch/marker render on
+// every tick (perf regression) — this only proves the user-visible behavior.
+const SPONSORBLOCK_TEST_VIDEO_ID = 'aircAruvnKk';
+const SPONSORBLOCK_ROUTE_PATTERN = 'https://sponsor.ajay.app/api/skipSegments/**';
+
+async function checkSponsorBlock(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  try {
+    await context.route(SPONSORBLOCK_ROUTE_PATTERN, (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        videoID: SPONSORBLOCK_TEST_VIDEO_ID,
+        segments: [{ category: 'sponsor', actionType: 'skip', segment: [8, 20], UUID: 'test-uuid' }],
+      }]),
+    }));
+    const { page } = await openPage(context, `https://www.youtube.com/watch?v=${SPONSORBLOCK_TEST_VIDEO_ID}`);
+    await waitForApp(page, { timeout: 30000 });
+    await page.waitForSelector('#itube-stage video', { timeout: 15000 });
+    await page.evaluate(() => {
+      const v = document.querySelector('#itube-stage video');
+      v.muted = true;
+      v.play();
+    });
+    await page.waitForFunction(() => {
+      const v = document.querySelector('#itube-stage video');
+      return v && isFinite(v.duration) && v.duration > 0;
+    }, { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+
+    const hasMarker = await page.evaluate(() => !!document.querySelector('.itube-sb-marker'));
+    if (!hasMarker) {
+      violations.push({ check: 'sponsorblock-marker', detail: 'expected a .itube-sb-marker to appear on the seek bar for the mocked [8,20] sponsor segment, found none' });
+    }
+
+    await page.evaluate(() => {
+      const v = document.querySelector('#itube-stage video');
+      v.currentTime = 10;
+    });
+    await page.waitForTimeout(800);
+    const afterSkip = await page.evaluate(() => document.querySelector('#itube-stage video')?.currentTime ?? 0);
+    if (afterSkip < 19.5) {
+      violations.push({ check: 'sponsorblock-skip', detail: `expected auto-skip to jump the playhead to >= 19.5s once inside the mocked [8,20] segment, currentTime is ${afterSkip}` });
+    }
+  } finally {
+    await context.close();
+  }
+  return { violations };
+}
+
 // Regression: YouTube migrated videoOwnerRenderer to viewModels on some videos —
 // the channel name moved to `attributedTitle.content`, the avatar to
 // `avatarStack…image.sources`, the channel id to a nested browseEndpoint, and the
@@ -2559,6 +2615,7 @@ module.exports = {
   checkSubscribeConfirmsOnPopup,
   checkWatchMetaReveals,
   checkDislikeEstimate,
+  checkSponsorBlock,
   checkColdLoadSkeleton,
   checkBootLoaderColdLoad,
   checkBootLoaderFeedColdLoad,
