@@ -2756,6 +2756,73 @@ async function checkSettings(browser) {
   return violations;
 }
 
+// The command palette (Ctrl/Cmd-K) is a global keyboard shortcut that must
+// work anywhere in the app: this guards the document-level keydown listener
+// actually opening the overlay, the fuzzy filter actually narrowing results,
+// and Escape actually closing it again. Runs once on the home page, in its
+// own context, mirroring checkAccountMenu.
+async function checkCommandPalette(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    const overlayExists = await page.evaluate(() => {
+      const overlay = document.querySelector('.cmdk-overlay');
+      return { exists: !!overlay, open: !!overlay && overlay.classList.contains('open') };
+    });
+    if (!overlayExists.exists) {
+      violations.push({ check: 'cmdk-exists', detail: 'expected a .cmdk-overlay element to exist' });
+      return violations;
+    }
+    if (overlayExists.open) {
+      violations.push({ check: 'cmdk-exists', detail: 'expected .cmdk-overlay to not have .open before any shortcut is pressed' });
+    }
+
+    await page.keyboard.press('Control+k');
+    await page.waitForTimeout(100);
+    let opened = await page.evaluate(() => ({
+      open: document.querySelector('.cmdk-overlay')?.classList.contains('open'),
+      focused: document.activeElement?.classList?.contains('cmdk-input'),
+    }));
+    if (!opened.open) {
+      // Fall back to a synthetic keydown in case Playwright's key chord
+      // doesn't reach a bare document listener in this chromium build.
+      await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })));
+      await page.waitForTimeout(100);
+      opened = await page.evaluate(() => ({
+        open: document.querySelector('.cmdk-overlay')?.classList.contains('open'),
+        focused: document.activeElement?.classList?.contains('cmdk-input'),
+      }));
+    }
+    if (!opened.open) {
+      violations.push({ check: 'cmdk-opens', detail: 'Ctrl+K did not add .open to .cmdk-overlay' });
+    }
+    if (!opened.focused) {
+      violations.push({ check: 'cmdk-opens', detail: 'expected document.activeElement to be .cmdk-input after opening the palette' });
+    }
+
+    await page.fill('.cmdk-input', 'Subscriptions');
+    await page.waitForTimeout(100);
+    const filtered = await page.evaluate(() =>
+      [...document.querySelectorAll('.cmdk-item')].some((el) => el.textContent.includes('Subscriptions')));
+    if (!filtered) {
+      violations.push({ check: 'cmdk-filters', detail: 'typing "Subscriptions" did not leave a matching .cmdk-item in the list' });
+    }
+
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(100);
+    const closed = await page.evaluate(() => !document.querySelector('.cmdk-overlay')?.classList.contains('open'));
+    if (!closed) {
+      violations.push({ check: 'cmdk-closes', detail: 'Escape did not remove .open from .cmdk-overlay' });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 // Playback speed must be able to exceed YouTube's 2x cap and the chosen speed
 // must be remembered as a global default applied to the next video. The real
 // signal is the underlying <video>.playbackRate (the YT player clamps its own
@@ -3011,6 +3078,7 @@ module.exports = {
   checkToolsRow,
   checkAccountMenu,
   checkSettings,
+  checkCommandPalette,
   checkItubeToggle,
   checkSubscribeConfirmsOnPopup,
   checkWatchMetaReveals,

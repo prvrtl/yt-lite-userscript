@@ -47,6 +47,7 @@ const {
   checkToolsRow,
   checkAccountMenu,
   checkSettings,
+  checkCommandPalette,
   checkFrameExport,
   checkDislikeEstimate,
   checkSponsorBlock,
@@ -628,6 +629,24 @@ async function main() {
     table.push({ page: 'settings', check: 'functional', status, count: violations.length });
     console.log(`  settings: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=settings ${fmt(v)}`);
+  }
+
+  // The command palette (Ctrl/Cmd-K) runs once on the home page, mirroring
+  // the settings block above.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- command palette ---');
+    let violations;
+    try {
+      violations = await checkCommandPalette(browser);
+    } catch (err) {
+      console.error(`  ERROR running the command-palette check: ${err.stack || err}`);
+      violations = [{ check: 'cmdk', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'cmdk', check: 'functional', status, count: violations.length });
+    console.log(`  command palette: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=cmdk ${fmt(v)}`);
   }
 
   // Frame export (camera button) captures the current frame as a PNG download;

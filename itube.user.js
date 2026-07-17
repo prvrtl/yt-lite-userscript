@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.33.0
+// @version      4.34.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -2532,6 +2532,80 @@
       border-color: var(--accent-solid);
       color: var(--on-accent);
     }
+    #itube .cmdk-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .55);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 12vh;
+      z-index: 13000;
+    }
+    #itube .cmdk-overlay.open {
+      display: flex;
+    }
+    #itube .cmdk-panel {
+      width: min(560px, 92vw);
+      background: var(--raised);
+      border: 1px solid var(--hairline);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      box-shadow: 0 24px 60px -16px rgba(0, 0, 0, .7);
+    }
+    #itube .cmdk-input {
+      width: 100%;
+      padding: 14px 16px;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--hairline);
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+    }
+    #itube .cmdk-list {
+      max-height: 50vh;
+      overflow-y: auto;
+      padding: 6px;
+    }
+    #itube .cmdk-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      text-align: left;
+      padding: 9px 12px;
+      border-radius: var(--r-md);
+      background: none;
+      border: none;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 14px;
+    }
+    #itube .cmdk-item.selected, #itube .cmdk-item:hover {
+      background: var(--hover);
+    }
+    #itube .cmdk-item img {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex: none;
+    }
+    #itube .cmdk-item-label {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #itube .cmdk-item-kind {
+      flex: none;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
   `;
 
   const style = document.createElement('style');
@@ -4159,6 +4233,142 @@
     idle(startGuideChannelsFetch);
   };
   renderGuideChannels();
+
+  const cmdkOverlay = document.createElement('div');
+  cmdkOverlay.className = 'cmdk-overlay';
+  const cmdkPanel = document.createElement('div');
+  cmdkPanel.className = 'cmdk-panel';
+  const cmdkInput = document.createElement('input');
+  cmdkInput.type = 'text';
+  cmdkInput.className = 'cmdk-input';
+  cmdkInput.placeholder = 'Search subscriptions, pages, actions…';
+  const cmdkList = document.createElement('div');
+  cmdkList.className = 'cmdk-list';
+  cmdkPanel.append(cmdkInput, cmdkList);
+  cmdkOverlay.appendChild(cmdkPanel);
+  root.appendChild(cmdkOverlay);
+
+  let cmdkItems = [];
+  let cmdkVisible = [];
+
+  const buildCmdkItems = () => {
+    const items = [];
+    items.push({ type: 'action', label: 'Open Settings', kind: 'Action', run: () => { document.querySelector('.nav-settings')?.click(); } });
+    for (const item of NAV_ITEMS) items.push({ type: 'nav', label: item.label, kind: 'Page', href: item.href });
+    for (const ch of guideChannelsCache || []) {
+      items.push({ type: 'channel', label: ch.title, kind: 'Channel', href: '/channel/' + encodeURIComponent(ch.browseId), avatar: ch.avatar });
+    }
+    return items;
+  };
+
+  const cmdkMatchTier = (query, label) => {
+    if (!query) return 3;
+    const q = query.toLowerCase();
+    const l = label.toLowerCase();
+    if (l.startsWith(q)) return 0;
+    if (l.includes(q)) return 1;
+    let qi = 0;
+    for (let li = 0; li < l.length && qi < q.length; li++) {
+      if (l[li] === q[qi]) qi++;
+    }
+    return qi === q.length ? 2 : -1;
+  };
+
+  const CMDK_MAX_ROWS = 20;
+
+  const cmdkFilter = (query) => {
+    const ranked = [];
+    cmdkItems.forEach((item, idx) => {
+      const tier = cmdkMatchTier(query, item.label);
+      if (tier >= 0) ranked.push({ item, tier, idx });
+    });
+    ranked.sort((a, b) => (a.tier - b.tier) || (a.idx - b.idx));
+    return ranked.slice(0, CMDK_MAX_ROWS).map((r) => r.item);
+  };
+
+  const cmdkKindIcon = (item) => {
+    if (item.avatar) {
+      const img = document.createElement('img');
+      img.src = item.avatar;
+      img.setAttribute('loading', 'lazy');
+      return img;
+    }
+    return null;
+  };
+
+  const activateCmdkItem = (item) => {
+    if (!item) return;
+    closeCmdk();
+    if (item.run) item.run();
+    else if (item.href) { history.pushState({}, '', item.href); spaRoute(); }
+  };
+
+  const renderCmdkList = () => {
+    const rows = cmdkVisible.map((item, i) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'cmdk-item' + (i === 0 ? ' selected' : '');
+      const av = cmdkKindIcon(item);
+      if (av) row.appendChild(av);
+      const label = document.createElement('span');
+      label.className = 'cmdk-item-label';
+      label.textContent = item.label;
+      row.appendChild(label);
+      const kind = document.createElement('span');
+      kind.className = 'cmdk-item-kind';
+      kind.textContent = item.kind;
+      row.appendChild(kind);
+      row.addEventListener('click', () => activateCmdkItem(item));
+      return row;
+    });
+    cmdkList.replaceChildren(...rows);
+  };
+
+  const cmdkSelectedIndex = () => {
+    const rows = cmdkList.querySelectorAll('.cmdk-item');
+    for (let i = 0; i < rows.length; i++) if (rows[i].classList.contains('selected')) return i;
+    return -1;
+  };
+
+  const cmdkMoveSelection = (delta) => {
+    const rows = cmdkList.querySelectorAll('.cmdk-item');
+    if (!rows.length) return;
+    let i = cmdkSelectedIndex();
+    if (i >= 0) rows[i].classList.remove('selected');
+    i = (i + delta + rows.length) % rows.length;
+    rows[i].classList.add('selected');
+    rows[i].scrollIntoView({ block: 'nearest' });
+  };
+
+  const openPalette = () => {
+    cmdkItems = buildCmdkItems();
+    cmdkInput.value = '';
+    cmdkVisible = cmdkFilter('');
+    renderCmdkList();
+    cmdkOverlay.classList.add('open');
+    cmdkInput.focus();
+  };
+  const closeCmdk = () => { cmdkOverlay.classList.remove('open'); };
+
+  cmdkInput.addEventListener('input', () => {
+    cmdkVisible = cmdkFilter(cmdkInput.value);
+    renderCmdkList();
+  });
+  cmdkInput.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); cmdkMoveSelection(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkMoveSelection(-1); }
+    else if (e.key === 'Enter') { e.preventDefault(); activateCmdkItem(cmdkVisible[cmdkSelectedIndex()]); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeCmdk(); }
+  });
+  cmdkPanel.addEventListener('click', (e) => { e.stopPropagation(); });
+  cmdkOverlay.addEventListener('click', closeCmdk);
+
+  document.addEventListener('keydown', (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'k') return;
+    e.preventDefault();
+    openPalette();
+  }, true);
+
   const syncNav = () => {
     for (const item of NAV_ITEMS) {
       const row = navRows[item.key];
