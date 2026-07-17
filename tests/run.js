@@ -41,6 +41,7 @@ const {
   checkAudioTrackSelector,
   checkThumbFlyAnimation,
   checkTheaterMode,
+  checkAbLoop,
   checkAccountMenu,
   checkDislikeEstimate,
   checkSponsorBlock,
@@ -565,6 +566,24 @@ async function main() {
     table.push({ page: 'theater', check: 'functional', status, count: violations.length });
     console.log(`  theater mode: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=theater ${fmt(v)}`);
+  }
+
+  // A-B repeat loop marks and enforcement run once in their own watch context,
+  // same reasoning as theater mode above.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- A-B repeat loop ---');
+    let violations;
+    try {
+      violations = await checkAbLoop(browser);
+    } catch (err) {
+      console.error(`  ERROR running the ab-loop check: ${err.stack || err}`);
+      violations = [{ check: 'ab-loop', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'abloop', check: 'functional', status, count: violations.length });
+    console.log(`  A-B repeat loop: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=abloop ${fmt(v)}`);
   }
 
   // The cold-load watch skeleton runs once, in its own freshly-opened page: it

@@ -2545,6 +2545,56 @@ async function checkTheaterMode(browser) {
   return violations;
 }
 
+// A-B repeat loop: setting two marks on the seek bar must show a highlighted
+// region + both markers, flip the #itube-ab button to its active state, and
+// then actually enforce the loop by snapping playback back to A once it
+// crosses B. Clicking the button (rather than the `[`/`]` keys) at fixed
+// currentTimes keeps this deterministic instead of racing real playback.
+async function checkAbLoop(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-ab', { timeout: 30000 }).catch(() => {});
+    await page.waitForFunction(() => {
+      const v = document.querySelector('#itube-stage video');
+      return !!v && isFinite(v.duration) && v.duration > 10;
+    }, { timeout: 30000 }).catch(() => {});
+    if (!(await page.evaluate(() => !!document.getElementById('itube-ab')))) {
+      violations.push({ check: 'ab-loop-button-present', detail: 'expected an #itube-ab toggle in the player bar' });
+      return violations;
+    }
+    await page.evaluate(() => {
+      const v = document.querySelector('#itube-stage video');
+      v.muted = true;
+      v.play();
+    });
+    await page.evaluate(() => { document.querySelector('#itube-stage video').currentTime = 3; });
+    await page.evaluate(() => document.getElementById('itube-ab').click());
+    await page.evaluate(() => { document.querySelector('#itube-stage video').currentTime = 8; });
+    await page.evaluate(() => document.getElementById('itube-ab').click());
+    const marked = await page.evaluate(() => ({
+      region: !!document.querySelector('.itube-ab-region'),
+      active: document.getElementById('itube-ab').classList.contains('active'),
+    }));
+    if (!marked.region) violations.push({ check: 'ab-loop-markers', detail: 'expected a .itube-ab-region after setting A and B' });
+    if (!marked.active) violations.push({ check: 'ab-loop-markers', detail: 'expected #itube-ab to gain .active after setting A and B' });
+
+    await page.evaluate(() => { document.querySelector('#itube-stage video').currentTime = 8.6; });
+    await page.waitForTimeout(500);
+    const loopedTime = await page.evaluate(() => document.querySelector('#itube-stage video').currentTime);
+    if (!(loopedTime < 8)) {
+      violations.push({ check: 'ab-loop-enforces', detail: `expected playback past B to snap back toward A (~3s), got currentTime=${loopedTime}` });
+    }
+    await page.evaluate(() => document.getElementById('itube-ab').click());
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 // Account management: the sidebar avatar is a menu button that opens a dropdown
 // with a native "Your channel" plus redirects to YouTube's own UI (Studio,
 // Settings, Switch account, Sign out). This guards the menu going missing, the
@@ -2609,6 +2659,7 @@ async function checkAccountMenu(browser) {
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
+  checkAbLoop,
   checkTheaterMode,
   checkAccountMenu,
   checkItubeToggle,

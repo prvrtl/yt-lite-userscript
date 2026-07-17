@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.26.0
+// @version      4.27.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -113,6 +113,11 @@
     fs: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', d: 'M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4' }]]),
     theater: () => icon([
       ['rect', { x: '1.5', y: '4', width: '13', height: '8', rx: '1.6', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6' }],
+    ]),
+    loop: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M4 5.5h6a2.6 2.6 0 0 1 2.6 2.6M12 10.5H6A2.6 2.6 0 0 1 3.4 7.9' }],
+      ['path', { fill: 'currentColor', d: 'M9.4 3.1 12.5 5.5 9.4 7.9z' }],
+      ['path', { fill: 'currentColor', d: 'M6.6 12.9 3.5 10.5 6.6 8.1z' }],
     ]),
     seekFwd: () => icon([
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', d: 'M3.4 8a4.6 4.6 0 1 1 1.3 3.2' }],
@@ -2034,6 +2039,30 @@
       pointer-events: none;
       z-index: 3;
       opacity: .9;
+    }
+    #itube .itube-ab-region {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      height: 5px;
+      border-radius: 2px;
+      background: rgba(61, 255, 110, .28);
+      pointer-events: none;
+      z-index: 2;
+    }
+    #itube .itube-ab-marker {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 2px;
+      height: 12px;
+      border-radius: 1px;
+      background: var(--accent);
+      pointer-events: none;
+      z-index: 4;
+    }
+    #itube-ab.active {
+      color: var(--accent);
     }
     #itube-vol { width: 56px; flex: none; }
     #itube-preview {
@@ -4783,6 +4812,9 @@
     cc.appendChild(new Option('CC', ''));
     const auto = el('button', 'itube-auto', 'Auto');
     const skipSponsors = el('button', 'itube-skip-sponsors', 'On');
+    const ab = el('button', 'itube-ab', ICONS.loop());
+    ab.setAttribute('aria-label', 'A–B repeat loop');
+    ab.title = 'A–B repeat loop';
     const pip = el('button', 'itube-pip', ICONS.pip());
     const theater = el('button', 'itube-theater', ICONS.theater());
     theater.setAttribute('aria-label', 'Theater mode');
@@ -4814,13 +4846,13 @@
     menu.append(row('Speed', speed), row('Quality', quality), audioRow, row('Captions', cc), row('Autoplay', auto), row('Skip sponsors', skipSponsors));
     left.append(prev, play, next, timeCur);
     center.append(live);
-    right.append(timeDur, mute, vol, more, pip, theater, fs);
+    right.append(timeDur, mute, vol, more, ab, pip, theater, fs);
     bar.append(seekwrap, left, center, right, menu);
     stage.appendChild(bar);
     stage.appendChild(cue);
     return {
       bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol,
-      speed, quality, audio, audioRow, cc, auto, skipSponsors, pip, theater, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
+      speed, quality, audio, audioRow, cc, auto, skipSponsors, ab, pip, theater, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
     };
   };
 
@@ -5542,6 +5574,51 @@
         }
       }
     };
+    let abA = null;
+    let abB = null;
+    const renderAbMarkers = () => {
+      if (!ui) return;
+      ui.seekwrap.querySelectorAll('.itube-ab-marker, .itube-ab-region').forEach((m) => m.remove());
+      const video = stage.querySelector('video');
+      const dur = video && isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+      if (!dur) return;
+      if (abA != null && abB != null && abB > abA) {
+        const region = document.createElement('div');
+        region.className = 'itube-ab-region';
+        region.style.left = (abA / dur * 100) + '%';
+        region.style.width = ((abB - abA) / dur * 100) + '%';
+        ui.seekwrap.appendChild(region);
+      }
+      for (const [val, cls] of [[abA, 'a'], [abB, 'b']]) {
+        if (val == null) continue;
+        const m = document.createElement('div');
+        m.className = 'itube-ab-marker itube-ab-' + cls;
+        m.style.left = (val / dur * 100) + '%';
+        ui.seekwrap.appendChild(m);
+      }
+    };
+    const syncAbBtn = () => {
+      if (!ui || !ui.ab) return;
+      const active = abA != null;
+      ui.ab.classList.toggle('active', active);
+      ui.ab.setAttribute('aria-pressed', String(abA != null && abB != null));
+    };
+    const clearAb = () => { abA = null; abB = null; renderAbMarkers(); syncAbBtn(); };
+    const cycleAb = () => {
+      const video = stage.querySelector('video');
+      if (!video) return;
+      if (abA == null) {
+        abA = video.currentTime;
+        showOSD(ICONS.loop, 'Loop start set');
+      } else if (abB == null) {
+        if (video.currentTime > abA + 0.2) { abB = video.currentTime; showOSD(ICONS.loop, 'A–B loop on'); }
+        else { showOSD(ICONS.loop, 'Loop end must be after start'); }
+      } else {
+        abA = null; abB = null; showOSD(ICONS.loop, 'Loop off');
+      }
+      renderAbMarkers();
+      syncAbBtn();
+    };
     let theaterOn = false;
     let theaterBtn = null;
     let ambientCtx = null;
@@ -5828,6 +5905,9 @@
       });
       ui.syncAuto();
 
+      ui.ab.addEventListener('click', () => cycleAb());
+      syncAbBtn();
+
       ui.syncSkipSponsors = () => {
         ui.skipSponsors.classList.toggle('active', sbEnabled);
         ui.skipSponsors.setAttribute('aria-pressed', String(sbEnabled));
@@ -5905,6 +5985,7 @@
       video.addEventListener('pause', () => { ui.play.replaceChildren(ICONS.play()); showBar(); }, bound);
       video.addEventListener('timeupdate', () => {
         if (adActive) { killAd(video); return; }
+        if (abA != null && abB != null && video.currentTime >= abB) { video.currentTime = abA; }
         ui.timeCur.textContent = fmt(video.currentTime);
         if (!ui.scrubbing && isFinite(video.duration) && video.duration > 0) {
           ui.seek.value = Math.round(video.currentTime / video.duration * 1000);
@@ -5919,6 +6000,7 @@
         ui.timeDur.textContent = fmt(video.duration);
         renderTicks();
         renderSbMarkers();
+        renderAbMarkers();
       }, bound);
       video.addEventListener('progress', () => paintSeek(video), bound);
       ui.play.replaceChildren(video.paused ? ICONS.play() : ICONS.pause());
@@ -5983,6 +6065,7 @@
         ui.preview.dataset.src = '';
         ui.menu.style.display = 'none';
         renderTicks();
+        clearAb();
       }
 
       if (!storyboard && storyboardTries < MAX_STORYBOARD_TRIES) {
@@ -6049,7 +6132,7 @@
     tick();
     const timer = setInterval(tick, 500);
 
-    const HANDLED_KEYS = new Set([' ', 'k', 'j', 'l', 'm', 'f', 'c', 'i', 't', ',', '.', '<', '>', '/', 'Escape',
+    const HANDLED_KEYS = new Set([' ', 'k', 'j', 'l', 'm', 'f', 'c', 'i', 't', ',', '.', '<', '>', '/', 'Escape', '[', ']', '\\',
       'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
       '0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
 
@@ -6125,10 +6208,24 @@
           if (isFinite(video.duration)) video.currentTime = video.duration * (Number(e.key) / 10);
           break;
         case ',':
-          if (video.paused) video.currentTime = Math.max(0, video.currentTime - 1 / 30);
+          if (video.paused) { video.currentTime = Math.max(0, video.currentTime - 1 / 30); showOSD(ICONS.seekBack, 'Frame ◀'); }
           break;
         case '.':
-          if (video.paused && isFinite(video.duration)) video.currentTime = Math.min(video.duration, video.currentTime + 1 / 30);
+          if (video.paused && isFinite(video.duration)) { video.currentTime = Math.min(video.duration, video.currentTime + 1 / 30); showOSD(ICONS.seekFwd, 'Frame ▶'); }
+          break;
+        case '[': {
+          const v = stage.querySelector('video');
+          if (v) { abA = v.currentTime; if (abB != null && abB <= abA) abB = null; renderAbMarkers(); syncAbBtn(); showOSD(ICONS.loop, 'Loop start set'); }
+          break;
+        }
+        case ']': {
+          const v = stage.querySelector('video');
+          if (v && abA != null && v.currentTime > abA + 0.2) { abB = v.currentTime; renderAbMarkers(); syncAbBtn(); showOSD(ICONS.loop, 'A–B loop on'); }
+          break;
+        }
+        case '\\':
+          clearAb();
+          showOSD(ICONS.loop, 'Loop off');
           break;
         case '<': {
           const p = player();
@@ -6194,6 +6291,7 @@
       if (sbAbort) sbAbort.abort();
       sbSegments = [];
       sbVideoId = null;
+      abA = null; abB = null;
       ui?.seekwrap.querySelectorAll('.itube-sb-marker').forEach((m) => m.remove());
       teardownCrossfade(true);
       adObserver?.disconnect();
