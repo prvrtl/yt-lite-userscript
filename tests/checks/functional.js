@@ -2964,10 +2964,47 @@ async function checkToolsRow(browser) {
   return violations;
 }
 
+// Frame export: the player-bar camera button captures the current video frame
+// as a PNG and downloads it. YouTube's MSE stream is origin-clean, so drawing
+// the video to a canvas and reading it back works — this guards the button
+// going dead or the canvas becoming tainted (which would make toBlob throw and
+// silently produce no download).
+async function checkFrameExport(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-shot', { timeout: 15000 }).catch(() => {});
+    await page.evaluate(async () => {
+      const v = document.querySelector('#itube-stage video');
+      if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
+    });
+    await page.waitForFunction(() => {
+      const v = document.querySelector('#itube-stage video');
+      return v && v.videoWidth > 0;
+    }, { timeout: 15000 }).catch(() => {});
+    const downloadPromise = page.waitForEvent('download', { timeout: 8000 }).catch(() => null);
+    await page.evaluate(() => document.getElementById('itube-shot').click());
+    const download = await downloadPromise;
+    if (!download) {
+      violations.push({ check: 'frame-export-downloads', detail: 'clicking the frame-export (camera) button did not trigger a download — the canvas may be tainted or the button unwired' });
+    } else if (!/\.png$/.test(download.suggestedFilename())) {
+      violations.push({ check: 'frame-export-png', detail: `expected a .png download, got ${download.suggestedFilename()}` });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
   checkAbLoop,
+  checkFrameExport,
   checkTheaterMode,
   checkPlaybackSpeed,
   checkVolumeBoost,

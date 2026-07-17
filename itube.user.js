@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.32.0
+// @version      4.33.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -113,6 +113,10 @@
       ['rect', { x: '8', y: '8', width: '5', height: '3.5', rx: '0.8', fill: 'currentColor' }],
     ]),
     fs: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', d: 'M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4' }]]),
+    camera: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linejoin': 'round', d: 'M2 5.2h2.4l1-1.6h5.2l1 1.6H14a.8.8 0 0 1 .8.8v6.4a.8.8 0 0 1-.8.8H2a.8.8 0 0 1-.8-.8V6a.8.8 0 0 1 .8-.8z' }],
+      ['circle', { cx: '8', cy: '9', r: '2.4', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' }],
+    ]),
     theater: () => icon([
       ['rect', { x: '1.5', y: '4', width: '13', height: '8', rx: '1.6', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6' }],
     ]),
@@ -5237,6 +5241,9 @@
     const theater = el('button', 'itube-theater', ICONS.theater());
     theater.setAttribute('aria-label', 'Theater mode');
     theater.title = 'Theater mode (t)';
+    const shot = el('button', 'itube-shot', ICONS.camera());
+    shot.setAttribute('aria-label', 'Save frame');
+    shot.title = 'Save current frame (PNG)';
     const fs = el('button', 'itube-fs', ICONS.fs());
     const seekwrap = el('div', 'itube-seekwrap');
     seekwrap.appendChild(seek);
@@ -5264,13 +5271,13 @@
     menu.append(row('Speed', speed), row('Quality', quality), audioRow, row('Captions', cc), row('Autoplay', auto), row('Skip sponsors', skipSponsors), row('Volume boost', boostBtn));
     left.append(prev, play, next, timeCur);
     center.append(live);
-    right.append(timeDur, mute, vol, more, ab, pip, theater, fs);
+    right.append(timeDur, mute, vol, more, ab, pip, theater, shot, fs);
     bar.append(seekwrap, left, center, right, menu);
     stage.appendChild(bar);
     stage.appendChild(cue);
     return {
       bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol,
-      speed, quality, audio, audioRow, cc, auto, skipSponsors, boost: boostBtn, ab, pip, theater, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
+      speed, quality, audio, audioRow, cc, auto, skipSponsors, boost: boostBtn, ab, pip, theater, shot, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
     };
   };
 
@@ -6158,6 +6165,29 @@
       syncBoostBtn();
       showOSD(ICONS.vol, boost > 1 ? 'Boost ' + Math.round(boost * 100) + '%' : 'Boost off');
     };
+    const captureFrame = () => {
+      const video = stage.querySelector('video');
+      if (!video || !video.videoWidth) return;
+      try {
+        const c = document.createElement('canvas');
+        c.width = video.videoWidth;
+        c.height = video.videoHeight;
+        c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+        c.toBlob((blob) => {
+          if (!blob) { showOSD(ICONS.camera, 'Capture unavailable'); return; }
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          const vid = player()?.getVideoData?.()?.video_id || 'frame';
+          a.download = 'itube-' + vid + '-' + Math.floor(video.currentTime) + 's.png';
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+          showOSD(ICONS.camera, 'Frame saved');
+        }, 'image/png');
+      } catch (e) {
+        showOSD(ICONS.camera, 'Capture unavailable');
+      }
+    };
     let abA = null;
     let abB = null;
     const renderAbMarkers = () => {
@@ -6550,6 +6580,7 @@
         setTimeout(() => p.setOption?.('captions', 'track', { languageCode: ui.cc.value }), 150);
       });
       ui.pip.addEventListener('click', () => togglePiP(video));
+      ui.shot.addEventListener('click', () => captureFrame());
       ui.fs.addEventListener('click', () => toggleFullscreen());
       theaterBtn = ui.theater;
       theaterBtn.addEventListener('click', () => applyTheater(!theaterOn));

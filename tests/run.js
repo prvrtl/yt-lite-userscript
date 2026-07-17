@@ -47,6 +47,7 @@ const {
   checkToolsRow,
   checkAccountMenu,
   checkSettings,
+  checkFrameExport,
   checkDislikeEstimate,
   checkSponsorBlock,
   checkWatchMetaReveals,
@@ -627,6 +628,24 @@ async function main() {
     table.push({ page: 'settings', check: 'functional', status, count: violations.length });
     console.log(`  settings: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=settings ${fmt(v)}`);
+  }
+
+  // Frame export (camera button) captures the current frame as a PNG download;
+  // runs once on the watch page in its own context.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- frame export ---');
+    let violations;
+    try {
+      violations = await checkFrameExport(browser);
+    } catch (err) {
+      console.error(`  ERROR running the frame-export check: ${err.stack || err}`);
+      violations = [{ check: 'frame-export', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'frameexport', check: 'functional', status, count: violations.length });
+    console.log(`  frame export: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=frameexport ${fmt(v)}`);
   }
 
   // Theater mode toggles a full-screen cinema layout + ambient canvas and
