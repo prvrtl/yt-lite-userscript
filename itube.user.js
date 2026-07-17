@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.29.0
+// @version      4.30.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -2448,6 +2448,20 @@
     const val = n / scale[0];
     const rounded = val < 10 ? Math.round(val * 10) / 10 : Math.round(val);
     return rounded + scale[1];
+  };
+
+  const parseCount = (text) => {
+    if (typeof text !== 'string') return null;
+    const m = text.replace(/\s/g, '').match(/([\d.,]+)([KMB])?/i);
+    if (!m) return null;
+    const suffix = (m[2] || '').toUpperCase();
+    if (suffix) {
+      const n = parseFloat(m[1].replace(',', '.'));
+      if (!Number.isFinite(n)) return null;
+      return Math.round(n * (suffix === 'K' ? 1e3 : suffix === 'M' ? 1e6 : 1e9));
+    }
+    const n = parseInt(m[1].replace(/[.,]/g, ''), 10);
+    return Number.isFinite(n) ? n : null;
   };
 
   const fetchDislikes = async (videoId) => {
@@ -4949,12 +4963,29 @@
     let subscribeBusy = false;
     let shareBusy = false;
     let dislikeCountGeneration = 0;
+    let likeBaseNum = null;
+    let dislikeBaseNum = null;
+    let likeRawText = '';
+    let initialLiked = false;
+    let initialDisliked = false;
+
+    const renderLikeCount = () => {
+      likeLabel.textContent = likeBaseNum != null
+        ? formatCompact(Math.max(0, likeBaseNum + (liked ? 1 : 0) - (initialLiked ? 1 : 0)))
+        : likeRawText;
+    };
+    const renderDislikeCount = () => {
+      if (dislikeBaseNum == null) return;
+      dislikeLabel.textContent = formatCompact(Math.max(0, dislikeBaseNum + (disliked ? 1 : 0) - (initialDisliked ? 1 : 0)));
+    };
 
     const setLikeUI = () => {
       likeBtn.classList.toggle('active', liked);
       likeBtn.setAttribute('aria-pressed', String(liked));
       dislikeBtn.classList.toggle('active', disliked);
       dislikeBtn.setAttribute('aria-pressed', String(disliked));
+      renderLikeCount();
+      renderDislikeCount();
     };
     const setSaveUI = () => {
       saveBtn.classList.toggle('active', saved);
@@ -5063,7 +5094,11 @@
       const likeState = readLikeState(data);
       liked = likeState.liked;
       disliked = likeState.disliked;
-      likeLabel.textContent = likeState.likeCountText || '';
+      initialLiked = likeState.liked;
+      initialDisliked = likeState.disliked;
+      likeRawText = likeState.likeCountText || '';
+      likeBaseNum = parseCount(likeRawText);
+      dislikeBaseNum = null;
       setLikeUI();
 
       dislikeLabel.textContent = '';
@@ -5074,12 +5109,13 @@
         fetchDislikes(dislikeVideoId).then((count) => {
           if (dislikeGen !== dislikeCountGeneration) return;
           if (count === null) return;
-          dislikeLabel.textContent = formatCompact(count);
+          dislikeBaseNum = count;
+          renderDislikeCount();
           dislikeBtn.title = 'Estimated dislikes · Return YouTube Dislike';
         });
       }
 
-      saved = false;
+      saved = new URLSearchParams(location.search).get('list') === 'WL';
       setSaveUI();
 
       subscribed = readSubscribedState(data);

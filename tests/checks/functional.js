@@ -2691,10 +2691,19 @@ async function checkPlaybackSpeed(browser) {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForApp(page, { timeout: 30000 }).catch(() => {});
     await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
-    const after = await page.evaluate(async () => {
+    // A cold reload of a live video takes a variable moment to load and wire
+    // before the remembered rate is re-applied, so poll for it rather than
+    // guessing a fixed delay (the fixed wait was a flaky race).
+    await page.evaluate(async () => {
       const v = document.querySelector('#itube-stage video');
       if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
-      await new Promise((r) => setTimeout(r, 1600));
+    });
+    await page.waitForFunction(() => {
+      const v = document.querySelector('#itube-stage video');
+      return v && Math.abs(v.playbackRate - 3) < 0.01;
+    }, { timeout: 8000 }).catch(() => {});
+    const after = await page.evaluate(() => {
+      const v = document.querySelector('#itube-stage video');
       return v ? v.playbackRate : null;
     });
     if (Math.abs((after || 0) - 3) > 0.01) {
