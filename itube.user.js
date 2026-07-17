@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.20.0
+// @version      4.20.1
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -261,7 +261,8 @@
       #itube .row,
       #itube .watch-subscribe,
       #itube .signin-btn,
-      #itube .hd-signin {
+      #itube .hd-signin,
+      #itube .hd-avatar {
         transition: none;
       }
     }
@@ -369,6 +370,25 @@
       border-radius: 50%;
       background: var(--raised);
       flex: none;
+      display: block;
+      overflow: hidden;
+      cursor: pointer;
+      box-shadow: 0 0 0 0 rgba(41, 224, 255, 0);
+      transition: box-shadow var(--tr);
+    }
+    #itube .hd-avatar:hover {
+      box-shadow: 0 0 0 2px var(--accent);
+    }
+    #itube .hd-avatar-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      opacity: 0;
+    }
+    #itube .hd-avatar-img.in {
+      opacity: 1;
+      transition: opacity .18s ease-out;
     }
     #itube .brand {
       display: flex;
@@ -3213,14 +3233,47 @@
   hdSignIn.href = '/signin';
   hdSignIn.textContent = 'Sign in';
   hdSignIn.style.display = 'none';
-  const avatar = document.createElement('div');
+  const avatar = document.createElement('a');
   avatar.className = 'hd-avatar';
+  avatar.href = '/';
+  avatar.setAttribute('aria-label', 'Your channel');
+  avatar.style.display = 'none';
+  const avatarImg = document.createElement('img');
+  avatarImg.className = 'hd-avatar-img';
+  avatarImg.alt = '';
+  avatarImg.setAttribute('decoding', 'async');
+  avatarImg.addEventListener('load', () => avatarImg.classList.add('in'), { once: true });
+  avatar.appendChild(avatarImg);
   hdRight.append(hdSignIn, avatar);
+
+  let accountLoaded = false;
+  const loadAccount = async () => {
+    if (accountLoaded || loggedOut()) return;
+    accountLoaded = true;
+    const res = await innertube('account/account_menu', {});
+    if (!res) { accountLoaded = false; return; }
+    const header = findNode(res, (n) => n && n.activeAccountHeaderRenderer)?.activeAccountHeaderRenderer;
+    const thumbs = header?.accountPhoto?.thumbnails;
+    const url = Array.isArray(thumbs) && thumbs.length ? thumbs[thumbs.length - 1]?.url : null;
+    if (url) avatarImg.src = url;
+    const handle = header?.channelHandle?.simpleText;
+    if (typeof handle === 'string' && handle.startsWith('@')) {
+      avatar.href = '/' + handle;
+    } else {
+      let browseId = null;
+      walk(res, (n) => {
+        const b = n?.browseEndpoint?.browseId;
+        if (!browseId && typeof b === 'string' && b.startsWith('UC')) browseId = b;
+      });
+      if (browseId) avatar.href = '/channel/' + encodeURIComponent(browseId);
+    }
+  };
 
   const syncAccount = () => {
     const out = loggedOut();
     hdSignIn.style.display = out ? '' : 'none';
     avatar.style.display = out ? 'none' : '';
+    if (!out) loadAccount();
   };
 
   const nav = document.createElement('nav');
