@@ -43,6 +43,7 @@ const {
   checkTheaterMode,
   checkAbLoop,
   checkPlaybackSpeed,
+  checkVolumeBoost,
   checkAccountMenu,
   checkDislikeEstimate,
   checkSponsorBlock,
@@ -549,6 +550,25 @@ async function main() {
     table.push({ page: 'speed', check: 'functional', status, count: violations.length });
     console.log(`  playback speed: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=speed ${fmt(v)}`);
+  }
+
+  // Volume boost past 100%: lazily wires a WebAudio GainNode, so it runs
+  // once, in its own context, to prove the graph engages/persists without
+  // stalling playback.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- volume boost ---');
+    let violations;
+    try {
+      violations = await checkVolumeBoost(browser);
+    } catch (err) {
+      console.error(`  ERROR running the volume-boost check: ${err.stack || err}`);
+      violations = [{ check: 'volume-boost', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'boost', check: 'functional', status, count: violations.length });
+    console.log(`  volume boost: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=boost ${fmt(v)}`);
   }
 
   // The account menu (avatar dropdown) runs once on the home page; the avatar is

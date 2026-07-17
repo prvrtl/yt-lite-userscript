@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.28.0
+// @version      4.29.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -29,6 +29,8 @@
   const setTheaterPref = (on) => { try { localStorage.setItem('itube-theater', on ? '1' : '0'); } catch (e) {} };
   const sponsorSkipOn = () => { try { return localStorage.getItem('itube-skip-sponsors') !== '0'; } catch (e) { return true; } };
   const setSponsorSkipOn = (on) => { try { localStorage.setItem('itube-skip-sponsors', on ? '1' : '0'); } catch (e) {} };
+  const savedBoost = () => { try { const v = parseFloat(localStorage.getItem('itube-boost')); return v >= 1 && v <= 2 ? v : 1; } catch (e) { return 1; } };
+  const setSavedBoost = (b) => { try { localStorage.setItem('itube-boost', String(b)); } catch (e) {} };
 
   if (itubeOff()) {
     const mountReenable = () => {
@@ -2154,6 +2156,17 @@
     }
     #itube-menu #itube-skip-sponsors.active {
       background: rgba(61, 255, 110, .3);
+      color: var(--accent);
+    }
+    #itube-menu #itube-boost {
+      width: auto;
+      height: 22px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .12);
+      font: 500 11px -apple-system, system-ui, sans-serif;
+    }
+    #itube-boost.active {
       color: var(--accent);
     }
     ytd-app {
@@ -4812,6 +4825,7 @@
     cc.appendChild(new Option('CC', ''));
     const auto = el('button', 'itube-auto', 'Auto');
     const skipSponsors = el('button', 'itube-skip-sponsors', 'On');
+    const boostBtn = el('button', 'itube-boost', 'Off');
     const ab = el('button', 'itube-ab', ICONS.loop());
     ab.setAttribute('aria-label', 'A–B repeat loop');
     ab.title = 'A–B repeat loop';
@@ -4843,7 +4857,7 @@
     };
     const audioRow = row('Audio', audio);
     audioRow.style.display = 'none';
-    menu.append(row('Speed', speed), row('Quality', quality), audioRow, row('Captions', cc), row('Autoplay', auto), row('Skip sponsors', skipSponsors));
+    menu.append(row('Speed', speed), row('Quality', quality), audioRow, row('Captions', cc), row('Autoplay', auto), row('Skip sponsors', skipSponsors), row('Volume boost', boostBtn));
     left.append(prev, play, next, timeCur);
     center.append(live);
     right.append(timeDur, mute, vol, more, ab, pip, theater, fs);
@@ -4852,7 +4866,7 @@
     stage.appendChild(cue);
     return {
       bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol,
-      speed, quality, audio, audioRow, cc, auto, skipSponsors, ab, pip, theater, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
+      speed, quality, audio, audioRow, cc, auto, skipSponsors, boost: boostBtn, ab, pip, theater, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
     };
   };
 
@@ -5584,6 +5598,50 @@
       if (ui) ui.speed.value = String(rate);
       try { localStorage.setItem('itube-speed', String(rate)); } catch (e) {}
     };
+    let boost = savedBoost();
+    let boostCtx = null;
+    const boostGain = new WeakMap();
+    const boostGraphs = [];
+    const BOOST_STEPS = [1, 1.25, 1.5, 2];
+    const ensureBoostGraph = (video) => {
+      if (!video) return null;
+      if (boostGain.has(video)) return boostGain.get(video);
+      const Ctor = window.AudioContext || window.webkitAudioContext;
+      if (!Ctor) return null;
+      try {
+        if (!boostCtx) boostCtx = new Ctor();
+        const src = boostCtx.createMediaElementSource(video);
+        const gain = boostCtx.createGain();
+        src.connect(gain);
+        gain.connect(boostCtx.destination);
+        boostGain.set(video, gain);
+        boostGraphs.push({ src, gain });
+        return gain;
+      } catch (e) { return null; }
+    };
+    const applyBoost = (video) => {
+      if (boost <= 1) {
+        if (video && boostGain.has(video)) boostGain.get(video).gain.value = 1;
+        return;
+      }
+      const gain = ensureBoostGraph(video);
+      if (!gain) return;
+      if (boostCtx && boostCtx.state === 'suspended') boostCtx.resume().catch(() => {});
+      gain.gain.value = boost;
+    };
+    const syncBoostBtn = () => {
+      if (!ui || !ui.boost) return;
+      ui.boost.textContent = boost > 1 ? Math.round(boost * 100) + '%' : 'Off';
+      ui.boost.classList.toggle('active', boost > 1);
+    };
+    const cycleBoost = () => {
+      const i = BOOST_STEPS.indexOf(boost);
+      boost = BOOST_STEPS[(i + 1) % BOOST_STEPS.length];
+      setSavedBoost(boost);
+      applyBoost(stage.querySelector('video'));
+      syncBoostBtn();
+      showOSD(ICONS.vol, boost > 1 ? 'Boost ' + Math.round(boost * 100) + '%' : 'Boost off');
+    };
     let abA = null;
     let abB = null;
     const renderAbMarkers = () => {
@@ -5892,7 +5950,7 @@
       ui.more.addEventListener('click', (e) => {
         e.stopPropagation();
         const open = ui.menu.style.display !== 'block';
-        if (open) { populateQuality(p); populateAudioTracks(p); populateTracks(p); ui.syncAuto?.(); ui.syncSkipSponsors?.(); }
+        if (open) { populateQuality(p); populateAudioTracks(p); populateTracks(p); ui.syncAuto?.(); ui.syncSkipSponsors?.(); ui.syncBoost?.(); }
         setMenu(open);
       });
       ui.menu.addEventListener('change', () => setMenu(false));
@@ -5930,6 +5988,10 @@
         showOSD(ICONS.next, sbEnabled ? 'Skip sponsors on' : 'Skip sponsors off');
       });
       ui.syncSkipSponsors();
+
+      ui.syncBoost = syncBoostBtn;
+      ui.boost.addEventListener('click', () => cycleBoost());
+      syncBoostBtn();
 
       ui.seekwrap.addEventListener('pointerenter', () => {
         if (storyboard && !ui.isLive) ui.preview.style.display = 'block';
@@ -6145,6 +6207,8 @@
           if (!muted && pv > 0) localStorage.setItem('itube-volume', String(pv));
         }, 300);
       }, bound);
+
+      applyBoost(video);
     };
     tick();
     const timer = setInterval(tick, 500);
@@ -6272,7 +6336,10 @@
     };
     document.addEventListener('keydown', onKeydown, true);
 
-    const onVisibility = () => { if (theaterOn) { if (document.visibilityState === 'visible') startAmbient(); else stopAmbient(); } };
+    const onVisibility = () => {
+      if (theaterOn) { if (document.visibilityState === 'visible') startAmbient(); else stopAmbient(); }
+      if (boostCtx && document.visibilityState === 'visible' && boostCtx.state === 'suspended') boostCtx.resume().catch(() => {});
+    };
     document.addEventListener('visibilitychange', onVisibility);
 
     let renderGeneration = 0;
@@ -6311,6 +6378,9 @@
       adActive = false;
       adRestoring = false;
       wired = null;
+      for (const g of boostGraphs) { try { g.gain.disconnect(); g.src.disconnect(); } catch (e) {} }
+      boostGraphs.length = 0;
+      if (boostCtx) { try { boostCtx.close(); } catch (e) {} boostCtx = null; }
       const adopted = stage.querySelector('video');
       const moviePlayer = player();
       if (adopted) {

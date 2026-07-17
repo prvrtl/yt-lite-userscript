@@ -2708,12 +2708,71 @@ async function checkPlaybackSpeed(browser) {
   return violations;
 }
 
+// Volume boost lazily creates a WebAudio GainNode wired past a
+// MediaElementSource — a MediaElementSource can only be created ONCE per
+// <video>, so a wiring mistake here doesn't just fail to boost, it can
+// silently break playback for the rest of the session. Headless Chromium
+// can't measure actual loudness, so this proves the graph engages and
+// persists AND that adopting the video into the WebAudio graph didn't stall
+// playback (currentTime must keep advancing).
+async function checkVolumeBoost(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-boost', { timeout: 15000 }).catch(() => {});
+    const engaged = await page.evaluate(async () => {
+      const v = document.querySelector('#itube-stage video');
+      if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
+      const before = v ? v.currentTime : null;
+      const btn = document.getElementById('itube-boost');
+      btn.click();
+      btn.click();
+      await new Promise((r) => setTimeout(r, 1200));
+      return {
+        text: btn.textContent,
+        active: btn.classList.contains('active'),
+        stored: (() => { try { return localStorage.getItem('itube-boost'); } catch (e) { return null; } })(),
+        before,
+        after: v ? v.currentTime : null,
+      };
+    });
+    if (engaged.text !== '150%' || !engaged.active) {
+      violations.push({ check: 'boost-engages', detail: `expected #itube-boost to read 150% and be .active after two clicks, got text=${engaged.text} active=${engaged.active}` });
+    }
+    if (engaged.stored !== '1.5') {
+      violations.push({ check: 'boost-persists', detail: `expected localStorage itube-boost=1.5, got ${engaged.stored}` });
+    }
+    if (engaged.after == null || engaged.before == null || engaged.after - engaged.before < 0.3) {
+      violations.push({ check: 'boost-playback-alive', detail: `expected video.currentTime to advance by >=0.3s after wiring the WebAudio graph, went ${engaged.before} -> ${engaged.after}` });
+    }
+    const off = await page.evaluate(async () => {
+      const btn = document.getElementById('itube-boost');
+      btn.click();
+      btn.click();
+      await new Promise((r) => setTimeout(r, 300));
+      return { text: btn.textContent, active: btn.classList.contains('active') };
+    });
+    if (off.text !== 'Off' || off.active) {
+      violations.push({ check: 'boost-off', detail: `expected #itube-boost to read Off and lose .active after cycling back, got text=${off.text} active=${off.active}` });
+    }
+  } finally {
+    await page.evaluate(() => { try { localStorage.removeItem('itube-boost'); } catch (e) {} }).catch(() => {});
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
   checkAbLoop,
   checkTheaterMode,
   checkPlaybackSpeed,
+  checkVolumeBoost,
   checkAccountMenu,
   checkItubeToggle,
   checkSubscribeConfirmsOnPopup,
