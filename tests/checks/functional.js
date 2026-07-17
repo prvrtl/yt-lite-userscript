@@ -1021,9 +1021,11 @@ async function checkUnhandledPage(page) {
 // screen, so width is a dimension this suite has to actually exercise.
 //
 // 400/560 exercise the narrow-phone breakpoints added for Wave 2 Chunk B:
-// below 1000px the sidebar must collapse (not sit at a rigid 200px forcing
-// everything else to be squeezed or clipped), and below 600px it must
-// disappear outright. The watch page's two-column
+// below 1000px the sidebar must collapse to a narrow icon rail (not sit at a
+// rigid 232px forcing everything else to be squeezed or clipped), and below
+// 600px it must stop being a left column entirely — it becomes a full-width
+// top bar (logo + search) with the content stacked beneath it, so the content
+// starts at the left edge instead of being pushed right. The watch page's two-column
 // `minmax(0, 1fr) clamp(340px, 24vw, 460px)` grid used to leave the LEFT
 // (video) column with none of the room — at a narrow width the right column's
 // 340px floor ate the whole viewport and `#itube-stage`/`.watch-left`
@@ -1060,6 +1062,8 @@ async function checkResponsive(page, widths = [400, 560, 900, 2560]) {
           docScrollWidth: document.documentElement.scrollWidth,
           sidebarLeft: sidebarRect ? sidebarRect.left : null,
           sidebarWidth: sidebarRect ? sidebarRect.width : null,
+          sidebarHeight: sidebarRect ? sidebarRect.height : null,
+          contentLeft: contentRect ? contentRect.left : null,
           contentRight: contentRect ? contentRect.right : null,
           stageWidth: stage ? stage.getBoundingClientRect().width : null,
           watchLeftWidth: watchLeft ? watchLeft.getBoundingClientRect().width : null,
@@ -1085,8 +1089,16 @@ async function checkResponsive(page, widths = [400, 560, 900, 2560]) {
       }
 
       if (width <= 600) {
-        if (info.sidebarWidth !== null && info.sidebarWidth > 4) {
-          violations.push({ check: 'responsive-sidebar-collapse', detail: `at width=${width} expected .sidebar to be hidden below 600px, got width=${info.sidebarWidth.toFixed(1)}` });
+        // Below 600px the sidebar is no longer a left column: it becomes a
+        // full-width top bar (logo + search) and the content stacks beneath it.
+        // The defect this pins is the sidebar eating horizontal space at phone
+        // widths — so the content must start at the left edge (left ~= 0) and
+        // the sidebar must be a short bar, not a tall column swallowing the row.
+        if (info.contentLeft !== null && info.contentLeft > 4) {
+          violations.push({ check: 'responsive-sidebar-collapse', detail: `at width=${width} expected the sidebar to become a top bar (content full-width, left~=0), got content.left=${info.contentLeft.toFixed(1)}` });
+        }
+        if (info.sidebarHeight !== null && info.sidebarHeight > 220) {
+          violations.push({ check: 'responsive-sidebar-collapse', detail: `at width=${width} expected the sidebar to be a short top bar (height<=220), got height=${info.sidebarHeight.toFixed(1)}` });
         }
       } else if (width < 1000) {
         if (info.sidebarWidth !== null && info.sidebarWidth > 120) {

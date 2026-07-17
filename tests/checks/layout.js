@@ -87,8 +87,8 @@ function layoutInPage() {
     if (Math.abs(sidebarRect.left - 0) > 1) {
       report('sidebar-pinned', `expected left=0 got left=${sidebarRect.left.toFixed(1)}`);
     }
-    if (Math.abs(sidebarRect.width - 200) > 1) {
-      report('sidebar-pinned', `expected width=200 got width=${sidebarRect.width.toFixed(1)}`);
+    if (Math.abs(sidebarRect.width - 232) > 1) {
+      report('sidebar-pinned', `expected width=232 got width=${sidebarRect.width.toFixed(1)}`);
     }
   }
   if (sidebarRect && contentRect) {
@@ -146,10 +146,14 @@ function layoutInPage() {
   if (sidebarRect && contentRect && intersects(sidebarRect, contentRect)) {
     report('no-region-overlap', `.sidebar (${JSON.stringify(rectStr(sidebarRect))}) overlaps .content (${JSON.stringify(rectStr(contentRect))})`);
   }
-  const hdRect = rectOf('.hd');
-  const bodyRect = rectOf('.body');
-  if (hdRect && bodyRect && hdRect.bottom > bodyRect.top + 1) {
-    report('hd-above-body', `expected .hd.bottom <= .body.top, got hd.bottom=${hdRect.bottom.toFixed(1)} body.top=${bodyRect.top.toFixed(1)}`);
+  // The top header was removed; the sidebar (with the logo + search) and the
+  // content must now both fill from the very top of the viewport — a gap here
+  // would mean a stray header offset crept back in.
+  if (contentRect && contentRect.top > 2) {
+    report('content-fills-top', `with the header removed, .content should start at the top of the viewport, got .content.top=${contentRect.top.toFixed(1)}`);
+  }
+  if (sidebarRect && sidebarRect.top > 2) {
+    report('sidebar-fills-top', `expected .sidebar to start at the top of the viewport, got .sidebar.top=${sidebarRect.top.toFixed(1)}`);
   }
 
   function rectStr(r) {

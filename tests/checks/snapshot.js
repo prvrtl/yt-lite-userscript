@@ -22,7 +22,7 @@ const ARTIFACT_DIR = path.join(__dirname, '..', 'artifacts');
 // is a real failure mode, not a false alarm: it is how a collapsed or removed
 // thumbnail would look too. Anchor on the card instead.
 const KEY_SELECTORS = [
-  '.hd', '.sidebar', '.content', '.grid',
+  '.sidebar', '.sidebar-head', '.content', '.grid',
   '.c:first-child', '.c:first-child .c-thumb',
   '#itube-stage', '#itube-bar',
   '.watch-meta', '.watch-right', '.watch-left',
@@ -63,7 +63,7 @@ const HEIGHT_IS_CONTENT_DEPENDENT = new Set([
 // design decision rather than a function of whatever YouTube served. A change
 // here is a regression until a human says otherwise, so `--update` refuses to
 // overwrite them unless `--force` is also passed (see mergeBaseline).
-const STRUCTURAL_SELECTORS = new Set(['.hd', '.sidebar', '.content', '#itube-stage']);
+const STRUCTURAL_SELECTORS = new Set(['.sidebar', '.sidebar-head', '.content', '#itube-stage']);
 
 // Element counts per page. These must NOT be compared for equality (YouTube
 // returns a different number of results every hour) but they must not be
@@ -115,7 +115,7 @@ async function takeSnapshot(page) {
     };
     const live = {
       viewportHeight: window.innerHeight,
-      headerHeight: heightOf('.hd'),
+      headerHeight: 0,
       contentHeight: heightOf('.content'),
       columnHeights: {},
     };
@@ -156,9 +156,9 @@ function liveViolations(live) {
   const violations = [];
   if (!live) return violations;
 
-  // `.content` is the scroll viewport, not a content-sized box: it must fill
-  // exactly the space under the header. If it collapses, the page scrolls in
-  // the wrong element and the fold moves.
+  // `.content` is the scroll viewport, not a content-sized box: with the header
+  // removed it must fill the FULL viewport height. If it collapses, the page
+  // scrolls in the wrong element and the fold moves.
   if (live.contentHeight !== null && live.headerHeight !== null) {
     const expected = live.viewportHeight - live.headerHeight;
     if (Math.abs(live.contentHeight - expected) > 2) {

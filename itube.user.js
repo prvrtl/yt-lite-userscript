@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.19.0
+// @version      4.20.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -278,28 +278,23 @@
       scrollbar-width: thin;
       scrollbar-color: rgba(255, 255, 255, .18) transparent;
     }
-    #itube .hd {
-      flex: none;
-      height: 52px;
+    #itube .sidebar-head {
       display: flex;
-      align-items: center;
-      gap: 24px;
-      padding: 0 24px;
-      background: rgba(12, 12, 18, .72);
-      backdrop-filter: blur(24px) saturate(1.7);
-      -webkit-backdrop-filter: blur(24px) saturate(1.7);
+      flex-direction: column;
+      gap: 14px;
+      padding: 6px 4px 16px;
+      margin-bottom: 8px;
       border-bottom: 1px solid var(--hairline);
     }
-    #itube .hd-left {
-      flex: 0 0 200px;
+    #itube .sidebar-logo-row {
       display: flex;
       align-items: center;
+      gap: 8px;
+      height: 34px;
     }
     #itube .search-wrap {
       position: relative;
-      flex: 1 1 auto;
-      max-width: 560px;
-      margin: 0 auto;
+      width: 100%;
     }
     #itube .search-icon {
       position: absolute;
@@ -362,12 +357,11 @@
       background: rgba(255, 255, 255, .1);
     }
     #itube .hd-right {
-      flex: 0 0 auto;
+      margin-left: auto;
       display: flex;
       align-items: center;
-      gap: 12px;
-      min-width: 96px;
-      justify-content: flex-end;
+      gap: 8px;
+      flex: none;
     }
     #itube .hd-avatar {
       width: 28px;
@@ -428,11 +422,11 @@
     #itube .body {
       display: flex;
       width: 100%;
-      height: calc(100vh - 52px);
+      height: 100vh;
       box-sizing: border-box;
     }
     #itube .sidebar {
-      width: 200px;
+      width: 232px;
       flex: none;
       box-sizing: border-box;
       display: flex;
@@ -442,7 +436,13 @@
       overflow-y: auto;
       overflow-x: hidden;
       overscroll-behavior: contain;
-      padding: 12px 8px 16px 12px;
+      padding: 14px 8px 16px 12px;
+    }
+    #itube .sidebar-head {
+      position: sticky;
+      top: -14px;
+      z-index: 2;
+      background: var(--ink);
     }
     #itube .nav-row {
       display: flex;
@@ -1925,6 +1925,19 @@
         width: 64px;
         padding: 12px 4px 16px;
       }
+      #itube .sidebar-head {
+        gap: 10px;
+        padding: 0 0 10px;
+      }
+      #itube .sidebar-logo-row {
+        justify-content: center;
+      }
+      #itube .search-wrap,
+      #itube .brand-word,
+      #itube .itube-power,
+      #itube .hd-right {
+        display: none;
+      }
       #itube .nav-row {
         justify-content: center;
         padding: 0;
@@ -1940,17 +1953,41 @@
       }
     }
     @media (max-width: 600px) {
+      #itube .body {
+        flex-direction: column;
+      }
       #itube .sidebar {
-        display: none;
+        width: 100%;
+        height: auto;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+        overflow: visible;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--hairline);
       }
-      #itube .hd {
-        gap: 12px;
-        padding: 0 12px;
+      #itube .sidebar-head {
+        position: static;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+        flex: 1;
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        border-bottom: none;
       }
-      #itube .hd-left {
-        flex: 0 0 auto;
+      #itube .sidebar-logo-row {
+        flex: none;
       }
-      #itube .brand-word {
+      #itube .search-wrap {
+        display: block;
+        flex: 1;
+        min-width: 0;
+      }
+      #itube .brand-word,
+      #itube .nav-row,
+      #itube .nav-subs {
         display: none;
       }
       #itube .content {
@@ -3045,10 +3082,8 @@
   const root = document.createElement('div');
   root.id = 'itube';
 
-  const header = document.createElement('header');
-  header.className = 'hd';
   const hdLeft = document.createElement('div');
-  hdLeft.className = 'hd-left';
+  hdLeft.className = 'sidebar-logo-row';
   const searchWrap = document.createElement('div');
   searchWrap.className = 'search-wrap';
   const searchIcon = icon([
@@ -3181,7 +3216,6 @@
   const avatar = document.createElement('div');
   avatar.className = 'hd-avatar';
   hdRight.append(hdSignIn, avatar);
-  header.append(hdLeft, searchWrap, hdRight);
 
   const syncAccount = () => {
     const out = loggedOut();
@@ -3221,6 +3255,12 @@
   powerToggle.appendChild(powerKnob);
   powerToggle.addEventListener('click', () => setItubeOff(true));
   hdLeft.appendChild(powerToggle);
+  hdLeft.appendChild(hdRight);
+
+  const sidebarHead = document.createElement('div');
+  sidebarHead.className = 'sidebar-head';
+  sidebarHead.append(hdLeft, searchWrap);
+  nav.appendChild(sidebarHead);
 
   const NAV_ITEMS = [
     { key: 'home', label: 'Home', href: '/' },
@@ -3371,7 +3411,7 @@
   body.className = 'body';
   body.append(nav, content);
 
-  root.append(header, body);
+  root.append(body);
 
   const mountRoot = () => {
     if (!document.body) { setTimeout(mountRoot, 0); return; }
