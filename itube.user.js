@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.30.0
+// @version      4.31.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -170,6 +170,11 @@
     ]),
     check: () => icon([
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.9', 'stroke-linecap': 'square', 'stroke-linejoin': 'round', d: 'M3 8.3 6.3 11.6 13 4.5' }],
+    ]),
+    tools: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', d: 'M2 4.5h5M11 4.5h3M2 11.5h3M8 11.5h6' }],
+      ['circle', { cx: '9', cy: '4.5', r: '1.8', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6' }],
+      ['circle', { cx: '6', cy: '11.5', r: '1.8', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6' }],
     ]),
   };
 
@@ -1168,6 +1173,53 @@
       background: rgba(61, 255, 110, .16);
       border-color: transparent;
       color: var(--accent);
+    }
+    #itube .watch-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      margin-top: 0;
+      transition: max-height var(--tr), opacity var(--tr), margin-top var(--tr);
+    }
+    #itube .watch-tools.open {
+      max-height: 200px;
+      opacity: 1;
+      margin-top: 12px;
+    }
+    #itube .watch-tool {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: var(--r-pill);
+      color: var(--text);
+      font: 500 13px -apple-system, system-ui, sans-serif;
+      cursor: pointer;
+      transition: background var(--tr), border-color var(--tr), color var(--tr);
+    }
+    #itube .watch-tool:hover {
+      background: var(--hover);
+    }
+    #itube .watch-tool.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    #itube .watch-tool-val {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    #itube .watch-tool.active .watch-tool-val {
+      color: var(--accent);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #itube .watch-tools {
+        transition: none;
+      }
     }
     #itube .watch-likes {
       display: flex;
@@ -4932,10 +4984,60 @@
 
     const { btn: saveBtn, label: saveLabel } = pillButton(ICONS.save, '', 'watch-action-btn');
     const { btn: shareBtn, label: shareLabel } = pillButton(ICONS.share, 'Share', 'watch-action-btn');
+    const { btn: toolsBtn } = pillButton(ICONS.tools, 'Tools', 'watch-action-btn');
+    toolsBtn.setAttribute('aria-expanded', 'false');
     const { btn: subscribeBtn, label: subscribeLabel } = pillButton(null, '', 'watch-subscribe');
 
-    actions.append(likes, saveBtn, shareBtn, subscribeBtn);
+    actions.append(likes, saveBtn, shareBtn, toolsBtn, subscribeBtn);
     channelRow.append(avatarLink, channelInfo, channelSpacer, actions);
+
+    const toolsRow = document.createElement('div');
+    toolsRow.className = 'watch-tools';
+    const toolBtn = (label) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'watch-tool';
+      const t = document.createElement('span');
+      t.className = 'watch-tool-label';
+      t.textContent = label;
+      const v = document.createElement('span');
+      v.className = 'watch-tool-val';
+      b.append(t, v);
+      return { b, v };
+    };
+    const tAb = toolBtn('A–B repeat');
+    const tSpeed = toolBtn('Speed');
+    const tQuality = toolBtn('Quality');
+    const tCC = toolBtn('Captions');
+    const tAuto = toolBtn('Autoplay');
+    const tSkip = toolBtn('Skip sponsors');
+    const tBoost = toolBtn('Volume boost');
+    toolsRow.append(tAb.b, tSpeed.b, tQuality.b, tCC.b, tAuto.b, tSkip.b, tBoost.b);
+
+    const syncTools = () => {
+      const abOn = abA != null && abB != null;
+      tAb.b.classList.toggle('active', abOn);
+      tAb.v.textContent = abA != null && abB == null ? 'Set B' : abOn ? 'On' : 'Off';
+      tSpeed.v.textContent = desiredRate + '×';
+      const p = player();
+      const q = p && p.getPlaybackQuality ? p.getPlaybackQuality() : '';
+      tQuality.v.textContent = q && q !== 'unknown' ? q : 'Auto';
+      tCC.v.textContent = 'CC';
+      tAuto.b.classList.toggle('active', autoplayEnabled);
+      tAuto.v.textContent = autoplayEnabled ? 'On' : 'Off';
+      tSkip.b.classList.toggle('active', sbEnabled);
+      tSkip.v.textContent = sbEnabled ? 'On' : 'Off';
+      tBoost.b.classList.toggle('active', boost > 1);
+      tBoost.v.textContent = boost > 1 ? Math.round(boost * 100) + '%' : 'Off';
+    };
+    let toolsOpen = false;
+    const setToolsOpen = (open) => {
+      toolsOpen = open;
+      toolsRow.classList.toggle('open', open);
+      toolsBtn.classList.toggle('active', open);
+      toolsBtn.setAttribute('aria-expanded', String(open));
+      if (open) syncTools();
+    };
 
     const signInHint = document.createElement('div');
     signInHint.className = 'watch-signin-hint';
@@ -5086,6 +5188,43 @@
       subscribeBusy = false;
     });
 
+    toolsBtn.addEventListener('click', () => setToolsOpen(!toolsOpen));
+    tAb.b.addEventListener('click', () => { cycleAb(); syncTools(); });
+    tSpeed.b.addEventListener('click', () => {
+      const i = SPEEDS.indexOf(desiredRate);
+      applyRate(SPEEDS[(i + 1) % SPEEDS.length]);
+      syncTools();
+      showOSD(ICONS.speed, desiredRate + '×');
+    });
+    tQuality.b.addEventListener('click', () => {
+      const p = player();
+      const levels = p && p.getAvailableQualityLevels ? p.getAvailableQualityLevels() : [];
+      if (!levels.length) return;
+      const cur = p.getPlaybackQuality ? p.getPlaybackQuality() : levels[0];
+      const idx = levels.indexOf(cur);
+      const next = levels[(idx + 1) % levels.length];
+      p.setPlaybackQualityRange?.(next, next);
+      if (ui && ui.quality) ui.quality.value = next;
+      syncTools();
+      showOSD(ICONS.tools, next);
+    });
+    tCC.b.addEventListener('click', () => { player()?.toggleSubtitles?.(); tCC.b.classList.toggle('active'); });
+    tAuto.b.addEventListener('click', () => {
+      autoplayEnabled = !autoplayEnabled;
+      try { localStorage.setItem('itube-autoplay', autoplayEnabled ? '1' : '0'); } catch (e) {}
+      ui?.syncAuto?.();
+      syncTools();
+      showOSD(ICONS.tools, autoplayEnabled ? 'Autoplay on' : 'Autoplay off');
+    });
+    tSkip.b.addEventListener('click', () => {
+      sbEnabled = !sbEnabled;
+      setSponsorSkipOn(sbEnabled);
+      ui?.syncSkipSponsors?.();
+      syncTools();
+      showOSD(ICONS.tools, sbEnabled ? 'Skip sponsors on' : 'Skip sponsors off');
+    });
+    tBoost.b.addEventListener('click', () => { cycleBoost(); syncTools(); });
+
     const refreshActions = (data, details) => {
       signInHint.style.display = 'none';
       actionsVideoId = resolveVideoId();
@@ -5211,7 +5350,10 @@
       });
     };
 
-    meta.append(unavailable, skeleton, channelRow, signInHint, metaDivider, stats, desc, descToggle);
+    const watchHead = document.createElement('div');
+    watchHead.className = 'watch-head';
+    watchHead.append(channelRow, toolsRow);
+    meta.append(unavailable, skeleton, watchHead, signInHint, metaDivider, stats, desc, descToggle);
     showMetaSkeleton();
 
     const commentsPanel = document.createElement('div');
@@ -6176,6 +6318,7 @@
         ui.menu.style.display = 'none';
         renderTicks();
         clearAb();
+        if (toolsOpen) syncTools();
       }
 
       if (!storyboard && storyboardTries < MAX_STORYBOARD_TRIES) {

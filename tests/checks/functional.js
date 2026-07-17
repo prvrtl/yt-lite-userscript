@@ -2775,6 +2775,95 @@ async function checkVolumeBoost(browser) {
   return violations;
 }
 
+// The Tools row is a second surface for the same speed/quality/autoplay/
+// sponsor-skip/boost state already exposed in the player-bar "..." menu —
+// it must reveal/collapse without layout thrash and its controls must drive
+// the REAL player (not just its own internal label), so this proves the
+// disclosure toggles and that clicking the Tools Speed button actually
+// changes video.playbackRate, not just the button's own text.
+async function checkToolsRow(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.waitForFunction(() => {
+      return Array.from(document.querySelectorAll('#itube .watch-actions .watch-action-btn'))
+        .some((b) => b.textContent.includes('Tools'));
+    }, { timeout: 15000 }).catch(() => {});
+
+    const initial = await page.evaluate(() => {
+      const toolsBtn = Array.from(document.querySelectorAll('#itube .watch-actions .watch-action-btn'))
+        .find((b) => b.textContent.includes('Tools'));
+      const row = document.querySelector('#itube .watch-tools');
+      return {
+        hasToolsBtn: !!toolsBtn,
+        ariaExpanded: toolsBtn ? toolsBtn.getAttribute('aria-expanded') : null,
+        hasRow: !!row,
+        rowOpen: row ? row.classList.contains('open') : null,
+        rowHeight: row ? row.offsetHeight : null,
+      };
+    });
+    if (!initial.hasToolsBtn || initial.ariaExpanded !== 'false') {
+      violations.push({ check: 'tools-button-collapsed', detail: `expected a Tools button with aria-expanded=false, got ${JSON.stringify(initial)}` });
+    }
+    if (!initial.hasRow || initial.rowOpen || initial.rowHeight > 0) {
+      violations.push({ check: 'tools-row-collapsed', detail: `expected .watch-tools to exist and be collapsed, got ${JSON.stringify(initial)}` });
+    }
+
+    const opened = await page.evaluate(async () => {
+      const toolsBtn = Array.from(document.querySelectorAll('#itube .watch-actions .watch-action-btn'))
+        .find((b) => b.textContent.includes('Tools'));
+      toolsBtn.click();
+      const row = document.querySelector('#itube .watch-tools');
+      // The reveal is a CSS max-height/opacity transition (var(--tr), .16s), so
+      // give it time to run before reading offsetHeight — reading immediately
+      // after the click observes the pre-transition (collapsed) frame.
+      await new Promise((r) => setTimeout(r, 300));
+      return { rowOpen: row.classList.contains('open'), rowHeight: row.offsetHeight, ariaExpanded: toolsBtn.getAttribute('aria-expanded') };
+    });
+    if (!opened.rowOpen || !(opened.rowHeight > 0) || opened.ariaExpanded !== 'true') {
+      violations.push({ check: 'tools-row-opens', detail: `expected .watch-tools to gain .open, be visible, and aria-expanded=true after clicking Tools, got ${JSON.stringify(opened)}` });
+    }
+
+    const speedResult = await page.evaluate(async () => {
+      const v = document.querySelector('#itube-stage video');
+      if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
+      const before = v ? v.playbackRate : null;
+      const speedBtn = Array.from(document.querySelectorAll('#itube .watch-tools .watch-tool'))
+        .find((b) => b.textContent.includes('Speed'));
+      const beforeLabel = speedBtn ? speedBtn.querySelector('.watch-tool-val').textContent : null;
+      speedBtn.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const afterLabel = speedBtn.querySelector('.watch-tool-val').textContent;
+      return { before, after: v ? v.playbackRate : null, beforeLabel, afterLabel };
+    });
+    if (speedResult.before == null || speedResult.after == null || Math.abs(speedResult.after - speedResult.before) < 0.01) {
+      violations.push({ check: 'tools-speed-works', detail: `expected clicking the Tools Speed button to change video.playbackRate, got ${JSON.stringify(speedResult)}` });
+    }
+    if (speedResult.beforeLabel === speedResult.afterLabel) {
+      violations.push({ check: 'tools-speed-label-updates', detail: `expected the Tools Speed value text to change after clicking, stayed at ${speedResult.afterLabel}` });
+    }
+
+    const closed = await page.evaluate(() => {
+      const toolsBtn = Array.from(document.querySelectorAll('#itube .watch-actions .watch-action-btn'))
+        .find((b) => b.textContent.includes('Tools'));
+      toolsBtn.click();
+      const row = document.querySelector('#itube .watch-tools');
+      return { rowOpen: row.classList.contains('open') };
+    });
+    if (closed.rowOpen) {
+      violations.push({ check: 'tools-row-closes', detail: 'expected .watch-tools to lose .open after clicking Tools a second time' });
+    }
+  } finally {
+    await page.evaluate(() => { try { localStorage.removeItem('itube-speed'); } catch (e) {} }).catch(() => {});
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
@@ -2782,6 +2871,7 @@ module.exports = {
   checkTheaterMode,
   checkPlaybackSpeed,
   checkVolumeBoost,
+  checkToolsRow,
   checkAccountMenu,
   checkItubeToggle,
   checkSubscribeConfirmsOnPopup,

@@ -44,6 +44,7 @@ const {
   checkAbLoop,
   checkPlaybackSpeed,
   checkVolumeBoost,
+  checkToolsRow,
   checkAccountMenu,
   checkDislikeEstimate,
   checkSponsorBlock,
@@ -569,6 +570,26 @@ async function main() {
     table.push({ page: 'boost', check: 'functional', status, count: violations.length });
     console.log(`  volume boost: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=boost ${fmt(v)}`);
+  }
+
+  // The Tools row duplicates speed/quality/autoplay/sponsor-skip/boost as a
+  // second disclosure surface off the action row, so it runs once, in its
+  // own context, to prove the disclosure toggles and its Speed control
+  // drives the real player, not just its own label.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- tools row ---');
+    let violations;
+    try {
+      violations = await checkToolsRow(browser);
+    } catch (err) {
+      console.error(`  ERROR running the tools-row check: ${err.stack || err}`);
+      violations = [{ check: 'tools-row', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'toolsrow', check: 'functional', status, count: violations.length });
+    console.log(`  tools row: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=toolsrow ${fmt(v)}`);
   }
 
   // The account menu (avatar dropdown) runs once on the home page; the avatar is
