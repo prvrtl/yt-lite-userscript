@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.22.0
+// @version      4.23.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -25,6 +25,8 @@
 
   const itubeOff = () => { try { return localStorage.getItem('itube-off') === '1'; } catch (e) { return false; } };
   const setItubeOff = (off) => { try { localStorage.setItem('itube-off', off ? '1' : '0'); } catch (e) {} location.reload(); };
+  const theaterPref = () => { try { return localStorage.getItem('itube-theater') === '1'; } catch (e) { return false; } };
+  const setTheaterPref = (on) => { try { localStorage.setItem('itube-theater', on ? '1' : '0'); } catch (e) {} };
 
   if (itubeOff()) {
     const mountReenable = () => {
@@ -107,6 +109,9 @@
       ['rect', { x: '8', y: '8', width: '5', height: '3.5', rx: '0.8', fill: 'currentColor' }],
     ]),
     fs: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', d: 'M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4' }]]),
+    theater: () => icon([
+      ['rect', { x: '1.5', y: '4', width: '13', height: '8', rx: '1.6', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6' }],
+    ]),
     seekFwd: () => icon([
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', d: 'M3.4 8a4.6 4.6 0 1 1 1.3 3.2' }],
       ['path', { fill: 'currentColor', d: 'M5.4 12.6 3.6 10.4 2 12.3z' }],
@@ -837,6 +842,58 @@
     #itube .queue-item.current .rc-title {
       color: var(--accent);
     }
+    #itube .stage-wrap {
+      position: relative;
+    }
+    #itube .itube-ambient {
+      position: absolute;
+      top: -34%;
+      left: -22%;
+      width: 144%;
+      height: 168%;
+      z-index: 0;
+      display: none;
+      opacity: 0;
+      pointer-events: none;
+      filter: blur(96px) saturate(1.75);
+      transition: opacity .5s ease;
+      will-change: opacity;
+    }
+    #itube.theater .itube-ambient {
+      display: block;
+      opacity: .85;
+    }
+    #itube.theater,
+    #itube.theater .content {
+      background: #000;
+    }
+    #itube.theater .watch {
+      grid-template-columns: 1fr;
+      max-width: min(1060px, 66vw);
+      margin: 0 auto;
+    }
+    #itube.theater .watch-right {
+      position: static;
+      max-height: none;
+    }
+    #itube.theater .sidebar {
+      opacity: .28;
+      transition: opacity .3s ease;
+    }
+    #itube.theater .sidebar:hover {
+      opacity: 1;
+    }
+    #itube-theater.active {
+      color: var(--accent);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #itube .itube-ambient {
+        transition: none;
+      }
+      #itube.theater .sidebar {
+        transition: none;
+      }
+    }
     #itube-stage {
       position: relative;
       overflow: hidden;
@@ -845,6 +902,7 @@
       background: #000;
       aspect-ratio: 16 / 9;
       width: 100%;
+      z-index: 1;
     }
     .itube-fly {
       position: fixed;
@@ -4536,6 +4594,9 @@
     cc.appendChild(new Option('CC', ''));
     const auto = el('button', 'itube-auto', 'Auto');
     const pip = el('button', 'itube-pip', ICONS.pip());
+    const theater = el('button', 'itube-theater', ICONS.theater());
+    theater.setAttribute('aria-label', 'Theater mode');
+    theater.title = 'Theater mode (t)';
     const fs = el('button', 'itube-fs', ICONS.fs());
     const seekwrap = el('div', 'itube-seekwrap');
     seekwrap.appendChild(seek);
@@ -4563,13 +4624,13 @@
     menu.append(row('Speed', speed), row('Quality', quality), audioRow, row('Captions', cc), row('Autoplay', auto));
     left.append(prev, play, next, timeCur);
     center.append(live);
-    right.append(timeDur, mute, vol, more, pip, fs);
+    right.append(timeDur, mute, vol, more, pip, theater, fs);
     bar.append(seekwrap, left, center, right, menu);
     stage.appendChild(bar);
     stage.appendChild(cue);
     return {
       bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol,
-      speed, quality, audio, audioRow, cc, auto, pip, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
+      speed, quality, audio, audioRow, cc, auto, pip, theater, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
     };
   };
 
@@ -4903,7 +4964,14 @@
     commentsBody.append(commentsList, commentsSpinner, commentsMore);
     commentsPanel.append(commentsHeader, commentsBody);
 
-    watchLeft.append(stage, title, meta, commentsPanel);
+    const stageWrap = document.createElement('div');
+    stageWrap.className = 'stage-wrap';
+    const ambient = document.createElement('canvas');
+    ambient.className = 'itube-ambient';
+    ambient.width = 32;
+    ambient.height = 18;
+    stageWrap.append(ambient, stage);
+    watchLeft.append(stageWrap, title, meta, commentsPanel);
     watch.append(watchLeft, watchRight);
 
     view.replaceChildren(watch);
@@ -5217,6 +5285,39 @@
     const mountAbort = new AbortController();
     const bound = { signal: mountAbort.signal };
     let autoplayEnabled = localStorage.getItem('itube-autoplay') !== '0';
+    let theaterOn = false;
+    let theaterBtn = null;
+    let ambientCtx = null;
+    let ambientTimer = 0;
+    const AMBIENT_W = 32;
+    const AMBIENT_H = 18;
+    const AMBIENT_MS = 70;
+    const ambientDraw = () => {
+      ambientTimer = 0;
+      if (!theaterOn) return;
+      if (document.visibilityState === 'visible' && !document.fullscreenElement && !document.webkitFullscreenElement && !document.pictureInPictureElement) {
+        const video = stage.querySelector('video');
+        if (video && !video.paused && video.readyState >= 2) {
+          if (!ambientCtx) ambientCtx = ambient.getContext('2d');
+          try { ambientCtx.drawImage(video, 0, 0, AMBIENT_W, AMBIENT_H); } catch (e) {}
+        }
+      }
+      ambientTimer = setTimeout(ambientDraw, AMBIENT_MS);
+    };
+    const startAmbient = () => {
+      if (ambientTimer || prefersReducedMotion()) return;
+      ambientTimer = setTimeout(ambientDraw, AMBIENT_MS);
+    };
+    const stopAmbient = () => {
+      if (ambientTimer) { clearTimeout(ambientTimer); ambientTimer = 0; }
+    };
+    const applyTheater = (on) => {
+      theaterOn = !!on;
+      root.classList.toggle('theater', theaterOn);
+      if (theaterBtn) theaterBtn.classList.toggle('active', theaterOn);
+      setTheaterPref(theaterOn);
+      if (theaterOn) startAmbient(); else stopAmbient();
+    };
 
     const toggleFullscreen = () => {
       const active = document.fullscreenElement || document.webkitFullscreenElement;
@@ -5512,6 +5613,9 @@
       });
       ui.pip.addEventListener('click', () => togglePiP(video));
       ui.fs.addEventListener('click', () => toggleFullscreen());
+      theaterBtn = ui.theater;
+      theaterBtn.addEventListener('click', () => applyTheater(!theaterOn));
+      applyTheater(theaterPref());
 
       let hideTimer = null;
       const showBar = () => {
@@ -5672,7 +5776,7 @@
     tick();
     const timer = setInterval(tick, 500);
 
-    const HANDLED_KEYS = new Set([' ', 'k', 'j', 'l', 'm', 'f', 'c', 'i', ',', '.', '<', '>', '/', 'Escape',
+    const HANDLED_KEYS = new Set([' ', 'k', 'j', 'l', 'm', 'f', 'c', 'i', 't', ',', '.', '<', '>', '/', 'Escape',
       'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
       '0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
 
@@ -5730,6 +5834,11 @@
         case 'f':
           toggleFullscreen();
           break;
+        case 't':
+          e.preventDefault();
+          applyTheater(!theaterOn);
+          showOSD(ICONS.theater, theaterOn ? 'Theater on' : 'Theater off');
+          break;
         case 'c': {
           const p = player();
           p?.toggleSubtitles?.();
@@ -5781,6 +5890,9 @@
     };
     document.addEventListener('keydown', onKeydown, true);
 
+    const onVisibility = () => { if (theaterOn) { if (document.visibilityState === 'visible') startAmbient(); else stopAmbient(); } };
+    document.addEventListener('visibilitychange', onVisibility);
+
     let renderGeneration = 0;
     const renderWatchFor = async (videoId) => {
       const gen = ++renderGeneration;
@@ -5819,7 +5931,10 @@
         if (moviePlayer) moviePlayer.appendChild(adopted);
       }
       releaseCaptions(stage);
+      stopAmbient();
+      root.classList.remove('theater');
       document.removeEventListener('keydown', onKeydown, true);
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('yt-navigate-finish', onNavigateFinish);
       watchApi = null;
     };

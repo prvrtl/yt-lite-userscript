@@ -2429,9 +2429,70 @@ async function checkThumbFlyAnimation(page) {
   return { violations };
 }
 
+// Theater mode: a bar button (and the `t` shortcut) must toggle an immersive
+// cinema layout — a `.theater` class on the #itube root and a visible
+// `.itube-ambient` light-spill canvas — persist the choice in localStorage, and
+// tear back down cleanly. This guards the whole feature: the button going dead,
+// the ambient canvas never showing (or never hiding again, which would leave a
+// blurred overlay stuck on the page), the preference not persisting, and the
+// keyboard shortcut regressing. The ambient render loop's zero-idle-cost and
+// reduced-motion gating are covered by review of the throttled setTimeout loop;
+// here we assert the user-visible state machine.
+async function checkTheaterMode(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    // Start from a known-off state so a leaked preference from another run
+    // can't make this test pass or fail spuriously.
+    await page.evaluate(() => { try { localStorage.removeItem('itube-theater'); } catch (e) {} });
+    // The button only exists once the player and its control bar are built.
+    await page.waitForSelector('#itube-theater', { timeout: 30000 }).catch(() => {});
+    if (!(await page.evaluate(() => !!document.getElementById('itube-theater')))) {
+      violations.push({ check: 'theater-button-present', detail: 'expected an #itube-theater toggle in the player bar' });
+      return violations;
+    }
+    const read = () => page.evaluate(() => {
+      const root = document.getElementById('itube');
+      const amb = document.querySelector('.itube-ambient');
+      return {
+        cls: !!(root && root.classList.contains('theater')),
+        disp: amb ? getComputedStyle(amb).display : null,
+        pref: (() => { try { return localStorage.getItem('itube-theater'); } catch (e) { return null; } })(),
+      };
+    });
+    await page.evaluate(() => document.getElementById('itube-theater').click());
+    const on = await read();
+    if (!on.cls) violations.push({ check: 'theater-enters', detail: 'clicking the theater button did not add .theater to #itube' });
+    if (on.disp !== 'block') violations.push({ check: 'theater-ambient-shows', detail: `expected .itube-ambient display:block in theater, got ${on.disp}` });
+    if (on.pref !== '1') violations.push({ check: 'theater-persists-on', detail: `expected localStorage itube-theater=1 after enabling, got ${on.pref}` });
+
+    await page.evaluate(() => document.getElementById('itube-theater').click());
+    const off = await read();
+    if (off.cls) violations.push({ check: 'theater-exits', detail: 'clicking the theater button again did not remove .theater' });
+    if (off.disp !== 'none') violations.push({ check: 'theater-ambient-hides', detail: `expected .itube-ambient display:none when off, got ${off.disp}` });
+    if (off.pref !== '0') violations.push({ check: 'theater-persists-off', detail: `expected localStorage itube-theater=0 after disabling, got ${off.pref}` });
+
+    // The `t` shortcut is YouTube's own theater key — it must toggle too.
+    await page.evaluate(() => document.body.click());
+    await page.keyboard.press('t');
+    await page.waitForTimeout(120);
+    if (!(await page.evaluate(() => document.getElementById('itube').classList.contains('theater')))) {
+      violations.push({ check: 'theater-key-toggle', detail: "pressing 't' did not toggle theater mode on" });
+    }
+    await page.keyboard.press('t');
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
+  checkTheaterMode,
   checkItubeToggle,
   checkSubscribeConfirmsOnPopup,
   checkWatchMetaReveals,
