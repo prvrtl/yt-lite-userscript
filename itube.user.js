@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.24.0
+// @version      4.25.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -935,25 +935,40 @@
       display: block;
       opacity: .85;
     }
-    #itube.theater,
-    #itube.theater .content {
+    #itube.theater {
       background: #000;
     }
-    #itube.theater .watch {
-      grid-template-columns: 1fr;
-      max-width: min(1060px, 66vw);
-      margin: 0 auto;
+    #itube.theater .body {
+      background: radial-gradient(ellipse 130% 115% at 50% 42%, #0b0c12 0%, #000 66%);
     }
-    #itube.theater .watch-right {
-      position: static;
-      max-height: none;
+    #itube.theater .content {
+      background: transparent;
+      padding: 0;
+      overflow: hidden;
     }
     #itube.theater .sidebar {
-      opacity: .28;
-      transition: opacity .3s ease;
+      display: none;
     }
-    #itube.theater .sidebar:hover {
-      opacity: 1;
+    #itube.theater .watch {
+      display: block;
+      max-width: none;
+      margin: 0;
+      height: 100vh;
+    }
+    #itube.theater .watch-right {
+      display: none;
+    }
+    #itube.theater .watch-left {
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #itube.theater .watch-left > *:not(.stage-wrap) {
+      display: none;
+    }
+    #itube.theater .stage-wrap {
+      width: min(93vw, 156vh);
     }
     #itube-theater.active {
       color: var(--accent);
@@ -6027,6 +6042,7 @@
           break;
         case 'Escape':
           if (ui && ui.menu.style.display === 'block') ui.menu.style.display = 'none';
+          else if (theaterOn) applyTheater(false);
           break;
         default:
           break;
