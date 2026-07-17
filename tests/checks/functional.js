@@ -2382,8 +2382,56 @@ async function checkItubeToggle(browser) {
   return violations;
 }
 
+// The related-video card thumbnail should fly into the video stage on click,
+// giving visual continuity across the hard swap between the previous video
+// and the new one. Guards two regressions: the fly-in clone failing to
+// appear on click at all, and — the easier one to miss — the clone still
+// appearing when the user has prefers-reduced-motion: reduce set, which must
+// suppress the animation entirely rather than just shortening it.
+async function checkThumbFlyAnimation(page) {
+  const violations = [];
+  const watchUrl = 'https://www.youtube.com/watch?v=aircAruvnKk';
+
+  await page.emulateMedia({ reducedMotion: null });
+  let link = await page.$('.rc-link');
+  if (!link) {
+    console.log('  thumb-fly-animation: SKIP — no .rc-link found on this watch page, nothing to click');
+    return { violations };
+  }
+  const appeared = await page.evaluate(() => {
+    const el = document.querySelector('.rc-link');
+    el.click();
+    return !!document.querySelector('.itube-fly');
+  });
+  if (!appeared) {
+    violations.push({ check: 'thumb-fly-appears', detail: 'clicking a .rc-link related-video card did not spawn an .itube-fly clone synchronously on click — the thumbnail fly-in animation is missing' });
+  }
+
+  await page.goto(watchUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await waitForApp(page, { timeout: 30000 }).catch(() => {});
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  link = await page.$('.rc-link');
+  if (link) {
+    const spawned = await page.evaluate(() => {
+      const el = document.querySelector('.rc-link');
+      el.click();
+      return !!document.querySelector('.itube-fly');
+    });
+    if (spawned) {
+      violations.push({ check: 'thumb-fly-reduced-motion', detail: 'clicking a .rc-link related-video card spawned an .itube-fly clone even with prefers-reduced-motion: reduce set — the animation must be suppressed entirely' });
+    }
+  } else {
+    console.log('  thumb-fly-animation: SKIP (reduced-motion pass) — no .rc-link found after reset, nothing to click');
+  }
+
+  await page.emulateMedia({ reducedMotion: null });
+  return { violations };
+}
+
 module.exports = {
   runWatchFunctional,
+  checkThumbFlyAnimation,
   checkItubeToggle,
   checkSubscribeConfirmsOnPopup,
   checkWatchMetaReveals,

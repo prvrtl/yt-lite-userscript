@@ -39,6 +39,7 @@ const {
   checkBootLoaderReducedMotion,
   checkBootLoaderNoSpaReappear,
   checkAudioTrackSelector,
+  checkThumbFlyAnimation,
   checkDislikeEstimate,
   checkWatchMetaReveals,
   checkSubscribeConfirmsOnPopup,
@@ -406,6 +407,30 @@ async function main() {
     table.push({ page: 'audiotrack', check: 'functional', status, count: res.violations.length });
     console.log(`  audiotrack / functional: ${status} — ${res.detail}`);
     for (const v of res.violations) console.log(`    page=audiotrack ${fmt(v)}`);
+  }
+
+  // The thumbnail fly-in animation needs its own fresh watch page (it toggles
+  // prefers-reduced-motion and navigates between assertions), so it runs once
+  // rather than per-page.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- thumbnail fly-in animation ---');
+    const context = await newContext(browser);
+    let res;
+    try {
+      const { page } = await openPage(context, PAGES.watch);
+      await waitForApp(page, { timeout: 30000 });
+      res = await checkThumbFlyAnimation(page);
+    } catch (err) {
+      console.error(`  ERROR running the thumb-fly-animation check: ${err.stack || err}`);
+      res = { violations: [{ check: 'thumb-fly-animation', detail: String(err.message || err).split('\n')[0] }] };
+    } finally {
+      await context.close();
+    }
+    const status = res.violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'thumbfly', check: 'functional', status, count: res.violations.length });
+    console.log(`  thumbnail fly-in: ${status}${res.violations.length ? ` (${res.violations.length} violation${res.violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of res.violations) console.log(`    page=thumbfly ${fmt(v)}`);
   }
 
   // The Return YouTube Dislike estimate is mocked (own context, own routed

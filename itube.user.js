@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.20.1
+// @version      4.21.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -846,6 +846,19 @@
       background: #000;
       aspect-ratio: 16 / 9;
       width: 100%;
+    }
+    .itube-fly {
+      position: fixed;
+      z-index: 2147483000;
+      margin: 0;
+      padding: 0;
+      object-fit: cover;
+      border-radius: 11px;
+      transform-origin: 0 0;
+      will-change: transform, opacity;
+      pointer-events: none;
+      backface-visibility: hidden;
+      background: #000;
     }
     #itube-stage.ad video {
       opacity: 0;
@@ -6013,6 +6026,50 @@
   };
 
   const spaRoute = () => { spaNav = true; route(); };
+  const prefersReducedMotion = () => {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+    catch (e) { return false; }
+  };
+
+  const flyThumbToStage = (flyData) => {
+    if (!flyData || prefersReducedMotion()) return;
+    const rect = flyData.rect;
+    const src = flyData.src;
+    if (!src || !rect || rect.width < 8 || rect.height < 8) return;
+    const clone = document.createElement('img');
+    clone.className = 'itube-fly';
+    clone.src = src;
+    clone.alt = '';
+    clone.setAttribute('decoding', 'async');
+    clone.style.top = rect.top + 'px';
+    clone.style.left = rect.left + 'px';
+    clone.style.width = rect.width + 'px';
+    clone.style.height = rect.height + 'px';
+    document.body.appendChild(clone);
+    let done = false;
+    const cleanup = () => { if (done) return; done = true; clone.remove(); };
+    const safety = setTimeout(cleanup, 2000);
+    requestAnimationFrame(() => {
+      const stage = document.getElementById('itube-stage');
+      const last = stage ? stage.getBoundingClientRect() : null;
+      if (!last || last.width < 8 || last.height < 8) { clearTimeout(safety); cleanup(); return; }
+      const dx = last.left - rect.left;
+      const dy = last.top - rect.top;
+      const sx = last.width / rect.width;
+      const sy = last.height / rect.height;
+      const fly = clone.animate([
+        { transform: 'translate(0px, 0px) scale(1, 1)' },
+        { transform: 'translate(' + dx + 'px, ' + dy + 'px) scale(' + sx + ', ' + sy + ')' },
+      ], { duration: 380, easing: 'cubic-bezier(.22, .61, .36, 1)', fill: 'forwards' });
+      fly.onfinish = () => {
+        const out = clone.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: 'ease-out', fill: 'forwards' });
+        out.onfinish = () => { clearTimeout(safety); cleanup(); };
+        out.oncancel = () => { clearTimeout(safety); cleanup(); };
+      };
+      fly.oncancel = () => { clearTimeout(safety); cleanup(); };
+    });
+  };
+
   root.addEventListener('click', (e) => {
     if (e.button !== 0) return;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -6024,7 +6081,17 @@
     if (a.pathname === '/watch') {
       const videoId = new URLSearchParams(a.search).get('v');
       const listId = new URLSearchParams(a.search).get('list');
-      if (videoId && watchNav(videoId, listId)) e.preventDefault();
+      if (videoId) {
+        const card = a.closest('.c, .rc, .row');
+        const srcImg = card && card.querySelector('.c-thumb img, .rc-thumb img, .row-thumb img');
+        const flyData = srcImg && srcImg.getBoundingClientRect
+          ? { rect: srcImg.getBoundingClientRect(), src: srcImg.currentSrc || srcImg.src }
+          : null;
+        if (watchNav(videoId, listId)) {
+          e.preventDefault();
+          flyThumbToStage(flyData);
+        }
+      }
       return;
     }
     e.preventDefault();
