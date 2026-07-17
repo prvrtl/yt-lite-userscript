@@ -3067,6 +3067,78 @@ async function checkFrameExport(browser) {
   return violations;
 }
 
+// Feed filtering (mute channels / mute keywords / hide watched) is a pure
+// client-side render-path check with no server round-trip, so a regression
+// here is silent: the feed still loads, it just fails to drop the muted
+// items. This guards (1) a muted keyword actually removing matching cards
+// from a real search feed, (2) the filter being a no-op when the mute list
+// is empty (so a broken predicate can't quietly eat the whole feed), and
+// (3) the channel-page Mute button actually writing itube-mute-channels and
+// flipping its own state.
+async function checkFeedFilter(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  let page;
+  try {
+    ({ page } = await openPage(context, 'https://www.youtube.com/results?search_query=liquid+glass+design'));
+    await page.evaluate(() => {
+      try { localStorage.setItem('itube-mute-keywords', JSON.stringify(['glass'])); } catch (e) {}
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    const stillHasGlass = await page.evaluate(() => (
+      [...document.querySelectorAll('.c-title, .row-title')].some((t) => /glass/i.test(t.textContent))
+    ));
+    if (stillHasGlass) {
+      violations.push({ check: 'keyword-mute-filters', detail: 'expected no rendered card title to contain "glass" after muting the keyword "glass", but one was found' });
+    }
+
+    await page.evaluate(() => {
+      try { localStorage.removeItem('itube-mute-keywords'); } catch (e) {}
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.c-title, .row-title', { timeout: 15000 }).catch(() => {});
+    const cardCountAfterClear = await page.evaluate(() => document.querySelectorAll('.c-title, .row-title').length);
+    if (cardCountAfterClear === 0) {
+      violations.push({ check: 'feed-not-broken-without-filter', detail: 'expected at least one card to render once itube-mute-keywords was cleared, but the feed rendered empty' });
+    }
+
+    const { page: chPage } = await openPage(context, 'https://www.youtube.com/@mkbhd/videos');
+    await waitForApp(chPage, { timeout: 30000 }).catch(() => {});
+    const muteBtn = await chPage.$('.ch-title-row .watch-action-btn');
+    if (!muteBtn) {
+      violations.push({ check: 'channel-mute-toggles', detail: 'expected a Mute .watch-action-btn next to the subscribe control on the channel page' });
+    } else {
+      await muteBtn.click();
+      await chPage.waitForTimeout(150);
+      const after = await chPage.evaluate((sel) => {
+        const btn = document.querySelector(sel);
+        return {
+          stored: (() => { try { return localStorage.getItem('itube-mute-channels'); } catch (e) { return null; } })(),
+          active: btn ? btn.classList.contains('active') : false,
+          text: btn ? btn.textContent : '',
+        };
+      }, '.ch-title-row .watch-action-btn');
+      if (!after.stored || after.stored === '[]') {
+        violations.push({ check: 'channel-mute-toggles', detail: `expected itube-mute-channels to gain an entry after clicking Mute, got "${after.stored}"` });
+      }
+      if (!after.active && !/muted/i.test(after.text)) {
+        violations.push({ check: 'channel-mute-toggles', detail: `expected the Mute button to show .active or "Muted" text after clicking, got text="${after.text}"` });
+      }
+    }
+    await chPage.close();
+  } finally {
+    await page.evaluate(() => {
+      try { localStorage.removeItem('itube-mute-keywords'); } catch (e) {}
+      try { localStorage.removeItem('itube-mute-channels'); } catch (e) {}
+      try { localStorage.removeItem('itube-hide-watched'); } catch (e) {}
+    }).catch(() => {});
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
@@ -3111,4 +3183,5 @@ module.exports = {
   checkWatchLoadSkeleton,
   checkSkeletonReducedMotion,
   checkAudioTrackSelector,
+  checkFeedFilter,
 };

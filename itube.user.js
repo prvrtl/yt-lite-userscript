@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.34.0
+// @version      4.35.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -2532,6 +2532,68 @@
       border-color: var(--accent-solid);
       color: var(--on-accent);
     }
+    #itube .settings-keyword-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    #itube .settings-keyword-input {
+      flex: 1;
+      height: 32px;
+      padding: 0 12px;
+      border-radius: var(--r-pill);
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      color: var(--text);
+      font: 500 13px -apple-system, system-ui, sans-serif;
+      outline: none;
+    }
+    #itube .settings-keyword-input:focus {
+      border-color: var(--accent);
+    }
+    #itube .settings-keyword-add {
+      height: 32px;
+      padding: 0 14px;
+      border-radius: var(--r-pill);
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      color: var(--text);
+      font: 600 12px -apple-system, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    #itube .settings-keyword-add:hover {
+      border-color: var(--accent);
+    }
+    #itube .settings-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    #itube .settings-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 26px;
+      padding: 0 6px 0 12px;
+      border-radius: var(--r-pill);
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      color: var(--text);
+      font-size: 12.5px;
+    }
+    #itube .settings-chip-remove {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1;
+      padding: 4px;
+      cursor: pointer;
+    }
+    #itube .settings-chip-remove:hover {
+      color: var(--text);
+    }
     #itube .cmdk-overlay {
       position: fixed;
       inset: 0;
@@ -3382,6 +3444,25 @@
     return el;
   };
 
+  const mutedChannelsSet = () => { try { return new Set(JSON.parse(localStorage.getItem('itube-mute-channels') || '[]')); } catch (e) { return new Set(); } };
+  const mutedKeywordsList = () => { try { return JSON.parse(localStorage.getItem('itube-mute-keywords') || '[]'); } catch (e) { return []; } };
+  const hideWatchedOn = () => { try { return localStorage.getItem('itube-hide-watched') === '1'; } catch (e) { return false; } };
+  const normChannel = (href) => (href || '').toLowerCase().replace(/\/+$/, '');
+  let muteChannels = mutedChannelsSet();
+  let muteKeywords = mutedKeywordsList();
+  let muteHideWatched = hideWatchedOn();
+  const refreshMuteState = () => { muteChannels = mutedChannelsSet(); muteKeywords = mutedKeywordsList(); muteHideWatched = hideWatchedOn(); };
+  const isFeedFiltered = (item) => {
+    if (!item) return false;
+    if (muteHideWatched && typeof item.percent === 'number' && item.percent >= 90) return true;
+    if (item.channelHref && muteChannels.has(normChannel(item.channelHref))) return true;
+    if (muteKeywords.length && item.title) {
+      const t = item.title.toLowerCase();
+      if (muteKeywords.some((k) => k && t.includes(k))) return true;
+    }
+    return false;
+  };
+
   const createCard = (item) => {
     const a = document.createElement('div');
     a.className = 'c';
@@ -4135,6 +4216,101 @@
   );
   settingsPanel.appendChild(settingsRowEl('Reduce motion', reduceMotionToggle.el));
 
+  settingsPanel.appendChild(settingsSectionHeading('Filters'));
+
+  const keywordRow = document.createElement('div');
+  keywordRow.className = 'settings-keyword-row';
+  const keywordInput = document.createElement('input');
+  keywordInput.type = 'text';
+  keywordInput.className = 'settings-keyword-input';
+  keywordInput.placeholder = 'Mute keyword';
+  const keywordAdd = document.createElement('button');
+  keywordAdd.type = 'button';
+  keywordAdd.className = 'settings-keyword-add';
+  keywordAdd.textContent = 'Add';
+  keywordRow.append(keywordInput, keywordAdd);
+  settingsPanel.appendChild(settingsRowEl('Mute keywords', keywordRow));
+
+  const keywordChips = document.createElement('div');
+  keywordChips.className = 'settings-chips';
+  settingsPanel.appendChild(keywordChips);
+
+  const renderKeywordChips = () => {
+    keywordChips.replaceChildren();
+    for (const kw of mutedKeywordsList()) {
+      const chip = document.createElement('div');
+      chip.className = 'settings-chip';
+      const text = document.createElement('span');
+      text.textContent = kw;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'settings-chip-remove';
+      remove.textContent = '✕';
+      remove.addEventListener('click', () => {
+        const list = mutedKeywordsList().filter((k) => k !== kw);
+        try { localStorage.setItem('itube-mute-keywords', JSON.stringify(list)); } catch (e) {}
+        refreshMuteState();
+        renderKeywordChips();
+      });
+      chip.append(text, remove);
+      keywordChips.appendChild(chip);
+    }
+  };
+
+  const addKeyword = () => {
+    const kw = keywordInput.value.trim().toLowerCase();
+    if (!kw) return;
+    const list = mutedKeywordsList();
+    if (!list.includes(kw)) {
+      list.push(kw);
+      try { localStorage.setItem('itube-mute-keywords', JSON.stringify(list)); } catch (e) {}
+      refreshMuteState();
+    }
+    keywordInput.value = '';
+    renderKeywordChips();
+  };
+  keywordAdd.addEventListener('click', addKeyword);
+  keywordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addKeyword(); });
+
+  const channelChips = document.createElement('div');
+  channelChips.className = 'settings-chips';
+  settingsPanel.appendChild(settingsRowEl('Muted channels', channelChips));
+
+  const renderChannelChips = () => {
+    channelChips.replaceChildren();
+    for (const href of [...mutedChannelsSet()]) {
+      const chip = document.createElement('div');
+      chip.className = 'settings-chip';
+      const text = document.createElement('span');
+      text.textContent = href.split('/').filter(Boolean).pop() || href;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'settings-chip-remove';
+      remove.textContent = '✕';
+      remove.addEventListener('click', () => {
+        const list = mutedChannelsSet();
+        list.delete(href);
+        try { localStorage.setItem('itube-mute-channels', JSON.stringify([...list])); } catch (e) {}
+        refreshMuteState();
+        renderChannelChips();
+      });
+      chip.append(text, remove);
+      channelChips.appendChild(chip);
+    }
+  };
+
+  const hideWatchedToggle = settingsToggle(
+    () => hideWatchedOn(),
+    (on) => {
+      try {
+        if (on) localStorage.setItem('itube-hide-watched', '1');
+        else localStorage.removeItem('itube-hide-watched');
+      } catch (e) {}
+      refreshMuteState();
+    },
+  );
+  settingsPanel.appendChild(settingsRowEl('Hide watched videos', hideWatchedToggle.el));
+
   settingsOverlay.appendChild(settingsPanel);
   root.appendChild(settingsOverlay);
 
@@ -4145,6 +4321,9 @@
     autoplayToggle.sync();
     skipSponsorsToggle.sync();
     reduceMotionToggle.sync();
+    renderKeywordChips();
+    renderChannelChips();
+    hideWatchedToggle.sync();
     settingsOverlay.classList.add('open');
   };
   const closeSettings = () => { settingsOverlay.classList.remove('open'); };
@@ -4446,7 +4625,10 @@
     };
 
     const appendItems = (items) => {
-      for (const item of items) container.insertBefore(renderItem(item), sentinel);
+      for (const item of items) {
+        if (isFeedFiltered(item)) continue;
+        container.insertBefore(renderItem(item), sentinel);
+      }
       cap();
     };
 
@@ -4527,7 +4709,10 @@
           return;
         }
         token = res.token;
-        for (const item of res.items) container.insertBefore(renderItem(item), sentinel);
+        for (const item of res.items) {
+          if (isFeedFiltered(item)) continue;
+          container.insertBefore(renderItem(item), sentinel);
+        }
       } finally {
         if (gen === generation) {
           loading = false;
@@ -4571,7 +4756,10 @@
           cwHeading.textContent = 'Continue watching';
           const cwGrid = document.createElement('div');
           cwGrid.className = 'grid';
-          for (const it of resumeItems) cwGrid.appendChild(createCard(it));
+          for (const it of resumeItems) {
+            if (isFeedFiltered(it)) continue;
+            cwGrid.appendChild(createCard(it));
+          }
           view.insertBefore(cwHeading, heading);
           view.insertBefore(cwGrid, heading);
         }
@@ -4953,7 +5141,24 @@
         chSubscribeBusy = false;
       });
 
-      titleRow.append(titleCol, chSubscribeBtn);
+      const { btn: chMuteBtn, label: chMuteLabel } = pillButton(null, '', 'watch-action-btn');
+      const chMuteKey = normChannel(channelBase());
+      const setChMuteUI = (muted) => {
+        chMuteLabel.textContent = muted ? 'Muted' : 'Mute';
+        chMuteBtn.classList.toggle('active', muted);
+      };
+      setChMuteUI(muteChannels.has(chMuteKey));
+      chMuteBtn.addEventListener('click', () => {
+        const list = mutedChannelsSet();
+        const muted = list.has(chMuteKey);
+        if (muted) list.delete(chMuteKey);
+        else list.add(chMuteKey);
+        try { localStorage.setItem('itube-mute-channels', JSON.stringify([...list])); } catch (e) {}
+        refreshMuteState();
+        setChMuteUI(!muted);
+      });
+
+      titleRow.append(titleCol, chSubscribeBtn, chMuteBtn);
       header.appendChild(titleRow);
 
       const tabsEl = document.createElement('div');

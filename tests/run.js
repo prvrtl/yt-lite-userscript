@@ -54,6 +54,7 @@ const {
   checkWatchMetaReveals,
   checkSubscribeConfirmsOnPopup,
   checkItubeToggle,
+  checkFeedFilter,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -647,6 +648,24 @@ async function main() {
     table.push({ page: 'cmdk', check: 'functional', status, count: violations.length });
     console.log(`  command palette: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=cmdk ${fmt(v)}`);
+  }
+
+  // Feed filtering (mute channels/keywords, hide watched) runs once, in its
+  // own context, mirroring the settings block above.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- feed filter ---');
+    let violations;
+    try {
+      violations = await checkFeedFilter(browser);
+    } catch (err) {
+      console.error(`  ERROR running the feed-filter check: ${err.stack || err}`);
+      violations = [{ check: 'feedfilter', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'feedfilter', check: 'functional', status, count: violations.length });
+    console.log(`  feed filter: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=feedfilter ${fmt(v)}`);
   }
 
   // Frame export (camera button) captures the current frame as a PNG download;
