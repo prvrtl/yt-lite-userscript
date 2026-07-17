@@ -2330,8 +2330,49 @@ async function checkSubscribeConfirmsOnPopup(browser) {
   return violations;
 }
 
+// The enable/disable toggle near the logo: iTube must be a real, reversible,
+// persistent escape hatch. When toggled off, iTube must NOT mount and YouTube's
+// own ytd-app must be left visible (unparked); a re-enable control must appear
+// near the logo; and clicking it must bring iTube back and clear the flag.
+async function checkItubeToggle(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    if (!(await page.evaluate(() => !!document.querySelector('#itube .itube-power')))) {
+      violations.push({ check: 'itube-toggle-present', detail: 'expected an .itube-power toggle in the iTube header' });
+    }
+    await page.evaluate(() => localStorage.setItem('itube-off', '1'));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(4000);
+    const off = await page.evaluate(() => {
+      const app = document.querySelector('ytd-app');
+      return {
+        reenable: !!document.getElementById('itube-reenable'),
+        itubeGone: !document.getElementById('itube'),
+        ytdVisible: !!(app && getComputedStyle(app).opacity !== '0' && app.getBoundingClientRect().width > 100),
+      };
+    });
+    if (!off.itubeGone) violations.push({ check: 'itube-toggle-disables', detail: 'after toggling off, #itube still rendered — the app must not mount when itube-off is set' });
+    if (!off.reenable) violations.push({ check: 'itube-toggle-reenable-shown', detail: 'after toggling off, no #itube-reenable control was shown near the logo' });
+    if (!off.ytdVisible) violations.push({ check: 'itube-toggle-shows-youtube', detail: "after toggling off, YouTube's own ytd-app is not visible — iTube must stop parking it and leave native YouTube alone" });
+    await page.evaluate(() => { const b = document.getElementById('itube-reenable'); if (b) b.click(); });
+    await page.waitForTimeout(4000);
+    const back = await page.evaluate(() => ({ itubeBack: !!document.getElementById('itube'), flag: localStorage.getItem('itube-off') }));
+    if (!back.itubeBack) violations.push({ check: 'itube-toggle-reenables', detail: 'clicking re-enable did not bring iTube back' });
+    if (back.flag === '1') violations.push({ check: 'itube-toggle-persist', detail: 'the itube-off flag was not cleared on re-enable' });
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
+  checkItubeToggle,
   checkSubscribeConfirmsOnPopup,
   checkWatchMetaReveals,
   checkDislikeEstimate,

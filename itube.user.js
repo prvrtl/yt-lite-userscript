@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.18.0
+// @version      4.19.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -22,6 +22,38 @@
 
 (() => {
   'use strict';
+
+  const itubeOff = () => { try { return localStorage.getItem('itube-off') === '1'; } catch (e) { return false; } };
+  const setItubeOff = (off) => { try { localStorage.setItem('itube-off', off ? '1' : '0'); } catch (e) {} location.reload(); };
+
+  if (itubeOff()) {
+    const mountReenable = () => {
+      if (!document.body) { requestAnimationFrame(mountReenable); return; }
+      if (document.getElementById('itube-reenable')) return;
+      const b = document.createElement('button');
+      b.id = 'itube-reenable';
+      b.type = 'button';
+      b.textContent = 'iTube';
+      b.title = 'Re-enable iTube';
+      const st = b.style;
+      st.position = 'fixed';
+      st.top = '11px';
+      st.left = '196px';
+      st.zIndex = '2147483647';
+      st.height = '30px';
+      st.padding = '0 12px';
+      st.borderRadius = '8px';
+      st.border = '1px solid rgba(41, 224, 255, .5)';
+      st.background = 'rgba(6, 7, 12, .92)';
+      st.color = '#29e0ff';
+      st.font = '600 12px -apple-system, system-ui, sans-serif';
+      st.cursor = 'pointer';
+      b.addEventListener('click', () => setItubeOff(false));
+      document.body.appendChild(b);
+    };
+    mountReenable();
+    return;
+  }
 
   const CHANNEL_PATH_RE = /^\/(?:@[^/]+|channel\/[^/]+|c\/[^/]+|user\/[^/]+)(?:\/.*)?$/;
   const FEED_BROWSE = {
@@ -351,6 +383,32 @@
       height: 38px;
       text-decoration: none;
       color: var(--text);
+    }
+    #itube .itube-power {
+      width: 36px;
+      height: 20px;
+      flex: none;
+      margin-left: 12px;
+      padding: 0;
+      border: none;
+      border-radius: 999px;
+      background: var(--accent);
+      position: relative;
+      cursor: pointer;
+      transition: background var(--tr), box-shadow var(--tr);
+    }
+    #itube .itube-power:hover {
+      box-shadow: 0 0 12px -3px var(--accent);
+    }
+    #itube .itube-power-knob {
+      position: absolute;
+      top: 2px;
+      left: 18px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #04141c;
+      transition: left var(--tr);
     }
     #itube .brand-tile {
       width: 28px;
@@ -3152,6 +3210,18 @@
   brandWord.textContent = 'iTube';
   brand.append(brandTile, brandWord);
   hdLeft.appendChild(brand);
+
+  const powerToggle = document.createElement('button');
+  powerToggle.className = 'itube-power on';
+  powerToggle.type = 'button';
+  powerToggle.title = 'Disable iTube (reload with original YouTube)';
+  powerToggle.setAttribute('aria-label', 'Disable iTube');
+  const powerKnob = document.createElement('span');
+  powerKnob.className = 'itube-power-knob';
+  powerToggle.appendChild(powerKnob);
+  powerToggle.addEventListener('click', () => setItubeOff(true));
+  hdLeft.appendChild(powerToggle);
+
   const NAV_ITEMS = [
     { key: 'home', label: 'Home', href: '/' },
     { key: 'subs', label: 'Subscriptions', href: '/feed/subscriptions' },

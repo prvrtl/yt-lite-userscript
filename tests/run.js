@@ -42,6 +42,7 @@ const {
   checkDislikeEstimate,
   checkWatchMetaReveals,
   checkSubscribeConfirmsOnPopup,
+  checkItubeToggle,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -462,6 +463,24 @@ async function main() {
     table.push({ page: 'subscribe', check: 'confirms', status, count: violations.length });
     console.log(`  subscribe confirms: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=subscribe ${fmt(v)}`);
+  }
+
+  // The enable/disable toggle: reloads between iTube and native YouTube, so it
+  // owns its own context.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- iTube enable/disable toggle ---');
+    let violations;
+    try {
+      violations = await checkItubeToggle(browser);
+    } catch (err) {
+      console.error(`  ERROR running the itube-toggle check: ${err.stack || err}`);
+      violations = [{ check: 'itube-toggle', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'toggle', check: 'functional', status, count: violations.length });
+    console.log(`  itube toggle: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=toggle ${fmt(v)}`);
   }
 
   // The cold-load watch skeleton runs once, in its own freshly-opened page: it
