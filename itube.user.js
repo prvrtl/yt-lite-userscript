@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.21.0
+// @version      4.22.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -43,9 +43,9 @@
       st.height = '30px';
       st.padding = '0 12px';
       st.borderRadius = '8px';
-      st.border = '1px solid rgba(41, 224, 255, .5)';
+      st.border = '1px solid rgba(61, 255, 110, .5)';
       st.background = 'rgba(6, 7, 12, .92)';
-      st.color = '#29e0ff';
+      st.color = '#3dff6e';
       st.font = '600 12px -apple-system, system-ui, sans-serif';
       st.cursor = 'pointer';
       b.addEventListener('click', () => setItubeOff(false));
@@ -77,7 +77,6 @@
     }
     return s;
   };
-  const THUMB_D = 'M8 2.4 14.4 9.1a.9.9 0 0 1-.66 1.52H10.9v3.2a1 1 0 0 1-1 1H6.1a1 1 0 0 1-1-1v-3.2H2.26A.9.9 0 0 1 1.6 9.1z';
   const ICONS = {
     home: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linejoin': 'round', d: 'M2.2 7.2 8 2.6l5.8 4.6V13a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z' }]]),
     subs: () => icon([
@@ -141,10 +140,10 @@
       ['path', { fill: 'currentColor', d: 'M10.6 5.4 9.1 9.1 5.4 10.6 6.9 6.9z' }],
     ]),
     thumbsUp: () => icon([
-      ['path', { fill: 'currentColor', d: THUMB_D }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M4.5 9.75 8 6.25l3.5 3.5' }],
     ]),
     thumbsDown: () => icon([
-      ['path', { fill: 'currentColor', d: THUMB_D, transform: 'translate(0,16) scale(1,-1)' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M4.5 6.25 8 9.75l3.5-3.5' }],
     ]),
     save: () => icon([
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linejoin': 'round', d: 'M4 2.6h8v10.8l-4-2.8-4 2.8z' }],
@@ -208,19 +207,19 @@
       --text: #eef1f6;
       --muted: #8b93a6;
       --dim: #7b8296;
-      --accent: #29e0ff;
-      --accent-solid: #19cfe6;
-      --on-accent: #04141c;
-      --hairline: rgba(120, 210, 255, .13);
-      --surface: rgba(130, 190, 255, .05);
-      --hover: rgba(41, 224, 255, .09);
+      --accent: #3dff6e;
+      --accent-solid: #2ee85f;
+      --on-accent: #03170b;
+      --hairline: rgba(130, 255, 175, .12);
+      --surface: rgba(150, 255, 190, .05);
+      --hover: rgba(61, 255, 110, .09);
       --r-xs: 6px;
       --r-sm: 8px;
       --r-md: 9px;
       --r-lg: 11px;
       --r-pill: 8px;
-      --glow: 0 0 0 1px rgba(41, 224, 255, .5), 0 0 16px -3px rgba(41, 224, 255, .5);
-      --glow-soft: 0 0 14px -4px rgba(41, 224, 255, .4);
+      --glow: 0 0 0 1px rgba(61, 255, 110, .45), 0 0 10px -5px rgba(61, 255, 110, .4);
+      --glow-soft: 0 0 8px -5px rgba(61, 255, 110, .32);
       --tr: .16s ease;
     }
     #itube button,
@@ -235,7 +234,7 @@
     }
     #itube .watch-subscribe:hover:not(:disabled),
     #itube .unhandled-home:hover {
-      box-shadow: 0 0 0 1px var(--accent), 0 0 22px -5px var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 0 13px -6px var(--accent);
       filter: brightness(1.06);
     }
     #itube .watch-action-btn:hover:not(:disabled),
@@ -270,7 +269,7 @@
     #itube button:focus-visible,
     #itube input:focus-visible,
     #itube select:focus-visible {
-      outline: 2px solid var(--accent);
+      outline: 1px solid var(--accent);
       outline-offset: 2px;
     }
     #itube .sidebar,
@@ -373,11 +372,11 @@
       display: block;
       overflow: hidden;
       cursor: pointer;
-      box-shadow: 0 0 0 0 rgba(41, 224, 255, 0);
+      box-shadow: 0 0 0 0 rgba(61, 255, 110, 0);
       transition: box-shadow var(--tr);
     }
     #itube .hd-avatar:hover {
-      box-shadow: 0 0 0 2px var(--accent);
+      box-shadow: 0 0 0 1.5px var(--accent);
     }
     #itube .hd-avatar-img {
       width: 100%;
@@ -484,7 +483,7 @@
       color: var(--muted);
     }
     #itube .nav-row.active {
-      background: rgba(41, 224, 255, .16);
+      background: rgba(61, 255, 110, .16);
     }
     #itube .nav-row.active svg,
     #itube .nav-row.active span {
@@ -1012,7 +1011,7 @@
       background: var(--surface);
     }
     #itube .watch-action-btn.active {
-      background: rgba(41, 224, 255, .16);
+      background: rgba(61, 255, 110, .16);
       border-color: transparent;
       color: var(--accent);
     }
@@ -1047,10 +1046,24 @@
       opacity: .4;
       cursor: default;
     }
-    #itube .watch-like-btn.active,
+    #itube .watch-like-btn svg,
+    #itube .watch-dislike-btn svg {
+      width: 15px;
+      height: 15px;
+    }
+    #itube .watch-like-btn svg {
+      color: #3dff6e;
+    }
+    #itube .watch-dislike-btn svg {
+      color: #ff4d55;
+    }
+    #itube .watch-like-btn.active {
+      background: rgba(61, 255, 110, .16);
+      color: #3dff6e;
+    }
     #itube .watch-dislike-btn.active {
-      background: rgba(41, 224, 255, .16);
-      color: var(--accent);
+      background: rgba(255, 77, 85, .16);
+      color: #ff4d55;
     }
     #itube .watch-like-divider {
       width: 1px;
@@ -1262,8 +1275,8 @@
       cursor: pointer;
     }
     #itube .comments-sort-btn.active {
-      background: rgba(41, 224, 255, .14);
-      border-color: rgba(41, 224, 255, .45);
+      background: rgba(61, 255, 110, .14);
+      border-color: rgba(61, 255, 110, .45);
       color: var(--accent);
     }
     #itube .comments-body {
@@ -1290,8 +1303,8 @@
       contain: layout paint style;
     }
     #itube .comment-row:hover {
-      border-color: rgba(41, 224, 255, .28);
-      background: rgba(41, 224, 255, .04);
+      border-color: rgba(61, 255, 110, .28);
+      background: rgba(61, 255, 110, .04);
     }
     #itube .comment-replies .comment-row {
       background: none;
@@ -1480,7 +1493,7 @@
     }
     #itube .c-link:focus-visible ~ .c-thumb,
     #itube .row-link:focus-visible ~ .row-thumb {
-      outline: 2px solid var(--accent);
+      outline: 1px solid var(--accent);
       outline-offset: 2px;
     }
     #itube .row-thumb {
@@ -1566,7 +1579,7 @@
       height: 34px;
       padding: 0 16px;
       border-radius: var(--r-pill);
-      background: rgba(41, 224, 255, .16);
+      background: rgba(61, 255, 110, .16);
       color: var(--accent);
       font-size: 13px;
       font-weight: 600;
@@ -1574,7 +1587,7 @@
       cursor: pointer;
     }
     #itube .signin-btn:hover {
-      background: rgba(41, 224, 255, .24);
+      background: rgba(61, 255, 110, .24);
     }
     #itube .hd-signin {
       display: flex;
@@ -1582,7 +1595,7 @@
       height: 28px;
       padding: 0 12px;
       border-radius: var(--r-pill);
-      background: rgba(41, 224, 255, .16);
+      background: rgba(61, 255, 110, .16);
       color: var(--accent);
       font-size: 13px;
       font-weight: 600;
@@ -1591,7 +1604,7 @@
       flex: none;
     }
     #itube .hd-signin:hover {
-      background: rgba(41, 224, 255, .24);
+      background: rgba(61, 255, 110, .24);
     }
     #itube .watch-signin-hint {
       display: flex;
@@ -1730,7 +1743,7 @@
       padding: 14px 16px;
       border-radius: 0 0 var(--r-lg) var(--r-lg);
       background: linear-gradient(to top, rgba(7, 8, 13, .97) 20%, rgba(7, 8, 13, .82) 60%, rgba(7, 8, 13, .55));
-      box-shadow: inset 0 1px 0 rgba(41, 224, 255, .22);
+      box-shadow: inset 0 1px 0 rgba(61, 255, 110, .22);
       border: none;
       color: #fff;
       font: 500 12px -apple-system, system-ui, sans-serif;
@@ -1941,7 +1954,7 @@
       font: 500 11px -apple-system, system-ui, sans-serif;
     }
     #itube-menu #itube-auto.active {
-      background: rgba(41, 224, 255, .3);
+      background: rgba(61, 255, 110, .3);
       color: #fff;
     }
     ytd-app {
@@ -2075,7 +2088,7 @@
       width: 40px;
       height: 40px;
       border-radius: 10px;
-      background: #29e0ff;
+      background: #3dff6e;
     }
     #itube-boot .itube-boot-label {
       font-size: 13px;
@@ -2096,7 +2109,7 @@
       height: 100%;
       width: 40%;
       border-radius: 999px;
-      background: #29e0ff;
+      background: #3dff6e;
       animation: itube-boot-progress 1.1s ease-in-out infinite;
     }
     @keyframes itube-boot-progress {
