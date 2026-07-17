@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.17.0
+// @version      4.18.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -45,7 +45,7 @@
     }
     return s;
   };
-  const THUMB_D = 'M7 10v12M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z';
+  const THUMB_D = 'M8 2.4 14.4 9.1a.9.9 0 0 1-.66 1.52H10.9v3.2a1 1 0 0 1-1 1H6.1a1 1 0 0 1-1-1v-3.2H2.26A.9.9 0 0 1 1.6 9.1z';
   const ICONS = {
     home: () => icon([['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linejoin': 'round', d: 'M2.2 7.2 8 2.6l5.8 4.6V13a.9.9 0 0 1-.9.9H3.1a.9.9 0 0 1-.9-.9z' }]]),
     subs: () => icon([
@@ -109,10 +109,10 @@
       ['path', { fill: 'currentColor', d: 'M10.6 5.4 9.1 9.1 5.4 10.6 6.9 6.9z' }],
     ]),
     thumbsUp: () => icon([
-      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '2.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', transform: 'scale(0.6667)', d: THUMB_D }],
+      ['path', { fill: 'currentColor', d: THUMB_D }],
     ]),
     thumbsDown: () => icon([
-      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '2.4', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', transform: 'scale(0.6667) translate(0,24) scale(1,-1)', d: THUMB_D }],
+      ['path', { fill: 'currentColor', d: THUMB_D, transform: 'translate(0,16) scale(1,-1)' }],
     ]),
     save: () => icon([
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linejoin': 'round', d: 'M4 2.6h8v10.8l-4-2.8-4 2.8z' }],
@@ -221,20 +221,6 @@
     #itube .watch-subscribe:active:not(:disabled) {
       transform: translateY(1px);
     }
-    #itube-stage.itube-loading::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      pointer-events: none;
-      z-index: 6;
-      box-shadow: inset 0 0 0 2px rgba(41, 224, 255, .7), inset 0 0 70px -6px rgba(41, 224, 255, .6), 0 0 30px -6px rgba(41, 224, 255, .55);
-      animation: itube-stage-glow 1.7s ease-in-out infinite;
-    }
-    @keyframes itube-stage-glow {
-      0%, 100% { opacity: .55; }
-      50% { opacity: 1; }
-    }
     @media (prefers-reduced-motion: reduce) {
       #itube button,
       #itube select,
@@ -245,9 +231,6 @@
       #itube .signin-btn,
       #itube .hd-signin {
         transition: none;
-      }
-      #itube-stage.itube-loading::after {
-        animation: none;
       }
     }
     #itube a:focus-visible:not(.c):not(.row),
@@ -781,6 +764,7 @@
       position: relative;
       overflow: hidden;
       border-radius: var(--r-lg);
+      clip-path: inset(0 round var(--r-lg));
       background: #000;
       aspect-ratio: 16 / 9;
       width: 100%;
@@ -1654,9 +1638,7 @@
       gap: 8px 12px;
       padding: 14px 16px;
       border-radius: 0 0 var(--r-lg) var(--r-lg);
-      background: linear-gradient(to top, rgba(7, 8, 13, .95), rgba(7, 8, 13, .86) 45%, rgba(7, 8, 13, .74));
-      backdrop-filter: blur(16px) saturate(1.4);
-      -webkit-backdrop-filter: blur(16px) saturate(1.4);
+      background: linear-gradient(to top, rgba(7, 8, 13, .97) 20%, rgba(7, 8, 13, .82) 60%, rgba(7, 8, 13, .55));
       box-shadow: inset 0 1px 0 rgba(41, 224, 255, .22);
       border: none;
       color: #fff;
@@ -5168,7 +5150,6 @@
       const p = player();
       if (!p) return;
       const video = stage.querySelector('video') || document.querySelector('#movie_player video');
-      stage.classList.toggle('itube-loading', !!video && !video.paused && !video.ended && video.readyState < 3 && !adShowing());
       if (adShowing()) {
         if (!adActive) {
           adActive = true;
