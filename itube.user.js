@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.23.0
+// @version      4.24.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -371,6 +371,8 @@
     #itube .hd-avatar {
       width: 28px;
       height: 28px;
+      border: none;
+      padding: 0;
       border-radius: 50%;
       background: var(--raised);
       flex: none;
@@ -393,6 +395,76 @@
     #itube .hd-avatar-img.in {
       opacity: 1;
       transition: opacity .18s ease-out;
+    }
+    #itube .acct-menu {
+      position: fixed;
+      z-index: 10000;
+      width: 264px;
+      max-width: calc(100vw - 16px);
+      background: var(--raised);
+      border: 1px solid var(--hairline);
+      border-radius: var(--r-lg);
+      box-shadow: 0 12px 40px -12px rgba(0, 0, 0, .7);
+      padding: 6px;
+      display: none;
+      flex-direction: column;
+    }
+    #itube .acct-menu.open {
+      display: flex;
+    }
+    #itube .acct-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 10px 12px;
+      border-bottom: 1px solid var(--hairline);
+      margin-bottom: 6px;
+    }
+    #itube .acct-head-img {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--surface);
+      flex: none;
+    }
+    #itube .acct-head-text {
+      min-width: 0;
+    }
+    #itube .acct-name {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #itube .acct-handle {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #itube .acct-list {
+      display: flex;
+      flex-direction: column;
+    }
+    #itube .acct-item {
+      display: block;
+      padding: 9px 12px;
+      border-radius: var(--r-md);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+    }
+    #itube .acct-item:hover {
+      background: var(--hover);
+    }
+    #itube .acct-signout {
+      border-top: 1px solid var(--hairline);
+      margin-top: 6px;
+      padding-top: 12px;
     }
     #itube .brand {
       display: flex;
@@ -3317,10 +3389,12 @@
   hdSignIn.href = '/signin';
   hdSignIn.textContent = 'Sign in';
   hdSignIn.style.display = 'none';
-  const avatar = document.createElement('a');
+  const avatar = document.createElement('button');
+  avatar.type = 'button';
   avatar.className = 'hd-avatar';
-  avatar.href = '/';
-  avatar.setAttribute('aria-label', 'Your channel');
+  avatar.setAttribute('aria-label', 'Account menu');
+  avatar.setAttribute('aria-haspopup', 'menu');
+  avatar.setAttribute('aria-expanded', 'false');
   avatar.style.display = 'none';
   const avatarImg = document.createElement('img');
   avatarImg.className = 'hd-avatar-img';
@@ -3329,6 +3403,72 @@
   avatarImg.addEventListener('load', () => avatarImg.classList.add('in'), { once: true });
   avatar.appendChild(avatarImg);
   hdRight.append(hdSignIn, avatar);
+
+  const acctMenu = document.createElement('div');
+  acctMenu.className = 'acct-menu';
+  const acctHead = document.createElement('div');
+  acctHead.className = 'acct-head';
+  const acctHeadImg = document.createElement('img');
+  acctHeadImg.className = 'acct-head-img';
+  acctHeadImg.alt = '';
+  acctHeadImg.setAttribute('decoding', 'async');
+  const acctHeadText = document.createElement('div');
+  acctHeadText.className = 'acct-head-text';
+  const acctName = document.createElement('div');
+  acctName.className = 'acct-name';
+  const acctHandle = document.createElement('div');
+  acctHandle.className = 'acct-handle';
+  acctHeadText.append(acctName, acctHandle);
+  acctHead.append(acctHeadImg, acctHeadText);
+  const acctList = document.createElement('div');
+  acctList.className = 'acct-list';
+  const makeItem = (label, href, blank) => {
+    const a = document.createElement('a');
+    a.className = 'acct-item';
+    a.href = href;
+    a.textContent = label;
+    if (blank) { a.target = '_blank'; a.rel = 'noopener'; }
+    return a;
+  };
+  const acctChannel = makeItem('Your channel', '/', false);
+  const acctStudio = makeItem('YouTube Studio', 'https://studio.youtube.com', true);
+  const acctSettings = makeItem('Settings', 'https://www.youtube.com/account', true);
+  const acctSwitch = makeItem('Switch account', 'https://accounts.google.com/AccountChooser?continue=https%3A%2F%2Fwww.youtube.com%2F', true);
+  const acctSignOut = makeItem('Sign out', 'https://www.youtube.com/logout', false);
+  acctSignOut.className = 'acct-item acct-signout';
+  acctList.append(acctChannel, acctStudio, acctSettings, acctSwitch, acctSignOut);
+  acctMenu.append(acctHead, acctList);
+  root.appendChild(acctMenu);
+
+  let acctOpen = false;
+  const positionAcctMenu = () => {
+    const r = avatar.getBoundingClientRect();
+    acctMenu.style.top = Math.round(r.bottom + 8) + 'px';
+    let left = Math.round(r.left);
+    const w = acctMenu.offsetWidth || 280;
+    if (left + w > window.innerWidth - 8) left = window.innerWidth - 8 - w;
+    if (left < 8) left = 8;
+    acctMenu.style.left = left + 'px';
+  };
+  const closeAcctMenu = () => {
+    if (!acctOpen) return;
+    acctOpen = false;
+    acctMenu.classList.remove('open');
+    avatar.setAttribute('aria-expanded', 'false');
+  };
+  const openAcctMenu = () => {
+    if (acctOpen) return;
+    acctOpen = true;
+    acctMenu.classList.add('open');
+    avatar.setAttribute('aria-expanded', 'true');
+    positionAcctMenu();
+  };
+  avatar.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); acctOpen ? closeAcctMenu() : openAcctMenu(); });
+  acctMenu.addEventListener('click', (e) => { e.stopPropagation(); });
+  acctList.addEventListener('click', () => { closeAcctMenu(); });
+  document.addEventListener('click', () => { closeAcctMenu(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAcctMenu(); });
+  window.addEventListener('resize', () => { if (acctOpen) positionAcctMenu(); });
 
   let accountLoaded = false;
   const loadAccount = async () => {
@@ -3339,17 +3479,20 @@
     const header = findNode(res, (n) => n && n.activeAccountHeaderRenderer)?.activeAccountHeaderRenderer;
     const thumbs = header?.accountPhoto?.thumbnails;
     const url = Array.isArray(thumbs) && thumbs.length ? thumbs[thumbs.length - 1]?.url : null;
-    if (url) avatarImg.src = url;
+    if (url) { avatarImg.src = url; acctHeadImg.src = url; }
+    const name = header?.accountName?.simpleText;
+    if (name) acctName.textContent = name;
     const handle = header?.channelHandle?.simpleText;
     if (typeof handle === 'string' && handle.startsWith('@')) {
-      avatar.href = '/' + handle;
+      acctHandle.textContent = handle;
+      acctChannel.href = '/' + handle;
     } else {
       let browseId = null;
       walk(res, (n) => {
         const b = n?.browseEndpoint?.browseId;
         if (!browseId && typeof b === 'string' && b.startsWith('UC')) browseId = b;
       });
-      if (browseId) avatar.href = '/channel/' + encodeURIComponent(browseId);
+      if (browseId) acctChannel.href = '/channel/' + encodeURIComponent(browseId);
     }
   };
 
@@ -3357,6 +3500,7 @@
     const out = loggedOut();
     hdSignIn.style.display = out ? '' : 'none';
     avatar.style.display = out ? 'none' : '';
+    if (out) closeAcctMenu();
     if (!out) loadAccount();
   };
 

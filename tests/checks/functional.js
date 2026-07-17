@@ -2489,10 +2489,72 @@ async function checkTheaterMode(browser) {
   return violations;
 }
 
+// Account management: the sidebar avatar is a menu button that opens a dropdown
+// with a native "Your channel" plus redirects to YouTube's own UI (Studio,
+// Settings, Switch account, Sign out). This guards the menu going missing, the
+// redirect targets drifting (e.g. Sign out no longer pointing at YouTube's
+// logout, or Studio/Settings losing target=_blank so they hijack the SPA), and
+// the open/close toggle regressing. Runs logged-out: the avatar is hidden but
+// the menu DOM and its wiring still exist and are clickable, so the structure
+// and toggle are fully assertable without an account.
+async function checkAccountMenu(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube .hd-avatar', { state: 'attached', timeout: 30000 }).catch(() => {});
+    const shape = await page.evaluate(() => {
+      const av = document.querySelector('.hd-avatar');
+      const items = [...document.querySelectorAll('.acct-menu .acct-item')].map((a) => ({
+        text: a.textContent.trim(), href: a.getAttribute('href'), blank: a.target === '_blank',
+      }));
+      return {
+        isButton: !!av && av.tagName === 'BUTTON' && av.getAttribute('aria-haspopup') === 'menu',
+        items,
+      };
+    });
+    if (!shape.isButton) {
+      violations.push({ check: 'account-avatar-button', detail: 'expected the .hd-avatar to be a <button aria-haspopup="menu"> opening the account menu' });
+    }
+    const byText = (t) => shape.items.find((i) => i.text === t);
+    const expect = [
+      ['Your channel', (i) => i && !i.blank, 'a native (same-tab, SPA) Your channel link'],
+      ['YouTube Studio', (i) => i && i.blank && /studio\.youtube\.com/.test(i.href || ''), 'Studio opening studio.youtube.com in a new tab'],
+      ['Settings', (i) => i && i.blank && /youtube\.com\/account/.test(i.href || ''), 'Settings opening youtube.com/account in a new tab'],
+      ['Switch account', (i) => i && i.blank && /accounts\.google\.com/.test(i.href || ''), 'Switch account opening the Google account chooser'],
+      ['Sign out', (i) => i && /youtube\.com\/logout/.test(i.href || ''), 'Sign out pointing at YouTube logout'],
+    ];
+    for (const [label, ok, desc] of expect) {
+      if (!ok(byText(label))) {
+        violations.push({ check: 'account-menu-item', detail: `expected ${desc} (item "${label}" missing or wrong)` });
+      }
+    }
+    // The avatar toggles the menu even while hidden (logged out): click opens it,
+    // Escape closes it.
+    const toggled = await page.evaluate(() => {
+      const av = document.querySelector('.hd-avatar');
+      const menu = document.querySelector('.acct-menu');
+      av.click();
+      const opened = menu.classList.contains('open');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      const closed = !menu.classList.contains('open');
+      return { opened, closed };
+    });
+    if (!toggled.opened) violations.push({ check: 'account-menu-opens', detail: 'clicking the avatar did not open the account menu (.open)' });
+    if (!toggled.closed) violations.push({ check: 'account-menu-escape', detail: 'pressing Escape did not close the account menu' });
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
   checkTheaterMode,
+  checkAccountMenu,
   checkItubeToggle,
   checkSubscribeConfirmsOnPopup,
   checkWatchMetaReveals,

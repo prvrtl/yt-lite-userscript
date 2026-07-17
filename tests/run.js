@@ -41,6 +41,7 @@ const {
   checkAudioTrackSelector,
   checkThumbFlyAnimation,
   checkTheaterMode,
+  checkAccountMenu,
   checkDislikeEstimate,
   checkWatchMetaReveals,
   checkSubscribeConfirmsOnPopup,
@@ -507,6 +508,24 @@ async function main() {
     table.push({ page: 'toggle', check: 'functional', status, count: violations.length });
     console.log(`  itube toggle: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=toggle ${fmt(v)}`);
+  }
+
+  // The account menu (avatar dropdown) runs once on the home page; the avatar is
+  // hidden logged-out but the menu structure and toggle are still assertable.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- account menu ---');
+    let violations;
+    try {
+      violations = await checkAccountMenu(browser);
+    } catch (err) {
+      console.error(`  ERROR running the account-menu check: ${err.stack || err}`);
+      violations = [{ check: 'account-menu', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'account', check: 'functional', status, count: violations.length });
+    console.log(`  account menu: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=account ${fmt(v)}`);
   }
 
   // Theater mode toggles a full-screen cinema layout + ambient canvas and
