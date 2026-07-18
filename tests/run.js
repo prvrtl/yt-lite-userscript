@@ -68,6 +68,7 @@ const {
   checkMiniListenerLeak,
   checkListSkeleton,
   checkFlyOffscreenGuard,
+  checkBackForwardCache,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -685,6 +686,25 @@ async function main() {
     table.push({ page: 'search-no-refetch', check: 'functional', status, count: violations.length });
     console.log(`  search no-refetch: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=search-no-refetch ${fmt(v)}`);
+  }
+
+  // Back/Forward to a previously-viewed feed must restore from the in-memory
+  // list cache instead of refetching, so it runs once, in its own context,
+  // recording requests across a click-into-watch-then-Back round trip.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- back/forward cache ---');
+    let violations;
+    try {
+      violations = await checkBackForwardCache(browser);
+    } catch (err) {
+      console.error(`  ERROR running the back-forward-cache check: ${err.stack || err}`);
+      violations = [{ check: 'back-forward-cache', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'back-forward-cache', check: 'functional', status, count: violations.length });
+    console.log(`  back/forward cache: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=back-forward-cache ${fmt(v)}`);
   }
 
   // getThumb used to always pick the largest thumbnail source regardless of

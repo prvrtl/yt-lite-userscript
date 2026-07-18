@@ -107,6 +107,24 @@ thread. If replies regress, that is the distinction to re-check.
 Two-row grid: the seek bar spans the FULL width of the bar (its own grid row),
 with controls beneath it. Verified: seek 713px inside a 743px bar.
 
+## Back/forward list cache
+
+Home, search, and the `/feed/*` + `/playlist` views keep an LRU (cap 8) of
+their last-rendered state, keyed by the same route key the router already
+uses (`keyFor`/`currentKey`). Leaving one of these views stashes its extracted
+item objects (never DOM nodes), continuation token, and `content.scrollTop`;
+Back/Forward to that exact key restores from memory — zero network, no
+skeleton flash — feeding the cached items back through the normal windowed
+append path in chunks (not one synchronous dump) and re-arming `seen` so
+`fetchMore` continuations don't duplicate. A forward click (new pushState) or
+any fresh navigation to a cached key always refetches and replaces the entry.
+Channel pages are deliberately NOT cached: the header (avatar, subscriber
+count, about copy) is populated as a side effect of `fetchInitial`/`paintHeader`
+rather than being data owned by the list, so a bare item-cache restore would
+leave a stale or blank header — caching it properly would mean caching the
+header payload too, which is a bigger change than this mechanism is worth
+right now.
+
 ## Non-negotiables (carried over — every one of these has bitten us)
 
 - No `innerHTML` anywhere. Trusted Types is enforced on youtube.com.

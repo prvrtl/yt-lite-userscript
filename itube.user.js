@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.42.0
+// @version      4.43.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -2460,9 +2460,6 @@
       background: var(--accent);
       pointer-events: none;
       z-index: 4;
-    }
-    #itube-ab.active {
-      color: var(--accent);
     }
     #itube-vol { width: 56px; flex: none; }
     #itube-preview {
@@ -5159,6 +5156,21 @@
   content.addEventListener('scroll', () => { lastScroll = Date.now(); }, { passive: true });
   let spaNav = false;
 
+  const LIST_CACHE_MAX = 8;
+  const listCache = new Map();
+  const touchListCache = (key, entry) => {
+    listCache.delete(key);
+    listCache.set(key, entry);
+    while (listCache.size > LIST_CACHE_MAX) listCache.delete(listCache.keys().next().value);
+  };
+  const takeListCache = (key) => {
+    const entry = listCache.get(key);
+    if (entry) touchListCache(key, entry);
+    return entry || null;
+  };
+  let activeListCache = null;
+  let popNav = false;
+
   const createListView = ({ itemClass, containerClass, renderItem, fetchInitial, fetchMore, emptyMessage }) => {
     const container = document.createElement('div');
     container.className = containerClass;
@@ -5175,8 +5187,13 @@
     let appendScheduled = false;
     let pendingItems = null;
     let generation = 0;
+    let capturedItems = [];
 
     const MAX_ITEMS = 200;
+    const remember = (items) => {
+      capturedItems = capturedItems.concat(items);
+      if (capturedItems.length > MAX_ITEMS) capturedItems = capturedItems.slice(-MAX_ITEMS);
+    };
     const cap = () => {
       const items = container.querySelectorAll('.' + itemClass);
       const excess = items.length - MAX_ITEMS;
@@ -5196,6 +5213,7 @@
     };
 
     const appendItems = (items) => {
+      remember(items);
       for (const item of items) {
         if (isFeedFiltered(item)) continue;
         container.insertBefore(renderItem(item), sentinel);
@@ -5269,15 +5287,17 @@
       }
     };
 
+    const IO_ROOT_MARGIN = 600;
     const io = new IntersectionObserver((entries) => {
       if (entries.some((e) => e.isIntersecting)) loadMore();
-    }, { root: content, rootMargin: '600px' });
+    }, { root: content, rootMargin: IO_ROOT_MARGIN + 'px' });
     io.observe(sentinel);
 
     const load = async (fetchFn) => {
       const gen = ++generation;
       seen.clear();
       token = null;
+      capturedItems = [];
       clear();
       showSkeleton();
       loading = true;
@@ -5295,6 +5315,7 @@
           return;
         }
         token = res.token;
+        remember(res.items);
         for (const item of res.items) {
           if (isFeedFiltered(item)) continue;
           container.insertBefore(renderItem(item), sentinel);
@@ -5314,17 +5335,70 @@
 
     const loadInitial = () => load(fetchInitial);
 
-    return { container, spinner, seen, loadInitial, load, showEmpty, cleanup: () => io.disconnect() };
+    const RESTORE_CHUNK = 24;
+    const restoreFromCache = (entry) => {
+      const gen = ++generation;
+      seen.clear();
+      clear();
+      capturedItems = entry.items.slice();
+      token = entry.token;
+      for (const it of capturedItems) seen.add(it.id);
+      loading = false;
+      spinner.classList.remove('show');
+      if (!capturedItems.length) { showEmpty(emptyMessage); return; }
+      let i = 0;
+      const renderSlice = () => {
+        const slice = capturedItems.slice(i, i + RESTORE_CHUNK);
+        i += RESTORE_CHUNK;
+        for (const item of slice) {
+          if (isFeedFiltered(item)) continue;
+          container.insertBefore(renderItem(item), sentinel);
+        }
+      };
+      const target = entry.scrollTop || 0;
+      const prefetchTo = target + content.clientHeight + IO_ROOT_MARGIN;
+      while (i < capturedItems.length && content.scrollHeight - content.clientHeight < prefetchTo) renderSlice();
+      cap();
+      content.scrollTop = target;
+      if (i < capturedItems.length) {
+        const pump = () => {
+          if (gen !== generation) return;
+          renderSlice();
+          cap();
+          if (i < capturedItems.length) idle(pump);
+        };
+        idle(pump);
+      }
+    };
+    const getState = () => ({ items: capturedItems.slice(), token });
+
+    return { container, spinner, seen, loadInitial, load, showEmpty, cleanup: () => io.disconnect(), getState, restoreFromCache };
   };
 
   const HOME_SIGNED_OUT = { title: 'Try searching to get started', message: 'Sign in to build a feed of videos you’ll love.' };
   const WATCH_LATER_SIGNED_OUT = { title: 'Enjoy your favorite videos', message: 'Sign in to access videos that you’ve saved to Watch later.' };
 
-  const mountHome = () => {
+  const mountHome = (cacheEntry) => {
     const heading = document.createElement('h2');
     heading.className = 'section-heading';
     heading.textContent = 'Recommended';
     heading.style.display = 'none';
+
+    let cwItems = [];
+    const renderContinueWatching = (resumeItems) => {
+      if (!resumeItems.length) return;
+      const cwHeading = document.createElement('h2');
+      cwHeading.className = 'section-heading';
+      cwHeading.textContent = 'Continue watching';
+      const cwGrid = document.createElement('div');
+      cwGrid.className = 'grid';
+      for (const it of resumeItems) {
+        if (isFeedFiltered(it)) continue;
+        cwGrid.appendChild(createCard(it));
+      }
+      view.insertBefore(cwHeading, heading);
+      view.insertBefore(cwGrid, heading);
+    };
 
     const list = createListView({
       itemClass: 'c',
@@ -5337,19 +5411,8 @@
         if (!data) return null;
         const resumeItems = extractResumeItems(data, new Set(), thumbTarget(GRID_THUMB_W));
         for (const it of resumeItems) seen.add(it.id);
-        if (resumeItems.length) {
-          const cwHeading = document.createElement('h2');
-          cwHeading.className = 'section-heading';
-          cwHeading.textContent = 'Continue watching';
-          const cwGrid = document.createElement('div');
-          cwGrid.className = 'grid';
-          for (const it of resumeItems) {
-            if (isFeedFiltered(it)) continue;
-            cwGrid.appendChild(createCard(it));
-          }
-          view.insertBefore(cwHeading, heading);
-          view.insertBefore(cwGrid, heading);
-        }
+        cwItems = resumeItems;
+        renderContinueWatching(resumeItems);
         const items = extractVideos(data, seen, thumbTarget(GRID_THUMB_W));
         heading.style.display = items.length ? '' : 'none';
         if (!items.length && !resumeItems.length && loggedOut()) {
@@ -5362,7 +5425,18 @@
     });
 
     view.replaceChildren(heading, list.container, list.spinner);
-    whenReady(() => list.loadInitial());
+    if (cacheEntry) {
+      cwItems = cacheEntry.resumeItems || [];
+      renderContinueWatching(cwItems);
+      heading.style.display = cacheEntry.items.length ? '' : 'none';
+      whenReady(() => {
+        list.restoreFromCache(cacheEntry);
+        for (const it of cwItems) list.seen.add(it.id);
+      });
+    } else {
+      whenReady(() => list.loadInitial());
+    }
+    activeListCache = { getState: () => ({ ...list.getState(), resumeItems: cwItems }) };
 
     return list.cleanup;
   };
@@ -5388,7 +5462,7 @@
     ['EgQQARgC', 'Duration: Over 20 min'],
   ];
 
-  const mountSearch = () => {
+  const mountSearch = (cacheEntry) => {
     const query = new URLSearchParams(location.search).get('search_query') || '';
     search.value = query;
 
@@ -5475,7 +5549,9 @@
       view.replaceChildren(list.container, list.spinner);
     }
 
-    whenReady(() => list.loadInitial());
+    if (cacheEntry) whenReady(() => list.restoreFromCache(cacheEntry));
+    else whenReady(() => list.loadInitial());
+    activeListCache = { getState: list.getState };
 
     return list.cleanup;
   };
@@ -5882,6 +5958,7 @@
   };
 
   const mountFeed = (browseIds, heading, opts = {}) => {
+    const cacheEntry = opts.cacheEntry || null;
     const ids = Array.isArray(browseIds) ? browseIds : [browseIds];
     const useInitialData = !!opts.useInitialData;
     const listId = ids[0] && ids[0].startsWith('VL') ? ids[0].slice(2) : null;
@@ -5942,7 +6019,13 @@
     });
 
     view.replaceChildren(headingEl, list.container, list.spinner);
-    whenReady(() => list.loadInitial());
+    if (cacheEntry) {
+      if (cacheEntry.heading) headingEl.textContent = cacheEntry.heading;
+      whenReady(() => list.restoreFromCache(cacheEntry));
+    } else {
+      whenReady(() => list.loadInitial());
+    }
+    activeListCache = { getState: () => ({ ...list.getState(), heading: headingEl.textContent }) };
 
     return list.cleanup;
   };
@@ -6218,9 +6301,6 @@
     const timeDur = el('span', null); timeDur.className = 'itube-time';
     const mute = el('button', 'itube-mute', ICONS.vol());
     const vol = el('input', 'itube-vol'); vol.type = 'range'; vol.min = 0; vol.max = 100;
-    const ab = el('button', 'itube-ab', ICONS.loop());
-    ab.setAttribute('aria-label', 'A–B repeat loop');
-    ab.title = 'A–B repeat loop';
     const pip = el('button', 'itube-pip', ICONS.pip());
     const theater = el('button', 'itube-theater', ICONS.theater());
     theater.setAttribute('aria-label', 'Theater mode');
@@ -6243,13 +6323,13 @@
     const right = el('div', 'itube-bar-right');
     left.append(prev, play, next, timeCur);
     center.append(live);
-    right.append(timeDur, mute, vol, ab, pip, theater, shot, fs);
+    right.append(timeDur, mute, vol, pip, theater, shot, fs);
     bar.append(seekwrap, left, center, right);
     stage.appendChild(bar);
     stage.appendChild(cue);
     return {
       bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol,
-      ab, pip, theater, shot, fs, left, right, cue, scrubbing: false, isLive: false,
+      pip, theater, shot, fs, left, right, cue, scrubbing: false, isLive: false,
     };
   };
 
@@ -7522,13 +7602,7 @@
         ui.seekwrap.appendChild(m);
       }
     };
-    const syncAbBtn = () => {
-      if (!ui || !ui.ab) return;
-      const active = abA != null;
-      ui.ab.classList.toggle('active', active);
-      ui.ab.setAttribute('aria-pressed', String(abA != null && abB != null));
-    };
-    const clearAb = () => { abA = null; abB = null; renderAbMarkers(); syncAbBtn(); };
+    const clearAb = () => { abA = null; abB = null; renderAbMarkers(); syncTools(); };
     const cycleAb = () => {
       const video = stage.querySelector('video');
       if (!video) return;
@@ -7542,7 +7616,7 @@
         abA = null; abB = null; showOSD(ICONS.loop, 'Loop off');
       }
       renderAbMarkers();
-      syncAbBtn();
+      syncTools();
     };
     let theaterOn = false;
     let theaterBtn = null;
@@ -7756,8 +7830,6 @@
         else if (isFinite(video.duration)) video.currentTime = video.duration - 2;
       });
 
-      ui.ab.addEventListener('click', () => cycleAb());
-      syncAbBtn();
 
       ui.seekwrap.addEventListener('pointerenter', () => {
         if (storyboard && !ui.isLive) ui.preview.style.display = 'block';
@@ -8048,12 +8120,12 @@
           break;
         case '[': {
           const v = stage.querySelector('video');
-          if (v) { abA = v.currentTime; if (abB != null && abB <= abA) abB = null; renderAbMarkers(); syncAbBtn(); showOSD(ICONS.loop, 'Loop start set'); }
+          if (v) { abA = v.currentTime; if (abB != null && abB <= abA) abB = null; renderAbMarkers(); syncTools(); showOSD(ICONS.loop, 'Loop start set'); }
           break;
         }
         case ']': {
           const v = stage.querySelector('video');
-          if (v && abA != null && v.currentTime > abA + 0.2) { abB = v.currentTime; renderAbMarkers(); syncAbBtn(); showOSD(ICONS.loop, 'A–B loop on'); }
+          if (v && abA != null && v.currentTime > abA + 0.2) { abB = v.currentTime; renderAbMarkers(); syncTools(); showOSD(ICONS.loop, 'A–B loop on'); }
           break;
         }
         case '\\':
@@ -8327,6 +8399,8 @@
   };
 
   const route = () => {
+    const isPop = popNav;
+    popNav = false;
     renderGuideChannels();
     syncAccount();
     const path = location.pathname;
@@ -8355,6 +8429,10 @@
       }
     }
     if (key === currentKey) { syncNav(); spaNav = false; return; }
+    if (activeListCache) {
+      touchListCache(currentKey, { ...activeListCache.getState(), scrollTop: content.scrollTop });
+      activeListCache = null;
+    }
     if (cleanup) { cleanup(); cleanup = null; }
     currentKey = key;
     syncNav();
@@ -8369,11 +8447,12 @@
       const params = new URLSearchParams(location.search);
       ensureWatchPlayback(params.get('v'), params.get('list'));
     }
+    const cacheEntry = isPop ? takeListCache(key) : null;
     cleanup = type === 'watch' ? mountWatch()
-      : type === 'home' ? mountHome()
-      : type === 'search' ? mountSearch()
+      : type === 'home' ? mountHome(cacheEntry)
+      : type === 'search' ? mountSearch(cacheEntry)
       : type === 'channel' ? mountChannel()
-      : type === 'feed' ? mountFeed(browseId, heading, { useInitialData })
+      : type === 'feed' ? mountFeed(browseId, heading, { useInitialData, cacheEntry })
       : mountUnhandled();
     spaNav = false;
   };
@@ -8456,6 +8535,7 @@
   window.addEventListener('popstate', (e) => {
     e.stopImmediatePropagation();
     stopWatchBoot();
+    popNav = true;
     spaRoute();
   }, true);
 

@@ -2693,24 +2693,39 @@ async function checkTheaterMode(browser) {
   return violations;
 }
 
-// A-B repeat loop: setting two marks on the seek bar must show a highlighted
-// region + both markers, flip the #itube-ab button to its active state, and
-// then actually enforce the loop by snapping playback back to A once it
-// crosses B. Clicking the button (rather than the `[`/`]` keys) at fixed
-// currentTimes keeps this deterministic instead of racing real playback.
+// A-B repeat loop: the control lives ONLY in the Tools row (the player-bar
+// duplicate was removed in v4.43 after a user report). Setting two marks must
+// show a highlighted region + both markers on the seek bar, flip the tools
+// pill to its active state, and then actually enforce the loop by snapping
+// playback back to A once it crosses B. Clicking the pill (rather than the
+// `[`/`]` keys) at fixed currentTimes keeps this deterministic instead of
+// racing real playback.
 async function checkAbLoop(browser) {
   const violations = [];
   const context = await newContext(browser);
   const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  const clickAbPill = () => page.evaluate(() => {
+    Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('A–B repeat'))?.click();
+  });
   try {
     await waitForApp(page, { timeout: 30000 }).catch(() => {});
-    await page.waitForSelector('#itube-ab', { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.watch-actions', { timeout: 30000 }).catch(() => {});
     await page.waitForFunction(() => {
       const v = document.querySelector('#itube-stage video');
       return !!v && isFinite(v.duration) && v.duration > 10;
     }, { timeout: 30000 }).catch(() => {});
-    if (!(await page.evaluate(() => !!document.getElementById('itube-ab')))) {
-      violations.push({ check: 'ab-loop-button-present', detail: 'expected an #itube-ab toggle in the player bar' });
+    if (await page.evaluate(() => !!document.getElementById('itube-ab'))) {
+      violations.push({ check: 'ab-loop-no-bar-duplicate', detail: 'expected the #itube-ab player-bar button to be gone — A–B lives only in the Tools row now' });
+    }
+    await page.evaluate(() => {
+      const toolsBtn = Array.from(document.querySelectorAll('.watch-actions .watch-action-btn')).find((b) => b.textContent.includes('Tools'));
+      toolsBtn?.click();
+    });
+    await page.waitForTimeout(400);
+    const pillPresent = await page.evaluate(() =>
+      !!Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('A–B repeat')));
+    if (!pillPresent) {
+      violations.push({ check: 'ab-loop-button-present', detail: 'expected an A–B repeat pill in the Tools row' });
       return violations;
     }
     await page.evaluate(() => {
@@ -2719,15 +2734,15 @@ async function checkAbLoop(browser) {
       v.play();
     });
     await page.evaluate(() => { document.querySelector('#itube-stage video').currentTime = 3; });
-    await page.evaluate(() => document.getElementById('itube-ab').click());
+    await clickAbPill();
     await page.evaluate(() => { document.querySelector('#itube-stage video').currentTime = 8; });
-    await page.evaluate(() => document.getElementById('itube-ab').click());
+    await clickAbPill();
     const marked = await page.evaluate(() => ({
       region: !!document.querySelector('.itube-ab-region'),
-      active: document.getElementById('itube-ab').classList.contains('active'),
+      active: !!Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('A–B repeat'))?.classList.contains('active'),
     }));
     if (!marked.region) violations.push({ check: 'ab-loop-markers', detail: 'expected a .itube-ab-region after setting A and B' });
-    if (!marked.active) violations.push({ check: 'ab-loop-markers', detail: 'expected #itube-ab to gain .active after setting A and B' });
+    if (!marked.active) violations.push({ check: 'ab-loop-markers', detail: 'expected the A–B tools pill to gain .active after setting A and B' });
 
     await page.evaluate(() => { document.querySelector('#itube-stage video').currentTime = 8.6; });
     await page.waitForTimeout(500);
@@ -2735,7 +2750,7 @@ async function checkAbLoop(browser) {
     if (!(loopedTime < 8)) {
       violations.push({ check: 'ab-loop-enforces', detail: `expected playback past B to snap back toward A (~3s), got currentTime=${loopedTime}` });
     }
-    await page.evaluate(() => document.getElementById('itube-ab').click());
+    await clickAbPill();
   } finally {
     await page.close();
     await context.close();
@@ -3961,6 +3976,149 @@ async function checkFlyOffscreenGuard(page) {
   return violations;
 }
 
+// v4.42.0 refetched a feed from scratch every time Back/Forward landed on it
+// — popstate re-ran fetchInitial over the network and re-rendered from zero,
+// even though the exact same items had just been scrolled through seconds
+// earlier. Now leaving a cacheable list view (home/search/feed/playlist)
+// stashes its extracted items + continuation token + scrollTop keyed by the
+// route, and Back/Forward to that exact key restores from memory instead:
+// zero network to make the restored cards appear, no skeleton flash, scroll
+// position back where it was. Search is used here (rather than home) because
+// the logged-out home feed legitimately renders zero cards — see
+// checkFeedToWatchNavigation. Scrolls down, clicks into a video, goes Back,
+// and asserts: (a) no POST to /youtubei/v1/(browse|search) fired to make the
+// cards reappear — measured with a fetch wrapper installed in-page, so the
+// window is exactly "before the cards became visible" and isn't polluted by
+// a legitimate infinite-scroll continuation firing a beat later because the
+// cached page was short; (b) results reappear fast — the same in-page clock
+// avoids Playwright's own IPC latency; (c) content.scrollTop lands back near
+// where it was; (d) Forward to the watch page afterwards still works.
+async function checkBackForwardCache(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  // Installed before any navigation so it is armed for the whole session —
+  // it only matters what happens around Back, but re-arming later would risk
+  // missing the exact tick the fetch fires on.
+  await context.addInitScript(() => {
+    const origFetch = window.fetch;
+    window.__bfFetchLog = [];
+    window.fetch = function (...args) {
+      const url = String(args[0]);
+      if (/\/youtubei\/v1\/(browse|search)/.test(url)) window.__bfFetchLog.push({ t: performance.now(), url });
+      return origFetch.apply(this, args);
+    };
+  });
+  const { page } = await openPage(context, 'https://www.youtube.com/results?search_query=liquid+glass+design');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.row', { timeout: 15000 }).catch(() => {});
+    const rowCount = await page.evaluate(() => document.querySelectorAll('.row').length);
+    if (rowCount === 0) {
+      console.log('  back-forward-cache: SKIP — no .row results rendered within 15s');
+      return violations;
+    }
+
+    const scrolledTo = await page.evaluate(() => {
+      const el = document.querySelector('#itube .content');
+      el.scrollTop = 400;
+      return el.scrollTop;
+    });
+    if (scrolledTo < 50) {
+      violations.push({ check: 'back-forward-cache-precondition', detail: `expected to scroll .content to ~400px before clicking into a video, got ${scrolledTo}` });
+      return violations;
+    }
+
+    // Pick a row that is actually ON-SCREEN at the scrolled position — the
+    // first .row in DOM order is now scrolled off above the viewport, and
+    // clicking its (off-screen, negative-y) bounding box hits nothing real.
+    const cardHandle = await page.evaluateHandle(() => Array.from(document.querySelectorAll('#itube .row')).find((r) => {
+      const rect = r.getBoundingClientRect();
+      return rect.top >= 0 && rect.top < window.innerHeight && r.querySelector('a[href^="/watch"]');
+    }) || null);
+    const card = cardHandle.asElement();
+    if (!card) {
+      violations.push({ check: 'back-forward-cache-precondition', detail: 'expected at least one on-screen .row card linking to /watch after scrolling' });
+      return violations;
+    }
+    const clicked = await clickCardPart(page, card, '.row-title');
+    if (!clicked) {
+      violations.push({ check: 'back-forward-cache-precondition', detail: 'the first .row card has no layout box to click' });
+      return violations;
+    }
+    await page.waitForFunction(() => location.pathname === '/watch', { timeout: 15000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage', { timeout: 15000 }).catch(() => {});
+    // Hold the window open past WATCH_BOOT_TIMEOUT, same as
+    // checkFeedToWatchNavigation: a stray watchBoot fallback (native
+    // location.assign) can still be armed for a moment after the player
+    // mounts, and racing Back against it would reload the document for
+    // reasons that have nothing to do with the list cache under test.
+    await page.waitForTimeout(RELOAD_WATCH_MS);
+
+    // Arm BEFORE Back: a rAF poll for visibility (pure in-page wall time, no
+    // Playwright IPC noise) plus a reset of the fetch log so only POSTs from
+    // Back onward count. The moment rows are detected, it snapshots which
+    // logged fetches happened AT OR BEFORE that instant, in the same
+    // synchronous tick — nothing else can run between the check and the
+    // snapshot, so a continuation fetch that fires a beat later (because the
+    // cached page was short and infinite-scroll's IntersectionObserver
+    // legitimately wants more) can't be mistaken for "refetched to become
+    // visible" just because Node read it a little late.
+    await page.evaluate(() => {
+      window.__bfFetchLog.length = 0;
+      window.__bfResult = null;
+      const start = performance.now();
+      const tick = () => {
+        if (document.querySelectorAll('#itube .row').length > 0) {
+          const now = performance.now();
+          window.__bfResult = { elapsed: now - start, postsBeforeVisible: window.__bfFetchLog.filter((e) => e.t <= now).map((e) => e.url) };
+          return;
+        }
+        if (performance.now() - start > 3000) {
+          window.__bfResult = { elapsed: -1, postsBeforeVisible: [] };
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
+    await page.goBack({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForFunction(() => window.__bfResult !== null, { timeout: 5000 }).catch(() => {});
+    const { elapsed, postsBeforeVisible } = await page.evaluate(() => window.__bfResult || { elapsed: null, postsBeforeVisible: [] });
+
+    if (elapsed == null || elapsed < 0) {
+      violations.push({ check: 'back-forward-cache-visible', detail: `expected .row cards to reappear after Back within 3s, got elapsed=${elapsed}` });
+    } else if (elapsed > 250) {
+      violations.push({ check: 'back-forward-cache-fast', detail: `expected the cached feed to render within 250ms of Back, took ${elapsed.toFixed(1)}ms — looks like it refetched over the network instead of restoring from memory` });
+    }
+
+    if (postsBeforeVisible.length > 0) {
+      violations.push({ check: 'back-forward-cache-no-refetch', detail: `expected 0 POSTs to /youtubei/v1/(browse|search) before the cached feed became visible, got ${postsBeforeVisible.length}: ${postsBeforeVisible.slice(0, 3).join(', ')}` });
+    }
+
+    const scrollTopAfterBack = await page.evaluate(() => document.querySelector('#itube .content')?.scrollTop);
+    if (scrollTopAfterBack == null || Math.abs(scrollTopAfterBack - scrolledTo) > 20) {
+      violations.push({ check: 'back-forward-cache-scroll', detail: `expected .content.scrollTop restored to ~${scrolledTo} after Back, got ${scrollTopAfterBack}` });
+    }
+
+    const fwdRec = recordMainFrameDocLoads(page);
+    await page.goForward({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForFunction(() => location.pathname === '/watch', { timeout: 15000 }).catch(() => {});
+    fwdRec.stop();
+    const fwdPath = await page.evaluate(() => location.pathname);
+    if (fwdPath !== '/watch') {
+      violations.push({ check: 'back-forward-cache-forward', detail: `expected Forward to land back on /watch, got "${fwdPath}"` });
+    }
+    if (fwdRec.urls.length > 0) {
+      violations.push({ check: 'back-forward-cache-forward-no-reload', detail: `going Forward to the watch page caused ${fwdRec.urls.length} main-frame document load(s): ${fwdRec.urls.join(' , ')}` });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
@@ -4019,4 +4177,5 @@ module.exports = {
   checkMiniListenerLeak,
   checkListSkeleton,
   checkFlyOffscreenGuard,
+  checkBackForwardCache,
 };
