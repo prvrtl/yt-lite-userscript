@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.41.0
+// @version      4.42.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -905,6 +905,31 @@
       font-size: 12.5px;
       color: var(--dim);
       font-variant-numeric: tabular-nums;
+    }
+    #itube .sk-line {
+      height: 12px;
+      border-radius: 6px;
+      background: var(--raised);
+    }
+    #itube .sk-line.short {
+      width: 55%;
+    }
+    #itube .c-skel {
+      display: block;
+      padding: 8px;
+      margin: -8px;
+    }
+    #itube .c-skel-thumb {
+      aspect-ratio: 16 / 9;
+      border-radius: var(--r-sm);
+      background: var(--raised);
+    }
+    #itube .c-skel .sk-line {
+      margin-top: 10px;
+    }
+    #itube .c-skel .sk-line.short {
+      margin-top: 8px;
+      height: 10px;
     }
     #itube .watch {
       display: grid;
@@ -1955,6 +1980,29 @@
       font-size: 11.5px;
       color: var(--dim);
     }
+    #itube .rc-skel {
+      display: flex;
+      gap: 10px;
+      padding: 6px;
+    }
+    #itube .rc-skel-thumb {
+      flex: 0 0 168px;
+      width: 168px;
+      height: 94px;
+      border-radius: var(--r-sm);
+      background: var(--raised);
+    }
+    #itube .rc-skel-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-top: 4px;
+    }
+    #itube .rc-skel-body .sk-line.short {
+      height: 10px;
+    }
     #itube .list {
       display: grid;
       grid-template-columns: 1fr;
@@ -2034,6 +2082,31 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
+    }
+    #itube .row-skel {
+      display: flex;
+      gap: 16px;
+      padding: 8px;
+      margin: -8px;
+      min-width: 0;
+    }
+    #itube .row-skel-thumb {
+      width: 246px;
+      height: 138px;
+      flex: 0 0 246px;
+      border-radius: 12px;
+      background: var(--raised);
+    }
+    #itube .row-skel-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-top: 4px;
+    }
+    #itube .row-skel-body .sk-line.short {
+      height: 10px;
     }
     #itube .empty {
       grid-column: 1 / -1;
@@ -3904,6 +3977,45 @@
     return a;
   };
 
+  const skLine = (extraClass) => {
+    const line = document.createElement('div');
+    line.className = extraClass ? 'sk-line sk-shimmer ' + extraClass : 'sk-line sk-shimmer';
+    return line;
+  };
+
+  const createCardSkeleton = () => {
+    const el = document.createElement('div');
+    el.className = 'c-skel';
+    const thumb = document.createElement('div');
+    thumb.className = 'c-skel-thumb sk-shimmer';
+    el.append(thumb, skLine(), skLine('short'));
+    return el;
+  };
+
+  const createRowSkeleton = () => {
+    const el = document.createElement('div');
+    el.className = 'row-skel';
+    const thumb = document.createElement('div');
+    thumb.className = 'row-skel-thumb sk-shimmer';
+    const body = document.createElement('div');
+    body.className = 'row-skel-body';
+    body.append(skLine(), skLine('short'));
+    el.append(thumb, body);
+    return el;
+  };
+
+  const createRelatedSkeleton = () => {
+    const el = document.createElement('div');
+    el.className = 'rc-skel';
+    const thumb = document.createElement('div');
+    thumb.className = 'rc-skel-thumb sk-shimmer';
+    const body = document.createElement('div');
+    body.className = 'rc-skel-body';
+    body.append(skLine(), skLine('short'));
+    el.append(thumb, body);
+    return el;
+  };
+
   const createCommentRow = (item) => {
     const row = document.createElement('div');
     row.className = 'comment-row';
@@ -5116,8 +5228,21 @@
       container.replaceChildren(empty);
     };
 
+    const SKELETON_COUNT = 8;
+    const skeletonClass = itemClass === 'row' ? 'row-skel' : 'c-skel';
+    const makeSkeleton = itemClass === 'row' ? createRowSkeleton : createCardSkeleton;
+    const clearSkeleton = () => {
+      for (const n of container.querySelectorAll('.' + skeletonClass)) n.remove();
+    };
+    const showSkeleton = () => {
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < SKELETON_COUNT; i++) frag.appendChild(makeSkeleton());
+      container.insertBefore(frag, sentinel);
+    };
+
     const clear = () => {
       for (const n of container.querySelectorAll('.' + itemClass)) n.remove();
+      clearSkeleton();
       const spacer = container.querySelector('.spacer');
       if (spacer) spacer.remove();
       for (const n of container.querySelectorAll('.empty')) n.remove();
@@ -5154,11 +5279,13 @@
       seen.clear();
       token = null;
       clear();
+      showSkeleton();
       loading = true;
       spinner.classList.add('show');
       try {
         const res = await fetchFn(seen);
         if (gen !== generation) return;
+        clearSkeleton();
         if (res && res.signIn) {
           container.replaceChildren(createSignInBlock(res.signIn));
           return;
@@ -5171,6 +5298,11 @@
         for (const item of res.items) {
           if (isFeedFiltered(item)) continue;
           container.insertBefore(renderItem(item), sentinel);
+        }
+      } catch (e) {
+        if (gen === generation) {
+          clearSkeleton();
+          showEmpty(emptyMessage);
         }
       } finally {
         if (gen === generation) {
@@ -6572,6 +6704,14 @@
     const META_CONTENT_ELS = [stats, channelRow, actions, metaDivider, desc];
     let metaSkeletonVisible = false;
 
+    const RELATED_SKELETON_COUNT = 6;
+    const ensureRelatedSkeleton = () => {
+      if (relatedWrap.firstElementChild?.classList.contains('rc-skel')) return;
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < RELATED_SKELETON_COUNT; i++) frag.appendChild(createRelatedSkeleton());
+      relatedWrap.replaceChildren(frag);
+    };
+
     const showMetaSkeleton = () => {
       metaSkeletonVisible = true;
       unavailable.style.display = 'none';
@@ -6582,11 +6722,13 @@
       descToggle.style.display = 'none';
       skeleton.style.opacity = '1';
       skeleton.style.display = 'flex';
+      ensureRelatedSkeleton();
     };
 
     const hideMetaSkeletonImmediate = () => {
       metaSkeletonVisible = false;
       skeleton.style.display = 'none';
+      relatedWrap.replaceChildren();
     };
 
     const revealMetaContent = () => {
@@ -7969,7 +8111,6 @@
       resetComments(data);
       resetTranscript();
       updateQueue(videoId);
-      content.scrollTop = 0;
     };
     watchApi = { renderWatchFor };
 
@@ -8144,6 +8285,7 @@
     if (watchApi) {
       setCurrentKey();
       syncNav();
+      content.scrollTop = 0;
       watchApi.renderWatchFor(videoId);
     } else {
       spaRoute();
@@ -8205,6 +8347,7 @@
       if (wantId && playingId && wantId !== playingId) {
         currentKey = key;
         syncNav();
+        content.scrollTop = 0;
         ensureWatchPlayback(wantId, new URLSearchParams(location.search).get('list'));
         watchApi.renderWatchFor(wantId);
         spaNav = false;
@@ -8264,6 +8407,7 @@
       const stage = document.getElementById('itube-stage');
       const last = stage ? stage.getBoundingClientRect() : null;
       if (!last || last.width < 8 || last.height < 8) { clearTimeout(safety); cleanup(); return; }
+      if (last.bottom < 0 || last.top > innerHeight) { clearTimeout(safety); cleanup(); return; }
       const dx = last.left - rect.left;
       const dy = last.top - rect.top;
       const sx = last.width / rect.width;

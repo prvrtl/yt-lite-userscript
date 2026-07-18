@@ -66,6 +66,8 @@ const {
   checkTranscriptLazy,
   checkThumbSizing,
   checkMiniListenerLeak,
+  checkListSkeleton,
+  checkFlyOffscreenGuard,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -218,6 +220,10 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
         await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 15000 }).catch(() => {});
         violations = violations.concat(await checkCommentBodyLinks(page));
       }
+      // Runs last on watch (it navigates to yet another related video): with
+      // comments already expanded above, the page is tall enough to scroll
+      // deep and reproduce the owner-reported off-screen fly glitch.
+      violations = violations.concat(await checkFlyOffscreenGuard(page));
     }
     if (SCROLLING_PAGES.has(pageName)) {
       violations = violations.concat(await checkInfiniteScroll(page, pageName));
@@ -239,6 +245,7 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
       violations = violations.concat(await checkUnhandledLinkRouting(page));
       violations = violations.concat(await checkUserRouteClientSide(page));
       violations = violations.concat(await checkBootLoaderNoSpaReappear(page));
+      violations = violations.concat(await checkListSkeleton(page));
     }
     results.push({ name: 'functional', violations });
   }

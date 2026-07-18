@@ -3833,6 +3833,134 @@ async function checkMiniListenerLeak(browser) {
   return violations;
 }
 
+// A cold InnerTube round trip (200-500ms) used to leave feed grids/lists
+// showing nothing but a static "Loading…" spinner text, and the related rail
+// on watch showing nothing at all until 20 cards popped in at once. Both now
+// get shimmer skeleton placeholders the instant the navigation starts, before
+// any data has arrived. This drives two navigations — a feed SPA switch
+// (home -> history) and a feed-to-watch SPA switch (from a channel's Videos
+// tab, since the logged-out home/history feeds have no cards to click) — and
+// asserts the skeleton nodes exist synchronously right after the click, then
+// disappear once the real content (or an empty/sign-in state) lands.
+async function checkListSkeleton(page) {
+  const violations = [];
+
+  const feedLink = await page.$('.nav-row[href="/feed/history"]');
+  if (!feedLink) {
+    violations.push({ check: 'list-skeleton-precondition', detail: 'expected .nav-row[href="/feed/history"] sidebar link to exist' });
+    return violations;
+  }
+  await feedLink.click();
+  const sawGridSkeleton = await page.evaluate(() => document.querySelectorAll('.c-skel').length > 0);
+  if (!sawGridSkeleton) {
+    violations.push({ check: 'list-skeleton-appears', detail: 'expected .c-skel skeleton cards to be present in the grid synchronously right after an SPA feed navigation, before data arrived' });
+  }
+  await page.waitForFunction(() => document.querySelectorAll('.c-skel').length === 0, { timeout: 15000 }).catch(() => {});
+  const leftoverSkeleton = await page.evaluate(() => document.querySelectorAll('.c-skel').length);
+  if (leftoverSkeleton > 0) {
+    violations.push({ check: 'list-skeleton-clears', detail: `expected .c-skel skeletons to be removed once real data (or the empty/sign-in state) rendered, ${leftoverSkeleton} remained` });
+  }
+
+  // Logged-out home/history feeds render zero video cards (YouTube serves no
+  // personalized recommendations to anonymous sessions), so there is nothing
+  // there to click into a watch page. A channel's Videos tab is public,
+  // logged-out content and always has cards, so land there first.
+  await page.goto('https://www.youtube.com/@mkbhd/videos', { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await waitForApp(page, { timeout: 30000 }).catch(() => {});
+  await page.waitForSelector('.c', { timeout: 15000 }).catch(() => {});
+  const card = await page.$('.c');
+  if (!card) {
+    violations.push({ check: 'related-skeleton-precondition', detail: 'expected at least one .c card on a channel Videos tab to click into a watch page' });
+    return violations;
+  }
+  const clicked = await clickCardPart(page, card, '.c-title');
+  if (!clicked) {
+    violations.push({ check: 'related-skeleton-precondition', detail: 'the first .c channel card has no layout box to click' });
+    return violations;
+  }
+  const sawRelatedSkeleton = await page.evaluate(() => document.querySelectorAll('.rc-skel').length > 0);
+  if (!sawRelatedSkeleton) {
+    violations.push({ check: 'related-skeleton-appears', detail: 'expected .rc-skel skeleton rows in the related rail synchronously right after an SPA navigation into a watch page, before data arrived' });
+  }
+  await page.waitForFunction(() => document.querySelectorAll('.rc-skel').length === 0, { timeout: 15000 }).catch(() => {});
+  const leftoverRelated = await page.evaluate(() => document.querySelectorAll('.rc-skel').length);
+  if (leftoverRelated > 0) {
+    violations.push({ check: 'related-skeleton-clears', detail: `expected .rc-skel skeletons to be removed once the related rail's real cards rendered, ${leftoverRelated} remained` });
+  }
+
+  return violations;
+}
+
+// The reported glitch: on a scrolled watch page (comments expanded,
+// content.scrollTop deep), clicking a related card used to fly the clicked
+// thumbnail toward wherever #itube-stage happened to be measured — off the
+// top of the viewport, since renderWatchFor only reset content.scrollTop
+// AFTER its 'next' fetch resolved, ~1s after the fly's rAF had already
+// measured the (still scrolled-away) stage. The fix hoists that reset to be
+// synchronous in watchNav, before the fly animation's rAF ever runs. This
+// scrolls deep, clicks a related card, and asserts scrollTop is back at 0
+// immediately (not eventually) and that #itube-stage is on-screen at the
+// moment the fly animation would measure it.
+async function checkFlyOffscreenGuard(page) {
+  const violations = [];
+
+  const toggle = await page.$('.comments-toggle');
+  if (toggle) {
+    const disabled = await page.evaluate((el) => el.disabled, toggle);
+    if (!disabled) {
+      const opened = await page.evaluate(() => document.querySelectorAll('.comment-row').length > 0);
+      if (!opened) await toggle.click().catch(() => {});
+      await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 15000 }).catch(() => {});
+    }
+  }
+
+  await page.waitForSelector('.rc', { timeout: 10000 }).catch(() => {});
+  const related = await page.$('.rc');
+  if (!related) {
+    violations.push({ check: 'fly-offscreen-precondition', detail: 'expected at least one .rc related card to click' });
+    return violations;
+  }
+
+  const scrolled = await page.evaluate(() => {
+    const el = document.querySelector('#itube .content');
+    if (!el) return null;
+    el.scrollTop = el.scrollHeight - el.clientHeight;
+    return el.scrollTop;
+  });
+  if (!scrolled || scrolled < 150) {
+    violations.push({ check: 'fly-offscreen-precondition', detail: `expected to scroll .content past 150px (comments expanded to make the page tall enough), got ${scrolled}` });
+    return violations;
+  }
+
+  const clicked = await clickCardPart(page, related, '.rc-title');
+  if (!clicked) {
+    violations.push({ check: 'fly-offscreen-precondition', detail: 'the first .rc related card has no layout box to click' });
+    return violations;
+  }
+
+  const scrollTopAfterClick = await page.evaluate(() => document.querySelector('#itube .content')?.scrollTop);
+  if (scrollTopAfterClick !== 0) {
+    violations.push({ check: 'fly-scroll-resets-synchronously', detail: `expected .content.scrollTop to be reset to 0 synchronously on a related-card click, got ${scrollTopAfterClick} — a reset that only happens after the fetch resolves means flyThumbToStage measures the stage while it is still scrolled off-screen` });
+  }
+
+  // Give the fly animation's own rAF a turn to run and measure the stage,
+  // the same frame flyThumbToStage measures it on.
+  await page.waitForTimeout(60);
+  const stageRect = await page.evaluate(() => {
+    const stage = document.getElementById('itube-stage');
+    if (!stage) return null;
+    const r = stage.getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom, innerHeight: window.innerHeight };
+  });
+  if (!stageRect) {
+    violations.push({ check: 'fly-offscreen-stage-missing', detail: 'expected #itube-stage to exist after clicking a related card' });
+  } else if (stageRect.bottom < 0 || stageRect.top > stageRect.innerHeight) {
+    violations.push({ check: 'fly-offscreen-stage-visible', detail: `expected #itube-stage to be on-screen at fly-measurement time, got top=${stageRect.top} bottom=${stageRect.bottom} innerHeight=${stageRect.innerHeight}` });
+  }
+
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
@@ -3889,4 +4017,6 @@ module.exports = {
   checkTranscriptLazy,
   checkThumbSizing,
   checkMiniListenerLeak,
+  checkListSkeleton,
+  checkFlyOffscreenGuard,
 };
