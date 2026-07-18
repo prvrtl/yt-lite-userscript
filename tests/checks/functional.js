@@ -3199,6 +3199,90 @@ async function checkFeedFilter(browser) {
   return violations;
 }
 
+// Leaving a playing watch page must not kill playback: the video is
+// re-parented into a floating mini-player rather than paused/reset, so this
+// proves (a) it actually keeps decoding (currentTime advances) rather than
+// silently freezing while still looking "playing", (b) clicking it returns
+// to the watch view, and (c) the close button really stops it.
+async function checkMiniPlayer(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.evaluate(async () => {
+      const v = document.querySelector('#itube-stage video');
+      if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
+    });
+    await page.waitForTimeout(600);
+
+    await page.evaluate(() => {
+      const home = document.querySelector('.nav-row[href="/"]');
+      if (home) home.click();
+    });
+    await page.waitForTimeout(1000);
+
+    const first = await page.evaluate(() => {
+      const miniEl = document.getElementById('itube-mini');
+      const v = document.querySelector('#itube-mini video');
+      return {
+        visible: !!miniEl && miniEl.style.display !== 'none' && miniEl.offsetWidth > 0,
+        hasVideo: !!v,
+        paused: v ? v.paused : null,
+        currentTime: v ? v.currentTime : null,
+      };
+    });
+    if (!first.visible) {
+      violations.push({ check: 'mini-appears', detail: `expected #itube-mini to be visible after leaving watch while playing, got ${JSON.stringify(first)}` });
+    }
+    if (!first.hasVideo) {
+      violations.push({ check: 'mini-appears', detail: 'expected #itube-mini video to exist after leaving watch while playing' });
+    }
+    await page.waitForTimeout(600);
+    const second = await page.evaluate(() => {
+      const v = document.querySelector('#itube-mini video');
+      return { paused: v ? v.paused : null, currentTime: v ? v.currentTime : null };
+    });
+    if (first.paused || second.paused) {
+      violations.push({ check: 'mini-keeps-playing', detail: `expected the mini-player video to keep playing, got paused=${first.paused}/${second.paused}` });
+    }
+    if (first.currentTime == null || second.currentTime == null || second.currentTime <= first.currentTime) {
+      violations.push({ check: 'mini-keeps-playing', detail: `expected currentTime to advance in the mini-player, got ${first.currentTime} then ${second.currentTime}` });
+    }
+
+    await page.click('#itube-mini', { position: { x: 20, y: 150 } });
+    await page.waitForTimeout(1000);
+    const expanded = await page.evaluate(() => ({
+      hasStageVideo: !!document.querySelector('#itube-stage video'),
+      miniHidden: document.getElementById('itube-mini')?.style.display === 'none',
+    }));
+    if (!expanded.hasStageVideo || !expanded.miniHidden) {
+      violations.push({ check: 'mini-expands', detail: `expected clicking the mini-player to return to watch and hide the mini, got ${JSON.stringify(expanded)}` });
+    }
+
+    await page.evaluate(() => {
+      const home = document.querySelector('.nav-row[href="/"]');
+      if (home) home.click();
+    });
+    await page.waitForTimeout(1000);
+    await page.evaluate(() => { document.querySelector('#itube-mini .mini-close')?.click(); });
+    await page.waitForTimeout(300);
+    const closed = await page.evaluate(() => {
+      const miniEl = document.getElementById('itube-mini');
+      const v = document.querySelector('#movie_player video');
+      return { hidden: !!miniEl && miniEl.style.display === 'none', paused: v ? v.paused : null };
+    });
+    if (!closed.hidden || closed.paused !== true) {
+      violations.push({ check: 'mini-closes', detail: `expected the mini-player to hide and the video to pause after clicking .mini-close, got ${JSON.stringify(closed)}` });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
@@ -3225,6 +3309,7 @@ module.exports = {
   checkYtdAppHidden,
   checkWatchToWatchNavigation,
   checkHomeNavigation,
+  checkMiniPlayer,
   checkFeedToWatchNavigation,
   checkShortsRedirect,
   checkInfiniteScroll,

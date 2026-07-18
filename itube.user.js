@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.36.0
+// @version      4.37.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -183,6 +183,12 @@
     settings: () => icon([
       ['circle', { cx: '8', cy: '8', r: '2.3', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6' }],
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linejoin': 'round', d: 'M8 1.4v1.7M8 12.9v1.7M14.6 8h-1.7M3.1 8H1.4M12.7 3.3l-1.2 1.2M4.5 11.5l-1.2 1.2M12.7 12.7l-1.2-1.2M4.5 4.5 3.3 3.3' }],
+    ]),
+    expand: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linejoin': 'round', 'stroke-linecap': 'round', d: 'M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4' }],
+    ]),
+    close: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'round', d: 'M3.5 3.5l9 9M12.5 3.5l-9 9' }],
     ]),
   };
 
@@ -2737,6 +2743,58 @@
       text-transform: uppercase;
       letter-spacing: .04em;
     }
+    #itube-mini {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      width: 340px;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      box-shadow: 0 16px 50px -12px rgba(0, 0, 0, .7);
+      z-index: 11000;
+      cursor: pointer;
+      display: none;
+    }
+    #itube-mini video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    #itube-mini .mini-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: flex-end;
+      gap: 4px;
+      padding: 6px;
+      background: linear-gradient(rgba(0, 0, 0, .6), transparent);
+      opacity: 0;
+      transition: opacity var(--tr);
+    }
+    #itube-mini:hover .mini-bar {
+      opacity: 1;
+    }
+    #itube-mini .mini-bar button {
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #itube-mini .mini-bar {
+        transition: none;
+      }
+    }
   `;
 
   const style = document.createElement('style');
@@ -4644,6 +4702,118 @@
 
   root.append(body);
 
+  const mini = document.createElement('div');
+  mini.id = 'itube-mini';
+  const miniBar = document.createElement('div');
+  miniBar.className = 'mini-bar';
+  const miniPlay = document.createElement('button');
+  miniPlay.className = 'mini-play';
+  miniPlay.type = 'button';
+  miniPlay.appendChild(ICONS.pause());
+  const miniExpand = document.createElement('button');
+  miniExpand.className = 'mini-expand';
+  miniExpand.type = 'button';
+  miniExpand.appendChild(ICONS.expand());
+  const miniClose = document.createElement('button');
+  miniClose.className = 'mini-close';
+  miniClose.type = 'button';
+  miniClose.appendChild(ICONS.close());
+  miniBar.append(miniPlay, miniExpand, miniClose);
+  mini.appendChild(miniBar);
+  root.appendChild(mini);
+
+  let miniActive = false;
+  let miniVideoId = null;
+  let miniDismissed = false;
+  let miniVideoEl = null;
+
+  const syncMiniPlayIcon = () => {
+    miniPlay.replaceChildren(miniVideoEl && miniVideoEl.paused ? ICONS.play() : ICONS.pause());
+  };
+
+  const activateMini = (video, videoId) => {
+    if (miniVideoEl && miniVideoEl !== video) {
+      miniVideoEl.removeEventListener('play', syncMiniPlayIcon);
+      miniVideoEl.removeEventListener('pause', syncMiniPlayIcon);
+    }
+    miniVideoEl = video;
+    video.addEventListener('play', syncMiniPlayIcon);
+    video.addEventListener('pause', syncMiniPlayIcon);
+    if (video.parentElement !== mini) mini.insertBefore(video, mini.firstChild);
+    mini.style.display = 'block';
+    miniActive = true;
+    miniVideoId = videoId;
+    video.play().catch(() => {});
+    syncMiniPlayIcon();
+  };
+
+  const deactivateMini = () => {
+    miniActive = false;
+    mini.style.display = 'none';
+  };
+
+  const closeMini = () => {
+    if (miniVideoEl) {
+      miniVideoEl.pause();
+      const moviePlayer = player();
+      if (moviePlayer) moviePlayer.appendChild(miniVideoEl);
+    }
+    deactivateMini();
+    miniDismissed = true;
+  };
+
+  const expandMini = () => {
+    if (miniVideoId) watchNav(miniVideoId);
+  };
+
+  miniPlay.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!miniVideoEl) return;
+    if (miniVideoEl.paused) miniVideoEl.play().catch(() => {});
+    else miniVideoEl.pause();
+  });
+  miniExpand.addEventListener('click', (e) => {
+    e.stopPropagation();
+    expandMini();
+  });
+  miniClose.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeMini();
+  });
+
+  let miniDrag = null;
+  mini.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return;
+    const rect = mini.getBoundingClientRect();
+    miniDrag = { startX: e.clientX, startY: e.clientY, left: rect.left, top: rect.top, moved: false };
+    mini.setPointerCapture(e.pointerId);
+  });
+  mini.addEventListener('pointermove', (e) => {
+    if (!miniDrag) return;
+    const dx = e.clientX - miniDrag.startX;
+    const dy = e.clientY - miniDrag.startY;
+    if (!miniDrag.moved && Math.hypot(dx, dy) < 5) return;
+    miniDrag.moved = true;
+    const w = mini.offsetWidth;
+    const h = mini.offsetHeight;
+    let left = miniDrag.left + dx;
+    let top = miniDrag.top + dy;
+    left = Math.max(0, Math.min(window.innerWidth - w, left));
+    top = Math.max(0, Math.min(window.innerHeight - h, top));
+    mini.style.right = 'auto';
+    mini.style.bottom = 'auto';
+    mini.style.left = left + 'px';
+    mini.style.top = top + 'px';
+  });
+  const endMiniDrag = (e) => {
+    if (!miniDrag) return;
+    const moved = miniDrag.moved;
+    miniDrag = null;
+    if (!moved && !e.target.closest('button')) expandMini();
+  };
+  mini.addEventListener('pointerup', endMiniDrag);
+  mini.addEventListener('pointercancel', () => { miniDrag = null; });
+
   const mountRoot = () => {
     if (!document.body) { setTimeout(mountRoot, 0); return; }
     document.body.appendChild(root);
@@ -5547,7 +5717,7 @@
   };
 
   const adoptVideo = (stage) => {
-    const v = document.querySelector('#movie_player video');
+    const v = document.querySelector('#itube-stage video, #itube-mini video, #movie_player video');
     if (!v || v.parentElement === stage) return;
     stage.insertBefore(v, stage.firstChild);
   };
@@ -5792,6 +5962,7 @@
   };
 
   const mountWatch = () => {
+    if (miniActive) deactivateMini();
     const stage = el('div', 'itube-stage');
     const watch = document.createElement('div');
     watch.className = 'watch';
@@ -7302,6 +7473,7 @@
       if (vid) sbLoad(vid);
       if (vid && vid !== lastVideoId) {
         lastVideoId = vid;
+        miniDismissed = false;
         const saved = localStorage.getItem('itube-quality');
         if (saved && saved !== 'auto') p.setPlaybackQualityRange?.(saved, saved);
         populateQuality(p);
@@ -7571,8 +7743,14 @@
       const adopted = stage.querySelector('video');
       const moviePlayer = player();
       if (adopted) {
-        adopted.pause();
-        if (moviePlayer) moviePlayer.appendChild(adopted);
+        const vid = player()?.getVideoData?.()?.video_id;
+        const stillPlaying = !adopted.paused && !adopted.ended && adopted.currentTime > 0;
+        if (stillPlaying && !miniDismissed && vid && location.pathname !== '/watch') {
+          activateMini(adopted, vid);
+        } else {
+          adopted.pause();
+          if (moviePlayer) moviePlayer.appendChild(adopted);
+        }
       }
       releaseCaptions(stage);
       stopAmbient();

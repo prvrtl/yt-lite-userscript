@@ -56,6 +56,7 @@ const {
   checkSubscribeConfirmsOnPopup,
   checkItubeToggle,
   checkFeedFilter,
+  checkMiniPlayer,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -593,6 +594,25 @@ async function main() {
     table.push({ page: 'boost', check: 'functional', status, count: violations.length });
     console.log(`  volume boost: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=boost ${fmt(v)}`);
+  }
+
+  // The floating mini-player: leaving a playing watch page must keep the
+  // video decoding rather than pausing it, so it runs once, in its own
+  // context, navigating watch -> home -> watch -> home -> close.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- mini-player ---');
+    let violations;
+    try {
+      violations = await checkMiniPlayer(browser);
+    } catch (err) {
+      console.error(`  ERROR running the mini-player check: ${err.stack || err}`);
+      violations = [{ check: 'mini-player', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'miniplayer', check: 'functional', status, count: violations.length });
+    console.log(`  mini-player: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=miniplayer ${fmt(v)}`);
   }
 
   // The Tools row duplicates speed/quality/autoplay/sponsor-skip/boost as a
