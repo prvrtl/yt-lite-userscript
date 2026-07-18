@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.48.0
+// @version      4.49.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -238,18 +238,42 @@
     return { overlay, panel };
   };
 
-  const wirePopup = (overlay, panel, onClose) => {
+  const focusablesIn = (el) => Array.from(el.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+    .filter((n) => !n.disabled);
+
+  const wirePopup = (overlay, panel, onClose, triggerBtn) => {
     let closeTimer = null;
-    const showNow = () => requestAnimationFrame(() => overlay.classList.add('show'));
+    panel.tabIndex = -1;
+    const returnFocus = () => {
+      const wasInside = panel.contains(document.activeElement);
+      if (wasInside && triggerBtn) triggerBtn.focus();
+    };
+    const onTabTrap = (e) => {
+      if (e.key !== 'Tab') return;
+      const f = focusablesIn(panel);
+      if (!f.length) return;
+      const first = f[0];
+      const last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    const showNow = () => requestAnimationFrame(() => {
+      overlay.classList.add('show');
+      const f = focusablesIn(panel);
+      (f[0] || panel).focus();
+    });
     const onEsc = (e) => { if (e.key === 'Escape') close(); };
     const open = () => {
       clearTimeout(closeTimer);
+      panel.addEventListener('keydown', onTabTrap);
       if (supportsPopover) { try { overlay.showPopover(); } catch (e) {} }
       else { overlay.classList.add('open'); document.addEventListener('keydown', onEsc); }
       showNow();
     };
     const close = () => {
       overlay.classList.remove('show');
+      panel.removeEventListener('keydown', onTabTrap);
+      returnFocus();
       const finish = () => {
         if (supportsPopover) { try { overlay.hidePopover(); } catch (e) {} }
         else { overlay.classList.remove('open'); document.removeEventListener('keydown', onEsc); if (onClose) onClose(); }
@@ -265,6 +289,8 @@
       overlay.addEventListener('toggle', (e) => {
         if (e.newState === 'closed') {
           overlay.classList.remove('show');
+          panel.removeEventListener('keydown', onTabTrap);
+          returnFocus();
           if (onClose) onClose();
         }
       });
@@ -301,6 +327,17 @@
   };
 
   const CSS = `
+    #itube .itube-sr-live {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+      border: 0;
+    }
     #itube {
       position: fixed;
       inset: 0;
@@ -4355,6 +4392,16 @@
   const root = document.createElement('div');
   root.id = 'itube';
 
+  const liveRegion = document.createElement('div');
+  liveRegion.className = 'itube-sr-live';
+  liveRegion.setAttribute('role', 'status');
+  liveRegion.setAttribute('aria-live', 'polite');
+  root.appendChild(liveRegion);
+  const announce = (text) => {
+    liveRegion.textContent = '';
+    requestAnimationFrame(() => { liveRegion.textContent = text; });
+  };
+
   const ACCENT_PRESETS = [
     { name: 'Green', hex: '#3dff6e' },
     { name: 'Cyan', hex: '#29e0ff' },
@@ -4554,6 +4601,7 @@
 
   const acctMenu = document.createElement('div');
   acctMenu.className = 'acct-menu';
+  acctMenu.setAttribute('role', 'menu');
   const acctHead = document.createElement('div');
   acctHead.className = 'acct-head';
   const acctHeadImg = document.createElement('img');
@@ -4573,6 +4621,7 @@
   const makeItem = (label, href, blank) => {
     const a = document.createElement('a');
     a.className = 'acct-item';
+    a.setAttribute('role', 'menuitem');
     a.href = href;
     a.textContent = label;
     if (blank) { a.target = '_blank'; a.rel = 'noopener'; }
@@ -4599,12 +4648,15 @@
     if (left < 8) left = 8;
     acctMenu.style.left = left + 'px';
   };
+  const acctItems = () => Array.from(acctList.querySelectorAll('.acct-item'));
   const closeAcctMenu = () => {
     if (!acctOpen) return;
     acctOpen = false;
+    const wasInside = acctMenu.contains(document.activeElement);
     if (supportsPopover) { try { acctMenu.hidePopover(); } catch (e) {} }
     acctMenu.classList.remove('open');
     avatar.setAttribute('aria-expanded', 'false');
+    if (wasInside) avatar.focus();
   };
   const openAcctMenu = () => {
     if (acctOpen) return;
@@ -4613,16 +4665,31 @@
     acctMenu.classList.add('open');
     avatar.setAttribute('aria-expanded', 'true');
     if (!supportsAnchor) positionAcctMenu();
+    const items = acctItems();
+    if (items.length) items[0].focus();
   };
   avatar.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); acctOpen ? closeAcctMenu() : openAcctMenu(); });
   acctMenu.addEventListener('click', (e) => { e.stopPropagation(); });
+  acctMenu.addEventListener('keydown', (e) => {
+    const items = acctItems();
+    if (!items.length) return;
+    const idx = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length].focus(); }
+    else if (e.key === 'Home') { e.preventDefault(); items[0].focus(); }
+    else if (e.key === 'End') { e.preventDefault(); items[items.length - 1].focus(); }
+  });
   acctList.addEventListener('click', () => { closeAcctMenu(); });
   if (supportsPopover) {
     acctMenu.addEventListener('toggle', (e) => {
       acctOpen = e.newState === 'open';
       acctMenu.classList.toggle('open', acctOpen);
       avatar.setAttribute('aria-expanded', acctOpen ? 'true' : 'false');
-      if (acctOpen && !supportsAnchor) positionAcctMenu();
+      if (acctOpen) {
+        if (!supportsAnchor) positionAcctMenu();
+        const items = acctItems();
+        if (items.length) items[0].focus();
+      }
     });
   } else {
     document.addEventListener('click', () => { closeAcctMenu(); });
@@ -6666,6 +6733,7 @@
 
     const toolsRow = document.createElement('div');
     toolsRow.className = 'watch-tools';
+    toolsRow.inert = true;
     const toolBtn = (label) => {
       const b = document.createElement('button');
       b.type = 'button';
@@ -6731,15 +6799,18 @@
     const setToolsOpen = (open) => {
       toolsOpen = open;
       toolsRow.classList.toggle('open', open);
+      toolsRow.inert = !open;
       toolsBtn.classList.toggle('active', open);
       toolsBtn.setAttribute('aria-expanded', String(open));
       if (open) syncTools();
+      else if (toolsRow.contains(document.activeElement)) toolsBtn.focus();
     };
 
     let toolMenuSeq = 0;
     const createToolMenu = (btn) => {
       const menu = document.createElement('div');
       menu.className = 'tool-menu';
+      menu.setAttribute('role', 'menu');
       if (supportsPopover) menu.setAttribute('popover', 'auto');
       if (supportsAnchor) {
         const anchorName = '--itube-tool-anchor-' + (++toolMenuSeq);
@@ -6757,12 +6828,15 @@
         if (left < 8) left = 8;
         menu.style.left = left + 'px';
       };
+      const menuItems = () => Array.from(menu.querySelectorAll('.tool-menu-item'));
       const close = () => {
         if (!open) return;
         open = false;
+        const wasInside = menu.contains(document.activeElement);
         if (supportsPopover) { try { menu.hidePopover(); } catch (e) {} }
         menu.classList.remove('open');
         btn.setAttribute('aria-expanded', 'false');
+        if (wasInside) btn.focus();
       };
       const show = () => {
         if (open) return;
@@ -6771,14 +6845,30 @@
         menu.classList.add('open');
         btn.setAttribute('aria-expanded', 'true');
         if (!supportsAnchor) position();
+        const items = menuItems();
+        if (items.length) items[0].focus();
       };
       const onMenuClick = (e) => e.stopPropagation();
       menu.addEventListener('click', onMenuClick);
+      const onMenuKeydown = (e) => {
+        const items = menuItems();
+        if (!items.length) return;
+        const idx = items.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length].focus(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length].focus(); }
+        else if (e.key === 'Home') { e.preventDefault(); items[0].focus(); }
+        else if (e.key === 'End') { e.preventDefault(); items[items.length - 1].focus(); }
+      };
+      menu.addEventListener('keydown', onMenuKeydown);
       const onToggle = (e) => {
         open = e.newState === 'open';
         menu.classList.toggle('open', open);
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        if (open && !supportsAnchor) position();
+        if (open) {
+          if (!supportsAnchor) position();
+          const items = menuItems();
+          if (items.length) items[0].focus();
+        }
       };
       const onDocClick = (e) => {
         if (open && !menu.contains(e.target) && e.target !== btn) close();
@@ -6802,6 +6892,8 @@
             const row = document.createElement('button');
             row.type = 'button';
             row.className = 'tool-menu-item' + (it.active ? ' active' : '');
+            row.setAttribute('role', 'menuitemradio');
+            row.setAttribute('aria-checked', String(!!it.active));
             row.append(ICONS.check(), document.createTextNode(it.label));
             row.addEventListener('click', () => { it.onSelect(); close(); });
             menu.appendChild(row);
@@ -6810,6 +6902,7 @@
         destroy: () => {
           close();
           menu.removeEventListener('click', onMenuClick);
+          menu.removeEventListener('keydown', onMenuKeydown);
           menu.removeEventListener('toggle', onToggle);
           document.removeEventListener('click', onDocClick);
           document.removeEventListener('keydown', onDocKeydown);
@@ -7191,11 +7284,15 @@
     showMetaSkeleton();
 
     const descPopup = makePopup('desc-popup');
-    const descPopupWire = wirePopup(descPopup.overlay, descPopup.panel);
+    const descPopupWire = wirePopup(descPopup.overlay, descPopup.panel, null, descBtn);
+    descPopup.panel.setAttribute('role', 'dialog');
+    descPopup.panel.setAttribute('aria-modal', 'true');
+    descPopup.panel.setAttribute('aria-labelledby', 'itube-desc-popup-title');
     const descPopupHeader = document.createElement('div');
     descPopupHeader.className = 'popup-header';
     const descPopupTitle = document.createElement('div');
     descPopupTitle.className = 'popup-title';
+    descPopupTitle.id = 'itube-desc-popup-title';
     descPopupTitle.textContent = 'Description';
     const { btn: descPopupClose } = pillButton(ICONS.close, null, 'popup-close');
     descPopupClose.setAttribute('aria-label', 'Close');
@@ -7206,11 +7303,15 @@
     descPopupClose.addEventListener('click', () => descPopupWire.close());
 
     const transcriptPopup = makePopup('transcript-popup');
-    const transcriptPopupWire = wirePopup(transcriptPopup.overlay, transcriptPopup.panel, () => { transcriptExpanded = false; });
+    const transcriptPopupWire = wirePopup(transcriptPopup.overlay, transcriptPopup.panel, () => { transcriptExpanded = false; }, transcriptBtn);
+    transcriptPopup.panel.setAttribute('role', 'dialog');
+    transcriptPopup.panel.setAttribute('aria-modal', 'true');
+    transcriptPopup.panel.setAttribute('aria-labelledby', 'itube-transcript-popup-title');
     const transcriptPopupHeader = document.createElement('div');
     transcriptPopupHeader.className = 'popup-header';
     const transcriptPopupTitle = document.createElement('div');
     transcriptPopupTitle.className = 'popup-title';
+    transcriptPopupTitle.id = 'itube-transcript-popup-title';
     transcriptPopupTitle.textContent = 'Transcript';
     const transcriptStatus = document.createElement('div');
     transcriptStatus.className = 'transcript-status';
@@ -7242,22 +7343,45 @@
 
     const railTabs = document.createElement('div');
     railTabs.className = 'rail-tabs';
+    railTabs.setAttribute('role', 'tablist');
     const { btn: tabUpNext } = pillButton(null, 'Up next', 'rail-tab');
     const { btn: tabComments, label: tabCommentsLabel } = pillButton(null, 'Comments', 'rail-tab');
     const commentsCount = document.createElement('span');
     commentsCount.className = 'comments-count';
     tabComments.appendChild(commentsCount);
     tabUpNext.classList.add('active');
+    tabUpNext.id = 'itube-rail-tab-upnext';
+    tabComments.id = 'itube-rail-tab-comments';
+    tabUpNext.setAttribute('role', 'tab');
+    tabComments.setAttribute('role', 'tab');
+    tabUpNext.setAttribute('aria-selected', 'true');
+    tabComments.setAttribute('aria-selected', 'false');
+    tabUpNext.setAttribute('aria-controls', 'itube-rail-panel-upnext');
+    tabComments.setAttribute('aria-controls', 'itube-rail-panel-comments');
     railTabs.append(tabUpNext, tabComments);
+    railTabs.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      const goTo = e.key === 'ArrowRight' ? 'comments' : 'upnext';
+      if (goTo === 'comments' && tabComments.disabled) return;
+      (goTo === 'upnext' ? tabUpNext : tabComments).focus();
+      setRailTab(goTo);
+    });
 
     const upNextPanel = document.createElement('div');
     upNextPanel.className = 'rail-panel up-next-panel';
+    upNextPanel.id = 'itube-rail-panel-upnext';
+    upNextPanel.setAttribute('role', 'tabpanel');
+    upNextPanel.setAttribute('aria-labelledby', 'itube-rail-tab-upnext');
     upNextPanel.append(queueWrap, relatedWrap);
 
     const commentsSort = document.createElement('div');
     commentsSort.className = 'comments-sort';
     const commentsPanel = document.createElement('div');
     commentsPanel.className = 'comments rail-panel';
+    commentsPanel.id = 'itube-rail-panel-comments';
+    commentsPanel.setAttribute('role', 'tabpanel');
+    commentsPanel.setAttribute('aria-labelledby', 'itube-rail-tab-comments');
     commentsPanel.style.display = 'none';
     const commentsList = document.createElement('div');
     commentsList.className = 'comments-list';
@@ -7274,8 +7398,12 @@
       if (tab === 'comments' && tabComments.disabled) return;
       tabUpNext.classList.toggle('active', tab === 'upnext');
       tabComments.classList.toggle('active', tab === 'comments');
+      tabUpNext.setAttribute('aria-selected', String(tab === 'upnext'));
+      tabComments.setAttribute('aria-selected', String(tab === 'comments'));
       upNextPanel.style.display = tab === 'upnext' ? '' : 'none';
       commentsPanel.style.display = tab === 'comments' ? '' : 'none';
+      upNextPanel.setAttribute('aria-hidden', String(tab !== 'upnext'));
+      commentsPanel.setAttribute('aria-hidden', String(tab !== 'comments'));
       if (tab === 'comments' && !commentsFetched && commentsToken) {
         commentsFetched = true;
         fetchComments(true);
@@ -7854,6 +7982,7 @@
       sortOptions.forEach((opt, i) => {
         const { btn } = pillButton(null, opt.label, 'comments-sort-btn');
         btn.classList.toggle('active', i === activeSortIndex);
+        btn.setAttribute('aria-pressed', String(i === activeSortIndex));
         btn.addEventListener('click', () => {
           if (i === activeSortIndex || commentsLoading) return;
           activeSortIndex = i;
@@ -8188,6 +8317,7 @@
       ui.cue.classList.add('show');
       clearTimeout(osdTimer);
       osdTimer = setTimeout(() => ui.cue.classList.remove('show'), 700);
+      announce(label);
     };
 
     let clickTimer = null;
@@ -8621,7 +8751,24 @@
       'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
       '0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
 
+    const closeTopOverlay = () => {
+      if (descPopup.overlay.classList.contains('show')) { descPopupWire.close(); return true; }
+      if (transcriptPopup.overlay.classList.contains('show')) { transcriptPopupWire.close(); return true; }
+      if (qualityMenu.isOpen()) { qualityMenu.close(); return true; }
+      if (speedMenu.isOpen()) { speedMenu.close(); return true; }
+      if (acctOpen) { closeAcctMenu(); return true; }
+      if (settingsOverlay.classList.contains('open')) { closeSettings(); return true; }
+      if (cmdkOverlay.classList.contains('open')) { closeCmdk(); return true; }
+      if (toolsOpen) { setToolsOpen(false); return true; }
+      if (theaterOn) { applyTheater(false); return true; }
+      return false;
+    };
+
     const onKeydown = (e) => {
+      if (e.key === 'Escape' && closeTopOverlay()) {
+        e.stopImmediatePropagation();
+        return;
+      }
       const target = e.target;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable || (target.tagName === 'BUTTON' && !target.closest('#itube-bar')))) return;
       const video = wired;
@@ -8732,8 +8879,6 @@
           search.focus();
           break;
         case 'Escape':
-          if (toolsOpen) setToolsOpen(false);
-          else if (theaterOn) applyTheater(false);
           break;
         default:
           break;

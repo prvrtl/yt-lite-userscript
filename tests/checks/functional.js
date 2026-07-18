@@ -3,7 +3,8 @@
 // about state (e.g. "liked" when the like call actually failed).
 'use strict';
 
-const { waitForApp, openPage, newContext } = require('../lib/harness');
+const fs = require('fs');
+const { waitForApp, openPage, newContext, SCRIPT_PATH, CONSENT_COOKIES } = require('../lib/harness');
 
 // A known multi-audio-track video (dubbed languages + original). This is the
 // only page in the suite that needs a SPECIFIC video rather than any watch
@@ -635,9 +636,28 @@ async function playbackProbe(page, windowMs = PLAY_WINDOW_MS) {
     const v = document.querySelector('#itube-stage video');
     return v && v.readyState >= 2;
   }, { timeout: 15000 }).catch(() => {});
-  const before = await read();
-  await page.waitForTimeout(windowMs);
-  const after = await read();
+
+  // Up to 3 sampling windows, mirroring the retry loop runWatchFunctional's
+  // own autoplay check already uses: an ad/source swap resets currentTime to
+  // ~0 mid-probe (a preroll or mid-roll swapping into the same <video>),
+  // which a single before/after sample can't tell apart from a real stall —
+  // the exact flake observed under full-suite load. A currentTime DECREASE
+  // between windows is treated as a source swap and resampled from the new
+  // baseline, not failed; a genuine stall (flat, or advancing under the
+  // PLAY_MIN_ADVANCE floor) still exhausts the retries and fails below.
+  let before = await read();
+  let after = before;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.waitForTimeout(windowMs);
+    after = await read();
+    const droppedBack = before.currentTime != null && after.currentTime != null && after.currentTime < before.currentTime;
+    if (droppedBack && attempt < 2) {
+      before = after;
+      continue;
+    }
+    break;
+  }
+
   const advanced = !!before.video && !!after.video
     && after.currentTime > before.currentTime + PLAY_MIN_ADVANCE;
   return {
@@ -2688,7 +2708,11 @@ async function checkSponsorBlock(browser) {
       const v = document.querySelector('#itube-stage video');
       return v && isFinite(v.duration) && v.duration > 0;
     }, { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(1000);
+    // The marker paints once the segment fetch resolves AND the duration is
+    // known, which raced a flat 1s sleep under full-suite load — poll for it
+    // instead of sampling once on a fixed clock; a genuinely-absent marker
+    // still exhausts the timeout and fails below exactly as before.
+    await page.waitForFunction(() => !!document.querySelector('.itube-sb-marker'), { timeout: 6000 }).catch(() => {});
 
     const hasMarker = await page.evaluate(() => !!document.querySelector('.itube-sb-marker'));
     if (!hasMarker) {
@@ -3494,12 +3518,20 @@ async function checkPlaybackSpeed(browser) {
 
 // The transcript panel is pre-fetched in renderWatchFor and stays hidden
 // entirely when a video has no transcript, so a missing panel here is an
-// expected live-site condition, not a bug — SKIP rather than FAIL. This
-// proves the panel expands to real lines, that the search box actually
-// filters by text (not just cosmetically), and that clicking a line drives
-// the REAL player's currentTime rather than just highlighting itself.
+// expected live-site condition, not a bug — SKIP rather than FAIL. Both SKIP
+// paths return { violations: [], skipped: true } rather than a bare empty
+// array: a bare empty array reads identically to a full PASS at the run.js
+// call site (status = violations.length === 0 ? 'PASS' : 'FAIL'), which
+// silently launders "the Transcript pill never appeared at all" into a green
+// row indistinguishable from "the transcript rendered and every assertion
+// held" — exactly the kind of regression (pill wiring broken) this check
+// exists to catch. This proves the panel expands to real lines, that the
+// search box actually filters by text (not just cosmetically), and that
+// clicking a line drives the REAL player's currentTime rather than just
+// highlighting itself.
 async function checkTranscript(browser) {
   const violations = [];
+  let renderedLineCount = 0;
   const context = await newContext(browser);
   const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
   try {
@@ -3512,21 +3544,24 @@ async function checkTranscript(browser) {
     // checkTranscriptLazy).
     const pill = await page.waitForSelector('.watch-action-btn[aria-label="Transcript"]', { timeout: 10000 }).catch(() => null);
     if (!pill) {
-      console.log('  transcript: SKIP — no Transcript pill appeared within 10s (this video may have no caption tracks)');
-      return violations;
+      const detail = 'no Transcript pill appeared within 10s (this video may have no caption tracks)';
+      console.log(`  transcript: SKIP — ${detail}`);
+      return { violations, skipped: true, detail };
     }
     await pill.click();
     await page.waitForSelector('.transcript-popup.show', { timeout: 5000 }).catch(() => {});
     await page.waitForSelector('.transcript-line', { timeout: 10000 }).catch(() => {});
     const lineCount = await page.evaluate(() => document.querySelectorAll('.transcript-line').length);
     if (lineCount === 0) {
-      console.log('  transcript: SKIP — no .transcript-line rows appeared after expanding (this video may have returned an empty caption body on the sandbox)');
-      return violations;
+      const detail = 'no .transcript-line rows appeared after expanding (this video may have returned an empty caption body on the sandbox)';
+      console.log(`  transcript: SKIP — ${detail}`);
+      return { violations, skipped: true, detail };
     }
     const lines = await page.evaluate(() => [...document.querySelectorAll('.transcript-line')].map((l) => ({
       time: l.querySelector('.transcript-time')?.textContent || '',
       text: l.querySelector('.transcript-text')?.textContent || '',
     })));
+    renderedLineCount = lines.length;
     if (lines.length < 3 || lines.some((l) => !l.text.trim() || !l.time.trim())) {
       violations.push({ check: 'transcript-renders', detail: `expected several .transcript-line entries with non-empty time+text, got ${JSON.stringify(lines.slice(0, 3))}` });
     }
@@ -3560,7 +3595,7 @@ async function checkTranscript(browser) {
     await page.close();
     await context.close();
   }
-  return violations;
+  return { violations, skipped: false, detail: `${renderedLineCount} transcript line(s) rendered` };
 }
 
 // v4.45 regression guard: a caption track can exist in the player response's
@@ -3783,6 +3818,176 @@ async function checkToolsRow(browser) {
     }
   } finally {
     await page.evaluate(() => { try { localStorage.removeItem('itube-speed'); } catch (e) {} }).catch(() => {});
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// A11y audit fix: the collapsed Tools tray used to hide via max-height:0 /
+// opacity:0 / overflow:hidden while every .watch-tool button underneath
+// stayed a real tab stop — 9 invisible tab stops plus AT noise for anyone
+// tabbing past the Tools pill. setToolsOpen now toggles `inert` on
+// .watch-tools alongside the .open class, so the collapsed tray must be
+// unreachable by Tab/AT and the open tray must be reachable again.
+async function checkA11yTabStops(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.waitForFunction(() => document.querySelectorAll('#itube .watch-tools .watch-tool').length > 0, { timeout: 15000 }).catch(() => {});
+
+    const collapsed = await page.evaluate(() => {
+      const row = document.querySelector('#itube .watch-tools');
+      const tools = [...document.querySelectorAll('#itube .watch-tools .watch-tool')];
+      return {
+        rowInert: row ? row.inert : null,
+        toolCount: tools.length,
+        anyFocusable: tools.some((b) => b.offsetParent !== null && !b.closest('[inert]')),
+      };
+    });
+    if (collapsed.rowInert !== true) {
+      violations.push({ check: 'tools-tray-collapsed-inert', detail: `expected .watch-tools to be inert while collapsed, got inert=${collapsed.rowInert}` });
+    }
+    if (!collapsed.toolCount) {
+      violations.push({ check: 'tools-tray-collapsed-setup', detail: 'expected .watch-tool buttons to exist inside the tray' });
+    } else if (collapsed.anyFocusable) {
+      violations.push({ check: 'tools-tray-collapsed-not-focusable', detail: 'expected every .watch-tool button to be excluded from the tab order while the tray is collapsed' });
+    }
+
+    const opened = await page.evaluate(async () => {
+      const toolsBtn = Array.from(document.querySelectorAll('#itube .watch-actions .watch-action-btn'))
+        .find((b) => b.textContent.includes('Tools'));
+      toolsBtn.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const row = document.querySelector('#itube .watch-tools');
+      const tools = [...document.querySelectorAll('#itube .watch-tools .watch-tool')];
+      return { rowInert: row.inert, allFocusable: tools.every((b) => !b.closest('[inert]')) };
+    });
+    if (opened.rowInert !== false) {
+      violations.push({ check: 'tools-tray-open-not-inert', detail: `expected .watch-tools to drop inert once opened, got inert=${opened.rowInert}` });
+    }
+    if (!opened.allFocusable) {
+      violations.push({ check: 'tools-tray-open-focusable', detail: 'expected every .watch-tool button to be reachable again once the tray is open' });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// A11y audit fix: the Description/Transcript popups now expose dialog
+// semantics (role=dialog, aria-modal, aria-labelledby pointing at the
+// .popup-title) and move focus into the panel on open, returning it to the
+// triggering pill on close — including Escape, which used to be swallowed by
+// the player's capture-phase keydown handler before it ever reached the
+// popup's own bubble-phase listener (see the onKeydown centralization in
+// itube.user.js).
+async function checkPopupDialogSemantics(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.watch-action-btn[aria-label="Description"]', { timeout: 15000 }).catch(() => {});
+
+    await page.click('.watch-action-btn[aria-label="Description"]');
+    await page.waitForTimeout(250);
+
+    const shape = await page.evaluate(() => {
+      const panel = document.querySelector('.desc-popup .itube-popup-panel');
+      const title = document.getElementById(panel?.getAttribute('aria-labelledby'));
+      const active = document.activeElement;
+      return {
+        role: panel?.getAttribute('role'),
+        ariaModal: panel?.getAttribute('aria-modal'),
+        titleText: title?.textContent || null,
+        focusInsidePanel: !!panel && panel.contains(active),
+      };
+    });
+    if (shape.role !== 'dialog' || shape.ariaModal !== 'true') {
+      violations.push({ check: 'desc-popup-dialog-role', detail: `expected .desc-popup panel to have role=dialog aria-modal=true, got role=${shape.role} aria-modal=${shape.ariaModal}` });
+    }
+    if (shape.titleText !== 'Description') {
+      violations.push({ check: 'desc-popup-labelledby', detail: `expected aria-labelledby to resolve to the "Description" title, got ${JSON.stringify(shape.titleText)}` });
+    }
+    if (!shape.focusInsidePanel) {
+      violations.push({ check: 'desc-popup-focus-on-open', detail: 'expected focus to move inside the Description panel on open' });
+    }
+
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(250);
+    const afterEscape = await page.evaluate(() => ({
+      open: document.querySelector('.desc-popup')?.classList.contains('show'),
+      focusedIsDescPill: document.activeElement?.getAttribute('aria-label') === 'Description',
+    }));
+    if (afterEscape.open) {
+      violations.push({ check: 'desc-popup-escape-closes', detail: 'expected Escape to close the Description popup even with the player keydown handler bound' });
+    }
+    if (!afterEscape.focusedIsDescPill) {
+      violations.push({ check: 'desc-popup-escape-returns-focus', detail: 'expected Escape to return focus to the Description pill after closing the popup' });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// A11y audit fix: the Up next/Comments rail tabs now expose proper tab
+// semantics (role=tablist/tab, aria-selected flipping on activation) instead
+// of relying on a bare .active class the accessibility tree never saw.
+async function checkRailTabAria(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.rail-tab', { timeout: 15000 }).catch(() => {});
+
+    const initial = await page.evaluate(() => {
+      const tablist = document.querySelector('.rail-tabs');
+      const tabs = [...document.querySelectorAll('.rail-tab')];
+      const upNext = tabs.find((t) => /Up next/.test(t.textContent));
+      const comments = tabs.find((t) => /Comments/.test(t.textContent));
+      return {
+        tablistRole: tablist?.getAttribute('role'),
+        tabRoles: tabs.map((t) => t.getAttribute('role')),
+        upNextSelected: upNext?.getAttribute('aria-selected'),
+        commentsSelected: comments?.getAttribute('aria-selected'),
+        commentsDisabled: comments?.disabled,
+      };
+    });
+    if (initial.tablistRole !== 'tablist') {
+      violations.push({ check: 'rail-tablist-role', detail: `expected .rail-tabs to have role=tablist, got ${initial.tablistRole}` });
+    }
+    if (initial.tabRoles.some((r) => r !== 'tab')) {
+      violations.push({ check: 'rail-tab-role', detail: `expected every .rail-tab to have role=tab, got ${JSON.stringify(initial.tabRoles)}` });
+    }
+    if (initial.upNextSelected !== 'true' || initial.commentsSelected !== 'false') {
+      violations.push({ check: 'rail-tab-initial-selected', detail: `expected Up next selected and Comments not, got upNext=${initial.upNextSelected} comments=${initial.commentsSelected}` });
+    }
+
+    if (!initial.commentsDisabled) {
+      await page.click('.rail-tab:has-text("Comments")');
+      await page.waitForTimeout(200);
+      const after = await page.evaluate(() => {
+        const tabs = [...document.querySelectorAll('.rail-tab')];
+        const upNext = tabs.find((t) => /Up next/.test(t.textContent));
+        const comments = tabs.find((t) => /Comments/.test(t.textContent));
+        return { upNextSelected: upNext?.getAttribute('aria-selected'), commentsSelected: comments?.getAttribute('aria-selected') };
+      });
+      if (after.upNextSelected !== 'false' || after.commentsSelected !== 'true') {
+        violations.push({ check: 'rail-tab-selected-flips', detail: `expected aria-selected to flip to Comments after activating it, got upNext=${after.upNextSelected} comments=${after.commentsSelected}` });
+      }
+    } else {
+      console.log('  rail-tab-aria: note — Comments tab disabled (no comments token) on this video, skipping the activation assertion');
+    }
+  } finally {
     await page.close();
     await context.close();
   }
@@ -4256,7 +4461,10 @@ async function checkSearchNoRefetch(browser) {
 // flaky against the live site — this instead watches loadTranscript()'s own
 // "Loading transcript…" state to prove OUR fetch didn't start early, then
 // proves the click produces a real attempt (rows or the tolerated
-// empty/unavailable state).
+// empty/unavailable state). Both SKIP paths below return
+// { violations: [], skipped: true } rather than a bare empty array — see
+// checkTranscript's comment for why a bare array here would launder a dead
+// pill/fetch into an indistinguishable PASS at the run.js call site.
 async function checkTranscriptLazy(browser) {
   const violations = [];
   const context = await newContext(browser);
@@ -4270,8 +4478,9 @@ async function checkTranscriptLazy(browser) {
     await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
     const pill = await page.waitForSelector('.watch-action-btn[aria-label="Transcript"]', { timeout: 10000 }).catch(() => null);
     if (!pill) {
-      console.log('  transcript-lazy: SKIP — no Transcript pill appeared within 10s (this video may have no caption tracks)');
-      return violations;
+      const detail = 'no Transcript pill appeared within 10s (this video may have no caption tracks)';
+      console.log(`  transcript-lazy: SKIP — ${detail}`);
+      return { violations, skipped: true, detail };
     }
     await page.waitForTimeout(1000);
     // YouTube's own (parked, headless) player independently prefetches an
@@ -4293,14 +4502,168 @@ async function checkTranscriptLazy(browser) {
     const lineCount = await page.evaluate(() => document.querySelectorAll('.transcript-line').length);
     const label = await page.evaluate(() => document.querySelector('.transcript-status')?.textContent || '');
     if (lineCount === 0 && !/unavailable/i.test(label)) {
-      console.log(`  transcript-lazy: SKIP — no rows rendered and no "unavailable" status after opening (status="${label}", possibly an empty caption body on the sandbox)`);
-      return violations;
+      const detail = `no rows rendered and no "unavailable" status after opening (status="${label}", possibly an empty caption body on the sandbox)`;
+      console.log(`  transcript-lazy: SKIP — ${detail}`);
+      return { violations, skipped: true, detail };
     }
   } finally {
     await page.close();
     await context.close();
   }
-  return violations;
+  return { violations, skipped: false, detail: '' };
+}
+
+// updateMediaSessionMetadata() is the ONLY thing wiring lock-screen/media-key
+// integration (title, artist, artwork, and — via syncMediaSessionQueueActions
+// — the previous/next-track handlers a headless test can't read back
+// directly). A watchNav/wired refactor that stops calling it would leave the
+// OS media controls silently blank or stale while everything on-screen still
+// looks fine, so this asserts the metadata it actually sets: a non-empty
+// title matching the rendered watch title, an artist matching the channel
+// name, and at least one artwork entry — the three fields a broken wiring
+// would leave empty/stale even though the action-handler wiring itself
+// (setActionHandler) has no readable state to assert directly. SKIPs cleanly
+// if the MediaSession API isn't available in this headless browser at all,
+// rather than failing on an environment limitation.
+async function checkMediaSession(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+
+    const hasMediaSession = await page.evaluate(() => 'mediaSession' in navigator);
+    if (!hasMediaSession) {
+      const detail = 'navigator.mediaSession is unavailable in this headless browser — nothing to assert';
+      console.log(`  mediasession: SKIP — ${detail}`);
+      return { violations, skipped: true, detail };
+    }
+
+    // The video is muted+autoplaying already (see runWatchFunctional); give
+    // updateMediaSessionMetadata() — called from renderMeta() — a moment to
+    // have run rather than racing the very first render.
+    await page.waitForFunction(() => !!navigator.mediaSession.metadata, { timeout: 10000 }).catch(() => {});
+
+    const state = await page.evaluate(() => {
+      const md = navigator.mediaSession.metadata;
+      return {
+        hasMetadata: !!md,
+        title: md?.title || '',
+        artist: md?.artist || '',
+        artworkLength: md?.artwork?.length ?? 0,
+        renderedTitle: document.querySelector('.watch-title')?.textContent?.trim() || '',
+        renderedChannelName: document.querySelector('.watch-channel-name')?.textContent?.trim() || '',
+      };
+    });
+
+    if (!state.hasMetadata) {
+      violations.push({ check: 'mediasession-metadata-set', detail: 'expected navigator.mediaSession.metadata to be set once the watch page has rendered, got null' });
+      return { violations, skipped: false, detail: '' };
+    }
+    if (!state.title || state.title !== state.renderedTitle) {
+      violations.push({ check: 'mediasession-title', detail: `expected metadata.title ("${state.title}") to match the rendered watch title ("${state.renderedTitle}")` });
+    }
+    if (!state.artist || state.artist !== state.renderedChannelName) {
+      violations.push({ check: 'mediasession-artist', detail: `expected metadata.artist ("${state.artist}") to match the rendered channel name ("${state.renderedChannelName}")` });
+    }
+    if (state.artworkLength === 0) {
+      violations.push({ check: 'mediasession-artwork', detail: 'expected metadata.artwork to contain at least one entry, got 0' });
+    }
+    return { violations, skipped: false, detail: `title="${state.title}" artist="${state.artist}" artwork=${state.artworkLength}` };
+  } finally {
+    await page.close();
+    await context.close();
+  }
+}
+
+// itube-autoplay is read once, synchronously, at document-start
+// (`let autoplayEnabled = lsGet('itube-autoplay') !== '0'`) — it can't be
+// toggled after the app has already mounted, so unlike every other context
+// in this file (built via the shared newContext(), which adds the userscript
+// FIRST) this seeds the pref into localStorage in its own addInitScript,
+// added BEFORE the userscript's, so the value already exists the instant the
+// app's own init script runs and reads it.
+async function newAutoplayContext(browser, autoplayOn) {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await context.addCookies(CONSENT_COOKIES);
+  await context.addInitScript((on) => {
+    try { localStorage.setItem('itube-autoplay', on ? '1' : '0'); } catch (e) {}
+  }, autoplayOn);
+  const scriptSource = fs.readFileSync(SCRIPT_PATH, 'utf8');
+  await context.addInitScript({ content: scriptSource });
+  return context;
+}
+
+// The ads check (checkAdStateMachine/checkVideoAds) deliberately DISABLES
+// autoplay to keep it from interfering with ad-skip assertions — which means
+// nothing else in the suite actually proves the feature works. Autoplay is
+// driven by a single 'ended' listener on the singleton <video> (see
+// itube.user.js's ended handler: it resolves a next id from the current
+// playlist, or firstRelatedId, and calls watchNav()). Waiting for a real
+// video to play to completion would make this check as long as the video
+// itself, so instead the <video>'s native 'ended' event is dispatched
+// directly — that drives the exact same listener a natural end-of-playback
+// would, deterministically and instantly. Runs twice in two fresh contexts
+// (the pref can't be flipped after mount, per above): once with autoplay ON,
+// asserting the URL's v= changes to a different video; once OFF, asserting
+// it does NOT. SKIPs if this fixture has no related video to resolve to —
+// nothing to advance to, not a regression.
+async function checkAutoplayNext(browser) {
+  const violations = [];
+  const url = 'https://www.youtube.com/watch?v=aircAruvnKk';
+
+  const dispatchEndedAndRead = async (page) => {
+    const before = await page.evaluate(() => location.search);
+    await page.evaluate(() => {
+      const v = document.querySelector('#itube-stage video');
+      if (v) v.dispatchEvent(new Event('ended'));
+    });
+    let changed = true;
+    await page.waitForFunction((prev) => location.search !== prev, before, { timeout: 6000 }).catch(() => { changed = false; });
+    const after = await page.evaluate(() => location.search);
+    return { before, after, changed };
+  };
+
+  // --- autoplay ON: ending the video must advance to a next video ---
+  {
+    const context = await newAutoplayContext(browser, true);
+    try {
+      const { page } = await openPage(context, url);
+      await waitForApp(page, { timeout: 30000 }).catch(() => {});
+      await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+      const hasRelated = await page.waitForSelector('.rc', { timeout: 10000 }).then(() => true).catch(() => false);
+      if (!hasRelated) {
+        const detail = 'no .rc related video found on the fixture watch page — no next video to resolve to';
+        console.log(`  autoplaynext: SKIP — ${detail}`);
+        return { violations, skipped: true, detail };
+      }
+      const { before, after, changed } = await dispatchEndedAndRead(page);
+      if (!changed || after === before) {
+        violations.push({ check: 'autoplay-next-advances', detail: `expected location.search (v=) to change within 6s of the video ending with autoplay ON, stayed at "${before}"` });
+      }
+    } finally {
+      await context.close();
+    }
+  }
+
+  // --- autoplay OFF: ending the video must NOT advance ---
+  {
+    const context = await newAutoplayContext(browser, false);
+    try {
+      const { page } = await openPage(context, url);
+      await waitForApp(page, { timeout: 30000 }).catch(() => {});
+      await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+      const { before, after } = await dispatchEndedAndRead(page);
+      if (after !== before) {
+        violations.push({ check: 'autoplay-next-off-stays', detail: `expected location.search (v=) to stay at "${before}" with autoplay OFF (ending the video must not advance), changed to "${after}"` });
+      }
+    } finally {
+      await context.close();
+    }
+  }
+
+  return { violations, skipped: false, detail: '' };
 }
 
 // getThumb used to always pick the largest thumbnail source regardless of
@@ -4455,6 +4818,30 @@ async function checkMiniListenerLeak(browser) {
 // tab, since the logged-out home/history feeds have no cards to click) — and
 // asserts the skeleton nodes exist synchronously right after the click, then
 // disappear once the real content (or an empty/sign-in state) lands.
+// Arms a MutationObserver-based latch BEFORE the caller clicks, so a skeleton
+// that appears and clears within a window shorter than one synchronous
+// page.evaluate() round trip (exactly the flake seen under full-suite load:
+// the DOM sample below landed a moment after the skeleton had already been
+// replaced by real content) still gets caught — mirrors the sawSkeleton latch
+// checkWatchLoadSkeleton already uses for the watch-meta skeleton, applied
+// here to the grid/related-rail skeleton selector instead of a one-shot
+// synchronous sample right after the click.
+function armSkeletonLatch(page, selector) {
+  return page.evaluate((sel) => {
+    window.__skeletonLatch = new Promise((resolve) => {
+      let saw = document.querySelectorAll(sel).length > 0;
+      const mo = new MutationObserver(() => {
+        if (document.querySelectorAll(sel).length > 0) saw = true;
+      });
+      mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+      setTimeout(() => {
+        mo.disconnect();
+        resolve(saw);
+      }, 4000);
+    });
+  }, selector);
+}
+
 async function checkListSkeleton(page) {
   const violations = [];
 
@@ -4463,8 +4850,9 @@ async function checkListSkeleton(page) {
     violations.push({ check: 'list-skeleton-precondition', detail: 'expected .nav-row[href="/feed/history"] sidebar link to exist' });
     return violations;
   }
+  await armSkeletonLatch(page, '.c-skel');
   await feedLink.click();
-  const sawGridSkeleton = await page.evaluate(() => document.querySelectorAll('.c-skel').length > 0);
+  const sawGridSkeleton = await page.evaluate(() => window.__skeletonLatch);
   if (!sawGridSkeleton) {
     violations.push({ check: 'list-skeleton-appears', detail: 'expected .c-skel skeleton cards to be present in the grid synchronously right after an SPA feed navigation, before data arrived' });
   }
@@ -4486,12 +4874,13 @@ async function checkListSkeleton(page) {
     violations.push({ check: 'related-skeleton-precondition', detail: 'expected at least one .c card on a channel Videos tab to click into a watch page' });
     return violations;
   }
+  await armSkeletonLatch(page, '.rc-skel');
   const clicked = await clickCardPart(page, card, '.c-title');
   if (!clicked) {
     violations.push({ check: 'related-skeleton-precondition', detail: 'the first .c channel card has no layout box to click' });
     return violations;
   }
-  const sawRelatedSkeleton = await page.evaluate(() => document.querySelectorAll('.rc-skel').length > 0);
+  const sawRelatedSkeleton = await page.evaluate(() => window.__skeletonLatch);
   if (!sawRelatedSkeleton) {
     violations.push({ check: 'related-skeleton-appears', detail: 'expected .rc-skel skeleton rows in the related rail synchronously right after an SPA navigation into a watch page, before data arrived' });
   }
@@ -4751,6 +5140,9 @@ module.exports = {
   checkTranscriptProvedUnavailable,
   checkVolumeBoost,
   checkToolsRow,
+  checkA11yTabStops,
+  checkPopupDialogSemantics,
+  checkRailTabAria,
   checkAudioOnly,
   checkAccountMenu,
   checkSettings,
@@ -4803,4 +5195,6 @@ module.exports = {
   checkListSkeleton,
   checkFlyOffscreenGuard,
   checkBackForwardCache,
+  checkMediaSession,
+  checkAutoplayNext,
 };

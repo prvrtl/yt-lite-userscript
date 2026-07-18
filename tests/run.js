@@ -52,6 +52,9 @@ const {
   checkTranscriptProvedUnavailable,
   checkVolumeBoost,
   checkToolsRow,
+  checkA11yTabStops,
+  checkPopupDialogSemantics,
+  checkRailTabAria,
   checkAudioOnly,
   checkAccountMenu,
   checkSettings,
@@ -73,6 +76,8 @@ const {
   checkListSkeleton,
   checkFlyOffscreenGuard,
   checkBackForwardCache,
+  checkMediaSession,
+  checkAutoplayNext,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -126,6 +131,122 @@ function parseArgs(argv) {
 
 function fmt(v) {
   return `check=${v.check} ${v.detail}`;
+}
+
+// The run-once feature checks below (as opposed to the per-page layout/
+// snapshot/functional/etc. checks in runPageChecks) each want their own
+// fresh browser context rather than sharing one of the five PAGES' contexts,
+// so historically each was its own hand-rolled `if (!args.page && (!args.check
+// || args.check === 'functional')) { ... }` block in main() — ~15 lines of
+// copy-pasted try/catch/status/table/console boilerplate per check, and with
+// no way to select just one of them (every subname besides 'functional'
+// itself matched nothing, in either this dispatch or the per-page one).
+// FUNCTIONAL_ENTRIES is that dispatch as data: `subname` is what
+// `--check=<subname>` selects (stable — external docs/muscle-memory may
+// already reference these), `page`/`check` are the SUMMARY table's row
+// identifiers (also kept stable), `errCheck` is the violation `check` name
+// used when the function itself throws, and `run` is the check invocation
+// (closing over whatever extra fixture id/constant it needs). `arg` picks
+// whether `run` receives the shared per-run `browser` or `context`.
+const FUNCTIONAL_ENTRIES = [
+  { subname: 'shorts', label: `shorts (https://www.youtube.com/shorts/${SHORTS_REDIRECT_ID})`, page: 'shorts', check: 'functional', errCheck: 'shorts-redirect', arg: 'context', run: (context) => checkShortsRedirect(context, SHORTS_REDIRECT_ID) },
+  { subname: 'audiotrack', label: `audio track selector (https://www.youtube.com/watch?v=${MULTI_AUDIO_VIDEO_ID})`, page: 'audiotrack', check: 'functional', errCheck: 'audio-track-selector', arg: 'browser', run: (browser) => checkAudioTrackSelector(browser) },
+  {
+    subname: 'thumbfly',
+    label: 'thumbnail fly-in animation',
+    page: 'thumbfly',
+    check: 'functional',
+    errCheck: 'thumb-fly-animation',
+    arg: 'browser',
+    // Unlike the rest of the table, this needs its own fresh watch page (not
+    // just a fresh context) before the checked function runs.
+    run: async (browser) => {
+      const context = await newContext(browser);
+      try {
+        const { page } = await openPage(context, PAGES.watch);
+        await waitForApp(page, { timeout: 30000 });
+        return await checkThumbFlyAnimation(page);
+      } finally {
+        await context.close();
+      }
+    },
+  },
+  { subname: 'dislikeestimate', label: 'dislike estimate (Return YouTube Dislike, mocked)', page: 'dislikeestimate', check: 'functional', errCheck: 'dislike-estimate', arg: 'browser', run: (browser) => checkDislikeEstimate(browser) },
+  { subname: 'sponsorblock', label: 'sponsorblock auto-skip (mocked)', page: 'sponsorblock', check: 'functional', errCheck: 'sponsorblock', arg: 'browser', run: (browser) => checkSponsorBlock(browser) },
+  { subname: 'watchmeta', label: 'watch meta reveals (viewModel owner shape)', page: 'watchmeta', check: 'reveals', errCheck: 'watch-meta-reveals', arg: 'browser', run: (browser) => checkWatchMetaReveals(browser) },
+  { subname: 'subscribe', label: 'subscribe confirms on notification popup (signed-in path)', page: 'subscribe', check: 'confirms', errCheck: 'subscribe-confirms-on-popup', arg: 'browser', run: (browser) => checkSubscribeConfirmsOnPopup(browser) },
+  { subname: 'toggle', label: 'iTube enable/disable toggle', page: 'toggle', check: 'functional', errCheck: 'itube-toggle', arg: 'browser', run: (browser) => checkItubeToggle(browser) },
+  { subname: 'speed', label: 'playback speed', page: 'speed', check: 'functional', errCheck: 'playback-speed', arg: 'browser', run: (browser) => checkPlaybackSpeed(browser) },
+  { subname: 'transcript', label: 'transcript', page: 'transcript', check: 'functional', errCheck: 'transcript', arg: 'browser', run: (browser) => checkTranscript(browser) },
+  { subname: 'transcript-unavailable', label: 'transcript proved unavailable', page: 'transcript', check: 'functional', errCheck: 'transcript-proved-unavailable', arg: 'browser', run: (browser) => checkTranscriptProvedUnavailable(browser) },
+  { subname: 'transcript-lazy', label: 'transcript lazy', page: 'transcript-lazy', check: 'functional', errCheck: 'transcript-lazy', arg: 'browser', run: (browser) => checkTranscriptLazy(browser) },
+  { subname: 'boost', label: 'volume boost', page: 'boost', check: 'functional', errCheck: 'volume-boost', arg: 'browser', run: (browser) => checkVolumeBoost(browser) },
+  { subname: 'miniplayer', label: 'mini-player', page: 'miniplayer', check: 'functional', errCheck: 'mini-player', arg: 'browser', run: (browser) => checkMiniPlayer(browser) },
+  { subname: 'mini-expand-seamless', label: 'mini-player expand (seamless)', page: 'mini-expand-seamless', check: 'functional', errCheck: 'mini-expand-seamless', arg: 'browser', run: (browser) => checkMiniExpandSeamless(browser) },
+  { subname: 'mini-listener-leak', label: 'mini-player listener leak', page: 'mini-listener-leak', check: 'functional', errCheck: 'mini-listener-leak', arg: 'browser', run: (browser) => checkMiniListenerLeak(browser) },
+  { subname: 'search-no-refetch', label: 'search no-refetch', page: 'search-no-refetch', check: 'functional', errCheck: 'search-no-refetch', arg: 'browser', run: (browser) => checkSearchNoRefetch(browser) },
+  { subname: 'back-forward-cache', label: 'back/forward cache', page: 'back-forward-cache', check: 'functional', errCheck: 'back-forward-cache', arg: 'browser', run: (browser) => checkBackForwardCache(browser) },
+  { subname: 'thumb-sizing', label: 'thumb sizing', page: 'thumb-sizing', check: 'functional', errCheck: 'thumb-sizing', arg: 'browser', run: (browser) => checkThumbSizing(browser) },
+  { subname: 'toolsrow', label: 'tools row', page: 'toolsrow', check: 'functional', errCheck: 'tools-row', arg: 'browser', run: (browser) => checkToolsRow(browser) },
+  { subname: 'a11y-tabstops', label: 'a11y: collapsed tools tray tab stops', page: 'a11y-tabstops', check: 'functional', errCheck: 'a11y-tabstops', arg: 'browser', run: (browser) => checkA11yTabStops(browser) },
+  { subname: 'a11y-popup-dialog', label: 'a11y: popup dialog semantics', page: 'a11y-popup-dialog', check: 'functional', errCheck: 'a11y-popup-dialog', arg: 'browser', run: (browser) => checkPopupDialogSemantics(browser) },
+  { subname: 'a11y-rail-tabs', label: 'a11y: rail tab aria', page: 'a11y-rail-tabs', check: 'functional', errCheck: 'a11y-rail-tabs', arg: 'browser', run: (browser) => checkRailTabAria(browser) },
+  { subname: 'watchresponsive', label: 'watch responsive layout', page: 'watchresponsive', check: 'functional', errCheck: 'watch-responsive', arg: 'browser', run: (browser) => checkWatchResponsive(browser) },
+  { subname: 'commentssort', label: 'comments sort visibility', page: 'commentssort', check: 'functional', errCheck: 'comments-sort-visibility', arg: 'browser', run: (browser) => checkCommentsSortVisibility(browser) },
+  { subname: 'descriptionchips', label: 'description link chips', page: 'descriptionchips', check: 'functional', errCheck: 'description-chips', arg: 'browser', run: (browser) => checkDescriptionChips(browser) },
+  { subname: 'noscrollwatch', label: 'watch page fits without scrolling', page: 'noscrollwatch', check: 'functional', errCheck: 'no-scroll-watch', arg: 'browser', run: (browser) => checkNoScrollWatch(browser) },
+  { subname: 'watchpopups', label: 'watch popups (description/transcript/comments)', page: 'watchpopups', check: 'functional', errCheck: 'watch-popups', arg: 'browser', run: (browser) => checkWatchPopups(browser) },
+  { subname: 'audioonly', label: 'audio only', page: 'audioonly', check: 'functional', errCheck: 'audio-only', arg: 'browser', run: (browser) => checkAudioOnly(browser) },
+  { subname: 'account', label: 'account menu', page: 'account', check: 'functional', errCheck: 'account-menu', arg: 'browser', run: (browser) => checkAccountMenu(browser) },
+  { subname: 'settings', label: 'settings', page: 'settings', check: 'functional', errCheck: 'settings', arg: 'browser', run: (browser) => checkSettings(browser) },
+  { subname: 'cmdk', label: 'command palette', page: 'cmdk', check: 'functional', errCheck: 'cmdk', arg: 'browser', run: (browser) => checkCommandPalette(browser) },
+  { subname: 'feedfilter', label: 'feed filter', page: 'feedfilter', check: 'functional', errCheck: 'feedfilter', arg: 'browser', run: (browser) => checkFeedFilter(browser) },
+  { subname: 'frameexport', label: 'frame export', page: 'frameexport', check: 'functional', errCheck: 'frame-export', arg: 'browser', run: (browser) => checkFrameExport(browser) },
+  { subname: 'theater', label: 'theater mode', page: 'theater', check: 'functional', errCheck: 'theater-mode', arg: 'browser', run: (browser) => checkTheaterMode(browser) },
+  { subname: 'abloop', label: 'A-B repeat loop', page: 'abloop', check: 'functional', errCheck: 'ab-loop', arg: 'browser', run: (browser) => checkAbLoop(browser) },
+  { subname: 'coldload', label: 'cold-load skeleton (https://www.youtube.com/watch?v=aircAruvnKk)', page: 'coldload', check: 'skeleton', errCheck: 'cold-load-skeleton', arg: 'context', run: (context) => checkColdLoadSkeleton(context) },
+  // The three boot-loader checks cover the window BEFORE the app shell even
+  // exists (a separate concern from the watch-meta skeleton above), each
+  // opening its own fresh page for the same reason checkColdLoadSkeleton
+  // does — the sampler has to be installed before any page script runs.
+  { subname: 'bootloader-cold-watch', label: 'boot loader: cold watch load', page: 'bootloader', check: 'cold-watch', errCheck: 'boot-loader-cold-watch', arg: 'context', run: (context) => checkBootLoaderColdLoad(context) },
+  { subname: 'bootloader-cold-feed', label: 'boot loader: cold home load', page: 'bootloader', check: 'cold-feed', errCheck: 'boot-loader-cold-feed', arg: 'context', run: (context) => checkBootLoaderFeedColdLoad(context) },
+  { subname: 'bootloader-reduced-motion', label: 'boot loader: reduced motion', page: 'bootloader', check: 'reduced-motion', errCheck: 'boot-loader-reduced-motion', arg: 'context', run: (context) => checkBootLoaderReducedMotion(context) },
+  // MediaSession metadata/queue-action wiring: see checkMediaSession's own
+  // comment for why this needs its own watch page rather than folding into
+  // runWatchFunctional.
+  { subname: 'mediasession', label: 'media session metadata', page: 'mediasession', check: 'functional', errCheck: 'mediasession', arg: 'browser', run: (browser) => checkMediaSession(browser) },
+  // Autoplay-to-next: see checkAutoplayNext's own comment for why this needs
+  // two fresh contexts (the itube-autoplay pref is read once at document-
+  // start and can't be toggled after mount) rather than folding into
+  // runWatchFunctional.
+  { subname: 'autoplaynext', label: 'autoplay to next video', page: 'autoplaynext', check: 'functional', errCheck: 'autoplay-next', arg: 'browser', run: (browser) => checkAutoplayNext(browser) },
+];
+
+// Runs one FUNCTIONAL_ENTRIES entry: invokes it with the right arg (browser or
+// the shared per-run context), normalizes its result (a bare violations array
+// OR a { violations, skipped, detail } object — both shapes are in use across
+// the checks above), prints its row, and pushes it onto the summary table.
+// Returns true if the entry FAILED, so callers can fold that into `anyFail`.
+async function runFunctionalEntry(entry, { browser, context, table }) {
+  console.log(`\n--- ${entry.label} ---`);
+  let result;
+  try {
+    result = await entry.run(entry.arg === 'context' ? context : browser);
+  } catch (err) {
+    console.error(`  ERROR running the ${entry.subname} check: ${err.stack || err}`);
+    result = [{ check: entry.errCheck, detail: String(err.message || err).split('\n')[0] }];
+  }
+  const violations = Array.isArray(result) ? result : (result.violations || []);
+  const skipped = !Array.isArray(result) && !!result.skipped;
+  const detail = !Array.isArray(result) && result.detail ? result.detail : '';
+  const status = violations.length ? 'FAIL' : (skipped ? 'SKIP' : 'PASS');
+  table.push({ page: entry.page, check: entry.check, status, count: violations.length });
+  const countSuffix = violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : '';
+  const detailSuffix = detail ? ` — ${detail}` : '';
+  console.log(`  ${entry.label}: ${status}${countSuffix}${detailSuffix}`);
+  for (const v of violations) console.log(`    page=${entry.page} ${fmt(v)}`);
+  return status === 'FAIL';
 }
 
 // Runs every applicable check against a single page inside one browser
@@ -373,7 +494,7 @@ async function main() {
   // `--check=ads` and `--check=signedout` run only their own suites, which own
   // their contexts — there is no point opening every page just to run zero
   // per-page checks on it.
-  const OWN_CONTEXT_CHECKS = new Set(['ads', 'signedout', 'hover', 'feedorder']);
+  const OWN_CONTEXT_CHECKS = new Set(['ads', 'signedout', 'hover', 'feedorder', ...FUNCTIONAL_ENTRIES.map((e) => e.subname)]);
   const pageNames = OWN_CONTEXT_CHECKS.has(args.check) ? [] : (args.page ? [args.page] : Object.keys(PAGES));
   for (const name of pageNames) {
     if (!PAGES[name]) {
@@ -408,718 +529,17 @@ async function main() {
     }
   }
 
-  // /shorts/<id> is not a page in PAGES: the app rewrites the URL before it
-  // renders anything, so it has no layout or baseline of its own — only the
-  // destination is worth asserting. It runs once, not per page.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log(`\n--- shorts (https://www.youtube.com/shorts/${SHORTS_REDIRECT_ID}) ---`);
-    let violations;
-    try {
-      violations = await checkShortsRedirect(context, SHORTS_REDIRECT_ID);
-    } catch (err) {
-      console.error(`  ERROR running the shorts redirect check: ${err.stack || err}`);
-      violations = [{ check: 'shorts-redirect', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'shorts', check: 'functional', status, count: violations.length });
-    console.log(`  shorts / functional: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=shorts ${fmt(v)}`);
-  }
-
-  // The audio-track selector needs a SPECIFIC multi-track video (the default
-  // watch fixture is single-track), so it runs once, in its own context,
-  // rather than per-page. A SKIP (not a FAIL) means YouTube stopped serving
-  // multiple tracks on that id.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log(`\n--- audio track selector (https://www.youtube.com/watch?v=${MULTI_AUDIO_VIDEO_ID}) ---`);
-    let res;
-    try {
-      res = await checkAudioTrackSelector(browser);
-    } catch (err) {
-      console.error(`  ERROR running the audio track selector check: ${err.stack || err}`);
-      res = { violations: [{ check: 'audio-track-selector', detail: String(err.message || err).split('\n')[0] }], skipped: false, detail: '' };
-    }
-    const status = res.violations.length ? 'FAIL' : (res.skipped ? 'SKIP' : 'PASS');
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'audiotrack', check: 'functional', status, count: res.violations.length });
-    console.log(`  audiotrack / functional: ${status} — ${res.detail}`);
-    for (const v of res.violations) console.log(`    page=audiotrack ${fmt(v)}`);
-  }
-
-  // The thumbnail fly-in animation needs its own fresh watch page (it toggles
-  // prefers-reduced-motion and navigates between assertions), so it runs once
-  // rather than per-page.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- thumbnail fly-in animation ---');
-    const context = await newContext(browser);
-    let res;
-    try {
-      const { page } = await openPage(context, PAGES.watch);
-      await waitForApp(page, { timeout: 30000 });
-      res = await checkThumbFlyAnimation(page);
-    } catch (err) {
-      console.error(`  ERROR running the thumb-fly-animation check: ${err.stack || err}`);
-      res = { violations: [{ check: 'thumb-fly-animation', detail: String(err.message || err).split('\n')[0] }] };
-    } finally {
-      await context.close();
-    }
-    const status = res.violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'thumbfly', check: 'functional', status, count: res.violations.length });
-    console.log(`  thumbnail fly-in: ${status}${res.violations.length ? ` (${res.violations.length} violation${res.violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of res.violations) console.log(`    page=thumbfly ${fmt(v)}`);
-  }
-
-  // The Return YouTube Dislike estimate is mocked (own context, own routed
-  // response) rather than read off the live third-party API, so it runs once
-  // rather than per-page — the real network call is a fire-and-forget best
-  // effort, not something the rest of the suite should depend on.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- dislike estimate (Return YouTube Dislike, mocked) ---');
-    let violations;
-    try {
-      violations = await checkDislikeEstimate(browser);
-    } catch (err) {
-      console.error(`  ERROR running the dislike estimate check: ${err.stack || err}`);
-      violations = [{ check: 'dislike-estimate', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'dislikeestimate', check: 'functional', status, count: violations.length });
-    console.log(`  dislike estimate / functional: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=dislikeestimate ${fmt(v)}`);
-  }
-
-  // SponsorBlock auto-skip is mocked (own context, own routed response) rather
-  // than read off the live third-party API, so it runs once rather than
-  // per-page — the real network call is a fire-and-forget best effort, not
-  // something the rest of the suite should depend on.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- sponsorblock auto-skip (mocked) ---');
-    let violations;
-    try {
-      ({ violations } = await checkSponsorBlock(browser));
-    } catch (err) {
-      console.error(`  ERROR running the sponsorblock check: ${err.stack || err}`);
-      violations = [{ check: 'sponsorblock', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'sponsorblock', check: 'functional', status, count: violations.length });
-    console.log(`  sponsorblock / functional: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=sponsorblock ${fmt(v)}`);
-  }
-
-  // Watch meta must reveal on the migrated videoOwnerRenderer (viewModel) shape —
-  // runs once against a fixture video known to use it, so it needs its own page.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- watch meta reveals (viewModel owner shape) ---');
-    let violations;
-    try {
-      violations = await checkWatchMetaReveals(browser);
-    } catch (err) {
-      console.error(`  ERROR running the watch-meta-reveals check: ${err.stack || err}`);
-      violations = [{ check: 'watch-meta-reveals', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'watchmeta', check: 'reveals', status, count: violations.length });
-    console.log(`  watch meta reveals: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=watchmeta ${fmt(v)}`);
-  }
-
-  // The signed-in subscribe-confirmation path (a successful mutation whose
-  // response carries a notification popup) has no other coverage — the suite is
-  // logged out, so it fakes LOGGED_IN and mocks the endpoint. Runs once.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- subscribe confirms on notification popup (signed-in path) ---');
-    let violations;
-    try {
-      violations = await checkSubscribeConfirmsOnPopup(browser);
-    } catch (err) {
-      console.error(`  ERROR running the subscribe-confirms check: ${err.stack || err}`);
-      violations = [{ check: 'subscribe-confirms-on-popup', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'subscribe', check: 'confirms', status, count: violations.length });
-    console.log(`  subscribe confirms: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=subscribe ${fmt(v)}`);
-  }
-
-  // The enable/disable toggle: reloads between iTube and native YouTube, so it
-  // owns its own context.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- iTube enable/disable toggle ---');
-    let violations;
-    try {
-      violations = await checkItubeToggle(browser);
-    } catch (err) {
-      console.error(`  ERROR running the itube-toggle check: ${err.stack || err}`);
-      violations = [{ check: 'itube-toggle', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'toggle', check: 'functional', status, count: violations.length });
-    console.log(`  itube toggle: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=toggle ${fmt(v)}`);
-  }
-
-  // Playback speed beyond 2x + remembered default: reloads to check persistence,
-  // so it runs once in its own context.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- playback speed ---');
-    let violations;
-    try {
-      violations = await checkPlaybackSpeed(browser);
-    } catch (err) {
-      console.error(`  ERROR running the playback-speed check: ${err.stack || err}`);
-      violations = [{ check: 'playback-speed', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'speed', check: 'functional', status, count: violations.length });
-    console.log(`  playback speed: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=speed ${fmt(v)}`);
-  }
-
-  // Transcript panel: lazily fetched per video on first expand, so it runs
-  // once, in its own context, against a video known to have one.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- transcript ---');
-    let violations;
-    try {
-      violations = await checkTranscript(browser);
-    } catch (err) {
-      console.error(`  ERROR running the transcript check: ${err.stack || err}`);
-      violations = [{ check: 'transcript', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'transcript', check: 'functional', status, count: violations.length });
-    console.log(`  transcript: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=transcript ${fmt(v)}`);
-  }
-
-  // Regression guard: the pill's metadata check can say yes while the real
-  // caption fetch says no — must hide the pill and close the popup, never
-  // leave a dead "Transcript unavailable" state reachable.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- transcript proved unavailable ---');
-    let violations;
-    try {
-      violations = await checkTranscriptProvedUnavailable(browser);
-    } catch (err) {
-      console.error(`  ERROR running the transcript-proved-unavailable check: ${err.stack || err}`);
-      violations = [{ check: 'transcript-proved-unavailable', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'transcript', check: 'functional', status, count: violations.length });
-    console.log(`  transcript proved unavailable: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=transcript ${fmt(v)}`);
-  }
-
-  // Transcript must not fetch anything until the toggle is opened — no
-  // /youtubei/v1/player POST and no /api/timedtext request on mount.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- transcript lazy ---');
-    let violations;
-    try {
-      violations = await checkTranscriptLazy(browser);
-    } catch (err) {
-      console.error(`  ERROR running the transcript-lazy check: ${err.stack || err}`);
-      violations = [{ check: 'transcript-lazy', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'transcript-lazy', check: 'functional', status, count: violations.length });
-    console.log(`  transcript lazy: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=transcript-lazy ${fmt(v)}`);
-  }
-
-  // Volume boost past 100%: lazily wires a WebAudio GainNode, so it runs
-  // once, in its own context, to prove the graph engages/persists without
-  // stalling playback.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- volume boost ---');
-    let violations;
-    try {
-      violations = await checkVolumeBoost(browser);
-    } catch (err) {
-      console.error(`  ERROR running the volume-boost check: ${err.stack || err}`);
-      violations = [{ check: 'volume-boost', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'boost', check: 'functional', status, count: violations.length });
-    console.log(`  volume boost: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=boost ${fmt(v)}`);
-  }
-
-  // The floating mini-player: leaving a playing watch page must keep the
-  // video decoding rather than pausing it, so it runs once, in its own
-  // context, navigating watch -> home -> watch -> home -> close.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- mini-player ---');
-    let violations;
-    try {
-      violations = await checkMiniPlayer(browser);
-    } catch (err) {
-      console.error(`  ERROR running the mini-player check: ${err.stack || err}`);
-      violations = [{ check: 'mini-player', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'miniplayer', check: 'functional', status, count: violations.length });
-    console.log(`  mini-player: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=miniplayer ${fmt(v)}`);
-  }
-
-  // Expanding the mini-player back to watch used to hand the singleton video
-  // to a fresh mountWatch() mid-build, jumping/blanking the frame (and could
-  // even restart playback via an unconditional loadVideoById), so this runs
-  // once, in its own context, sampling every rAF across the whole expand
-  // transition.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- mini-player expand (seamless) ---');
-    let violations;
-    try {
-      violations = await checkMiniExpandSeamless(browser);
-    } catch (err) {
-      console.error(`  ERROR running the mini-expand-seamless check: ${err.stack || err}`);
-      violations = [{ check: 'mini-expand-seamless', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'mini-expand-seamless', check: 'functional', status, count: violations.length });
-    console.log(`  mini-player expand (seamless): ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=mini-expand-seamless ${fmt(v)}`);
-  }
-
-  // activateMini used to rebind 'play'/'pause' listeners on the singleton
-  // video every activation without ever removing the old ones, so it runs
-  // once, in its own context, tracking a net listener count across two
-  // watch -> mini round trips.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- mini-player listener leak ---');
-    let violations;
-    try {
-      violations = await checkMiniListenerLeak(browser);
-    } catch (err) {
-      console.error(`  ERROR running the mini-listener-leak check: ${err.stack || err}`);
-      violations = [{ check: 'mini-listener-leak', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'mini-listener-leak', check: 'functional', status, count: violations.length });
-    console.log(`  mini-player listener leak: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=mini-listener-leak ${fmt(v)}`);
-  }
-
-  // Hard-loading /results?... must read the server-inlined ytInitialData
-  // instead of always POSTing to /youtubei/v1/search, so it runs once, in
-  // its own context, recording requests from the very first navigation.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- search no-refetch ---');
-    let violations;
-    try {
-      violations = await checkSearchNoRefetch(browser);
-    } catch (err) {
-      console.error(`  ERROR running the search-no-refetch check: ${err.stack || err}`);
-      violations = [{ check: 'search-no-refetch', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'search-no-refetch', check: 'functional', status, count: violations.length });
-    console.log(`  search no-refetch: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=search-no-refetch ${fmt(v)}`);
-  }
-
-  // Back/Forward to a previously-viewed feed must restore from the in-memory
-  // list cache instead of refetching, so it runs once, in its own context,
-  // recording requests across a click-into-watch-then-Back round trip.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- back/forward cache ---');
-    let violations;
-    try {
-      violations = await checkBackForwardCache(browser);
-    } catch (err) {
-      console.error(`  ERROR running the back-forward-cache check: ${err.stack || err}`);
-      violations = [{ check: 'back-forward-cache', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'back-forward-cache', check: 'functional', status, count: violations.length });
-    console.log(`  back/forward cache: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=back-forward-cache ${fmt(v)}`);
-  }
-
-  // getThumb used to always pick the largest thumbnail source regardless of
-  // rendered card size, so it runs once, in its own context, checking loaded
-  // home-feed grid thumbs land in a sane naturalWidth/clientWidth ratio.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- thumb sizing ---');
-    let violations;
-    try {
-      violations = await checkThumbSizing(browser);
-    } catch (err) {
-      console.error(`  ERROR running the thumb-sizing check: ${err.stack || err}`);
-      violations = [{ check: 'thumb-sizing', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'thumb-sizing', check: 'functional', status, count: violations.length });
-    console.log(`  thumb sizing: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=thumb-sizing ${fmt(v)}`);
-  }
-
-  // The Tools row duplicates speed/quality/autoplay/sponsor-skip/boost as a
-  // second disclosure surface off the action row, so it runs once, in its
-  // own context, to prove the disclosure toggles and its Speed control
-  // drives the real player, not just its own label.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- tools row ---');
-    let violations;
-    try {
-      violations = await checkToolsRow(browser);
-    } catch (err) {
-      console.error(`  ERROR running the tools-row check: ${err.stack || err}`);
-      violations = [{ check: 'tools-row', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'toolsrow', check: 'functional', status, count: violations.length });
-    console.log(`  tools row: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=toolsrow ${fmt(v)}`);
-  }
-
-  // Pins the v4.41 watch-page responsive redesign: no horizontal overflow at
-  // any of the new breakpoints, and Subscribe never floats over the related
-  // rail at ~1000px (the exact reported bug).
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- watch responsive layout ---');
-    let violations;
-    try {
-      violations = await checkWatchResponsive(browser);
-    } catch (err) {
-      console.error(`  ERROR running the watch-responsive check: ${err.stack || err}`);
-      violations = [{ check: 'watch-responsive', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'watchresponsive', check: 'functional', status, count: violations.length });
-    console.log(`  watch responsive layout: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=watchresponsive ${fmt(v)}`);
-  }
-
-  // The Top/Newest sort control must only be reachable while comments are
-  // actually expanded on screen.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- comments sort visibility ---');
-    let violations;
-    try {
-      violations = await checkCommentsSortVisibility(browser);
-    } catch (err) {
-      console.error(`  ERROR running the comments-sort-visibility check: ${err.stack || err}`);
-      violations = [{ check: 'comments-sort-visibility', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'commentssort', check: 'functional', status, count: violations.length });
-    console.log(`  comments sort visibility: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=commentssort ${fmt(v)}`);
-  }
-
-  // Description link chips: extracted from a real video's description URLs,
-  // each chip's href must trace back to the description text, and "More"
-  // must expand the full text in place.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- description link chips ---');
-    let violations;
-    try {
-      violations = await checkDescriptionChips(browser);
-    } catch (err) {
-      console.error(`  ERROR running the description-chips check: ${err.stack || err}`);
-      violations = [{ check: 'description-chips', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'descriptionchips', check: 'functional', status, count: violations.length });
-    console.log(`  description link chips: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=descriptionchips ${fmt(v)}`);
-  }
-
-  // Watch v2: with description/transcript/comments moved out of the left
-  // column entirely, the watch page must fit at standard viewports without
-  // a vertical scrollbar (tools collapsed, no popup open).
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- watch page fits without scrolling ---');
-    let violations;
-    try {
-      violations = await checkNoScrollWatch(browser);
-    } catch (err) {
-      console.error(`  ERROR running the no-scroll-watch check: ${err.stack || err}`);
-      violations = [{ check: 'no-scroll-watch', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'noscrollwatch', check: 'functional', status, count: violations.length });
-    console.log(`  watch page fits without scrolling: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=noscrollwatch ${fmt(v)}`);
-  }
-
-  // Watch v2 popups: Description/Transcript pills open a fast glass popup,
-  // mutually exclusive, dismissible by Escape/backdrop; comments stay lazy
-  // until the rail's Comments tab is first activated.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- watch popups (description/transcript/comments) ---');
-    let violations;
-    try {
-      violations = await checkWatchPopups(browser);
-    } catch (err) {
-      console.error(`  ERROR running the watch-popups check: ${err.stack || err}`);
-      violations = [{ check: 'watch-popups', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'watchpopups', check: 'functional', status, count: violations.length });
-    console.log(`  watch popups: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=watchpopups ${fmt(v)}`);
-  }
-
-  // Audio-only mode covers the video with an art overlay and drops quality,
-  // so it runs once, in its own context, to prove the toggle actually
-  // engages the overlay and — critically — that playback keeps advancing
-  // rather than freezing/pausing once the video is hidden behind it.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- audio only ---');
-    let violations;
-    try {
-      violations = await checkAudioOnly(browser);
-    } catch (err) {
-      console.error(`  ERROR running the audio-only check: ${err.stack || err}`);
-      violations = [{ check: 'audio-only', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'audioonly', check: 'functional', status, count: violations.length });
-    console.log(`  audio only: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=audioonly ${fmt(v)}`);
-  }
-
-  // The account menu (avatar dropdown) runs once on the home page; the avatar is
-  // hidden logged-out but the menu structure and toggle are still assertable.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- account menu ---');
-    let violations;
-    try {
-      violations = await checkAccountMenu(browser);
-    } catch (err) {
-      console.error(`  ERROR running the account-menu check: ${err.stack || err}`);
-      violations = [{ check: 'account-menu', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'account', check: 'functional', status, count: violations.length });
-    console.log(`  account menu: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=account ${fmt(v)}`);
-  }
-
-  // The Settings panel (accent picker, playback prefs, reduce-motion) runs
-  // once on the home page, mirroring the account-menu block above.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- settings ---');
-    let violations;
-    try {
-      violations = await checkSettings(browser);
-    } catch (err) {
-      console.error(`  ERROR running the settings check: ${err.stack || err}`);
-      violations = [{ check: 'settings', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'settings', check: 'functional', status, count: violations.length });
-    console.log(`  settings: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=settings ${fmt(v)}`);
-  }
-
-  // The command palette (Ctrl/Cmd-K) runs once on the home page, mirroring
-  // the settings block above.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- command palette ---');
-    let violations;
-    try {
-      violations = await checkCommandPalette(browser);
-    } catch (err) {
-      console.error(`  ERROR running the command-palette check: ${err.stack || err}`);
-      violations = [{ check: 'cmdk', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'cmdk', check: 'functional', status, count: violations.length });
-    console.log(`  command palette: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=cmdk ${fmt(v)}`);
-  }
-
-  // Hover states (nav rows, brand, settings controls, cmdk items) run once,
-  // in their own context, gated on its own check name (like ads/signedout)
-  // rather than folded into 'functional' — it is a distinct concern (visual
-  // feedback, not behavior) that a caller may want to run in isolation.
-  if (!args.page && (!args.check || args.check === 'hover')) {
-    console.log('\n--- hover ---');
-    let violations;
-    try {
-      violations = await checkHoverStates(browser);
-    } catch (err) {
-      console.error(`  ERROR running the hover check: ${err.stack || err}`);
-      violations = [{ check: 'hover', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'hover', check: 'hover', status, count: violations.length });
-    console.log(`  hover: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=hover ${fmt(v)}`);
-  }
-
-  // Feed filtering (mute channels/keywords, hide watched) runs once, in its
-  // own context, mirroring the settings block above.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- feed filter ---');
-    let violations;
-    try {
-      violations = await checkFeedFilter(browser);
-    } catch (err) {
-      console.error(`  ERROR running the feed-filter check: ${err.stack || err}`);
-      violations = [{ check: 'feedfilter', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'feedfilter', check: 'functional', status, count: violations.length });
-    console.log(`  feed filter: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=feedfilter ${fmt(v)}`);
-  }
-
-  // Frame export (camera button) captures the current frame as a PNG download;
-  // runs once on the watch page in its own context.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- frame export ---');
-    let violations;
-    try {
-      violations = await checkFrameExport(browser);
-    } catch (err) {
-      console.error(`  ERROR running the frame-export check: ${err.stack || err}`);
-      violations = [{ check: 'frame-export', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'frameexport', check: 'functional', status, count: violations.length });
-    console.log(`  frame export: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=frameexport ${fmt(v)}`);
-  }
-
-  // Theater mode toggles a full-screen cinema layout (squared frame, static
-  // vignette, scrim-covered transition, unified idle-hide) and persists the
-  // choice, so it runs once in its own watch context.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- theater mode ---');
-    let violations;
-    try {
-      violations = await checkTheaterMode(browser);
-    } catch (err) {
-      console.error(`  ERROR running the theater-mode check: ${err.stack || err}`);
-      violations = [{ check: 'theater-mode', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'theater', check: 'functional', status, count: violations.length });
-    console.log(`  theater mode: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=theater ${fmt(v)}`);
-  }
-
-  // A-B repeat loop marks and enforcement run once in their own watch context,
-  // same reasoning as theater mode above.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- A-B repeat loop ---');
-    let violations;
-    try {
-      violations = await checkAbLoop(browser);
-    } catch (err) {
-      console.error(`  ERROR running the ab-loop check: ${err.stack || err}`);
-      violations = [{ check: 'ab-loop', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'abloop', check: 'functional', status, count: violations.length });
-    console.log(`  A-B repeat loop: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=abloop ${fmt(v)}`);
-  }
-
-  // The cold-load watch skeleton runs once, in its own freshly-opened page: it
-  // must sample the load from BEFORE any page script runs, which the shared
-  // per-page `page` (already mounted) cannot do.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- cold-load skeleton (https://www.youtube.com/watch?v=aircAruvnKk) ---');
-    let violations;
-    try {
-      violations = await checkColdLoadSkeleton(context);
-    } catch (err) {
-      console.error(`  ERROR running the cold-load skeleton check: ${err.stack || err}`);
-      violations = [{ check: 'cold-load-skeleton', detail: String(err.message || err).split('\n')[0] }];
-    }
-    const status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'coldload', check: 'skeleton', status, count: violations.length });
-    console.log(`  cold-load skeleton: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=coldload ${fmt(v)}`);
-  }
-
-  // The cold-start boot loader (#itube-boot) is a separate concern from the
-  // watch-meta skeleton above: it covers the window BEFORE the app shell even
-  // exists, on every route, not just watch. Each of these opens its own fresh
-  // page for the same reason checkColdLoadSkeleton does — the sampler has to
-  // be installed before any page script runs.
-  if (!args.page && (!args.check || args.check === 'functional')) {
-    console.log('\n--- boot loader: cold watch load ---');
-    let violations;
-    try {
-      violations = await checkBootLoaderColdLoad(context);
-    } catch (err) {
-      console.error(`  ERROR running the boot loader cold watch load check: ${err.stack || err}`);
-      violations = [{ check: 'boot-loader-cold-watch', detail: String(err.message || err).split('\n')[0] }];
-    }
-    let status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'bootloader', check: 'cold-watch', status, count: violations.length });
-    console.log(`  boot loader / cold-watch: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=bootloader ${fmt(v)}`);
-
-    console.log('\n--- boot loader: cold home load ---');
-    try {
-      violations = await checkBootLoaderFeedColdLoad(context);
-    } catch (err) {
-      console.error(`  ERROR running the boot loader cold home load check: ${err.stack || err}`);
-      violations = [{ check: 'boot-loader-cold-feed', detail: String(err.message || err).split('\n')[0] }];
-    }
-    status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'bootloader', check: 'cold-feed', status, count: violations.length });
-    console.log(`  boot loader / cold-feed: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=bootloader ${fmt(v)}`);
-
-    console.log('\n--- boot loader: reduced motion ---');
-    try {
-      violations = await checkBootLoaderReducedMotion(context);
-    } catch (err) {
-      console.error(`  ERROR running the boot loader reduced-motion check: ${err.stack || err}`);
-      violations = [{ check: 'boot-loader-reduced-motion', detail: String(err.message || err).split('\n')[0] }];
-    }
-    status = violations.length === 0 ? 'PASS' : 'FAIL';
-    if (status === 'FAIL') anyFail = true;
-    table.push({ page: 'bootloader', check: 'reduced-motion', status, count: violations.length });
-    console.log(`  boot loader / reduced-motion: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
-    for (const v of violations) console.log(`    page=bootloader ${fmt(v)}`);
+  // The run-once feature checks: each wants its own fresh context/page rather
+  // than sharing one of the five PAGES' contexts (a reload, a mocked route, a
+  // specific fixture video, prefs read once at document-start, …). Selecting
+  // a single one via --check=<subname> runs ONLY that check (see
+  // OWN_CONTEXT_CHECKS above, which keeps the per-page loop from opening
+  // anything when a subname is given); omitting --check or passing
+  // --check=functional runs all of them, exactly as before the table existed.
+  for (const entry of FUNCTIONAL_ENTRIES) {
+    if (args.page) continue;
+    if (args.check && args.check !== 'functional' && args.check !== entry.subname) continue;
+    if (await runFunctionalEntry(entry, { browser, context, table })) anyFail = true;
   }
 
   // The signed-out suite runs once, in its own contexts: it opens the

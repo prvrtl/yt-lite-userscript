@@ -56,10 +56,28 @@ async function newContext(browser, { viewport = { width: 1440, height: 900 } } =
 // BEFORE navigation so nothing that happens during document-start script
 // execution is missed. Returns { page, errors }. Does NOT wait for the app
 // to mount — callers should follow up with waitForApp().
+//
+// The live site occasionally stalls a `domcontentloaded` navigation past
+// Playwright's default 30s (network hiccup, not a regression in the app), so
+// the goto itself gets up to 2 retries. This is narrowly scoped to the
+// navigation only — waitForApp() is deliberately NOT retried here, since a
+// timeout there means the app failed to mount on a page that DID load, which
+// must keep failing loudly rather than being papered over by a retry loop.
 async function openPage(context, url) {
   const page = await context.newPage();
   const errors = collectErrors(page);
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      lastErr = null;
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (!/Timeout/i.test(String(err && err.message))) throw err;
+    }
+  }
+  if (lastErr) throw lastErr;
   return { page, errors };
 }
 
