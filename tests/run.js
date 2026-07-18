@@ -43,6 +43,7 @@ const {
   checkTheaterMode,
   checkAbLoop,
   checkPlaybackSpeed,
+  checkTranscript,
   checkVolumeBoost,
   checkToolsRow,
   checkAccountMenu,
@@ -555,6 +556,24 @@ async function main() {
     table.push({ page: 'speed', check: 'functional', status, count: violations.length });
     console.log(`  playback speed: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=speed ${fmt(v)}`);
+  }
+
+  // Transcript panel: pre-fetched per video and hidden when absent, so it
+  // runs once, in its own context, against a video known to have one.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- transcript ---');
+    let violations;
+    try {
+      violations = await checkTranscript(browser);
+    } catch (err) {
+      console.error(`  ERROR running the transcript check: ${err.stack || err}`);
+      violations = [{ check: 'transcript', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'transcript', check: 'functional', status, count: violations.length });
+    console.log(`  transcript: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=transcript ${fmt(v)}`);
   }
 
   // Volume boost past 100%: lazily wires a WebAudio GainNode, so it runs

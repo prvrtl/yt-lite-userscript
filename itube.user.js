@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.35.0
+// @version      4.36.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -1446,7 +1446,8 @@
       align-items: center;
       gap: 12px;
     }
-    #itube .comments-toggle {
+    #itube .comments-toggle,
+    #itube .transcript-toggle {
       display: flex;
       align-items: center;
       gap: 8px;
@@ -1462,15 +1463,18 @@
       cursor: pointer;
       text-align: left;
     }
-    #itube .comments-toggle:disabled {
+    #itube .comments-toggle:disabled,
+    #itube .transcript-toggle:disabled {
       cursor: default;
       color: var(--muted);
     }
-    #itube .comments-toggle svg {
+    #itube .comments-toggle svg,
+    #itube .transcript-toggle svg {
       flex: none;
       color: var(--muted);
     }
-    #itube .comments-toggle svg.open {
+    #itube .comments-toggle svg.open,
+    #itube .transcript-toggle svg.open {
       transform: rotate(180deg);
     }
     #itube .comments-sort {
@@ -1629,6 +1633,71 @@
       text-align: center;
       padding: 24px 0;
       font-size: 14px;
+    }
+    #itube .transcript {
+      margin-top: 24px;
+    }
+    #itube .transcript-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #itube .transcript-search {
+      flex: none;
+      width: 220px;
+      height: 30px;
+      border-radius: var(--r-xs);
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      color: var(--text);
+      padding: 0 12px;
+      font-size: 13px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    #itube .transcript-search:focus {
+      border: 2px solid var(--accent);
+    }
+    #itube .transcript-body {
+      margin-top: 16px;
+      max-height: 360px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    #itube .transcript-body.collapsed {
+      display: none;
+    }
+    #itube .transcript-line {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      width: 100%;
+      text-align: left;
+      padding: 6px 10px;
+      border-radius: var(--r-sm);
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #itube .transcript-line:hover {
+      background: var(--hover);
+    }
+    #itube .transcript-line.active {
+      background: var(--hover);
+      color: var(--accent);
+    }
+    #itube .transcript-line.hidden {
+      display: none;
+    }
+    #itube .transcript-time {
+      flex: none;
+      min-width: 48px;
+      color: var(--muted);
+      font: 500 12.5px ui-monospace, monospace;
     }
     #itube .rc {
       display: flex;
@@ -5598,6 +5667,32 @@
     return [];
   };
 
+  const pickCaptionTrack = (tracks) => {
+    if (!Array.isArray(tracks) || !tracks.length) return null;
+    const uiLang = (navigator.language || 'en').slice(0, 2).toLowerCase();
+    const nonAsr = tracks.filter((t) => t.kind !== 'asr');
+    const pool = nonAsr.length ? nonAsr : tracks;
+    return pool.find((t) => (t.languageCode || '').toLowerCase().startsWith(uiLang))
+      || pool.find((t) => (t.languageCode || '').toLowerCase().startsWith('en'))
+      || pool[0];
+  };
+
+  const parseJson3Transcript = (tj) => {
+    const out = [];
+    try {
+      for (const ev of tj?.events || []) {
+        if (!Array.isArray(ev?.segs)) continue;
+        const text = ev.segs.map((s) => s?.utf8 || '').join('').replace(/\n/g, ' ').trim();
+        if (!text) continue;
+        if (!Number.isFinite(ev.tStartMs)) continue;
+        out.push({ start: ev.tStartMs / 1000, text });
+      }
+    } catch (e) {
+      console.warn('[itube] transcript json3 parse failed', e);
+    }
+    return out;
+  };
+
   const parseStoryboard = (p) => {
     try {
       const spec = p.getPlayerResponse?.()?.storyboards?.playerStoryboardSpecRenderer?.spec;
@@ -6116,6 +6211,21 @@
     meta.append(unavailable, skeleton, watchHead, signInHint, metaDivider, stats, desc, descToggle);
     showMetaSkeleton();
 
+    const transcriptPanel = document.createElement('div');
+    transcriptPanel.className = 'transcript';
+    transcriptPanel.style.display = 'none';
+    const transcriptHeader = document.createElement('div');
+    transcriptHeader.className = 'transcript-header';
+    const { btn: transcriptToggle, icon: transcriptChevron } = pillButton(ICONS.chevron, 'Transcript', 'transcript-toggle');
+    const transcriptSearch = document.createElement('input');
+    transcriptSearch.type = 'text';
+    transcriptSearch.className = 'transcript-search';
+    transcriptSearch.placeholder = 'Search transcript';
+    transcriptHeader.append(transcriptToggle, transcriptSearch);
+    const transcriptBody = document.createElement('div');
+    transcriptBody.className = 'transcript-body collapsed';
+    transcriptPanel.append(transcriptHeader, transcriptBody);
+
     const commentsPanel = document.createElement('div');
     commentsPanel.className = 'comments';
     const commentsHeader = document.createElement('div');
@@ -6145,7 +6255,7 @@
     ambient.width = 32;
     ambient.height = 18;
     stageWrap.append(ambient, stage);
-    watchLeft.append(stageWrap, title, meta, commentsPanel);
+    watchLeft.append(stageWrap, title, meta, transcriptPanel, commentsPanel);
     watch.append(watchLeft, watchRight);
 
     view.replaceChildren(watch);
@@ -6334,6 +6444,105 @@
       commentsChevron.classList.toggle('open', commentsExpanded);
     };
 
+    let transcriptGeneration = 0;
+    let transcriptSegments = [];
+    let transcriptLineEls = [];
+    let transcriptActiveIndex = -1;
+    let transcriptExpanded = false;
+
+    const setTranscriptChevron = () => {
+      transcriptChevron.classList.toggle('open', transcriptExpanded);
+    };
+
+    const applyTranscriptFilter = () => {
+      const q = transcriptSearch.value.trim().toLowerCase();
+      transcriptLineEls.forEach((line, i) => {
+        line.classList.toggle('hidden', !(!q || transcriptSegments[i].text.toLowerCase().includes(q)));
+      });
+    };
+    transcriptSearch.addEventListener('input', applyTranscriptFilter);
+
+    const renderTranscriptLines = () => {
+      transcriptBody.replaceChildren();
+      transcriptActiveIndex = -1;
+      transcriptLineEls = transcriptSegments.map((seg) => {
+        const line = document.createElement('button');
+        line.type = 'button';
+        line.className = 'transcript-line';
+        const time = document.createElement('span');
+        time.className = 'transcript-time';
+        time.textContent = fmt(seg.start);
+        const text = document.createElement('span');
+        text.className = 'transcript-text';
+        text.textContent = seg.text;
+        line.append(time, text);
+        line.addEventListener('click', () => seekPlayerTo(seg.start));
+        transcriptBody.appendChild(line);
+        return line;
+      });
+      applyTranscriptFilter();
+    };
+
+    const findActiveTranscriptIndex = (t) => {
+      let lo = 0, hi = transcriptSegments.length - 1, ans = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (transcriptSegments[mid].start <= t) { ans = mid; lo = mid + 1; }
+        else hi = mid - 1;
+      }
+      return ans;
+    };
+
+    const resetTranscript = () => {
+      transcriptPanel.style.display = 'none';
+      transcriptBody.replaceChildren();
+      transcriptLineEls = [];
+      transcriptSegments = [];
+      transcriptActiveIndex = -1;
+      transcriptExpanded = false;
+      transcriptBody.classList.add('collapsed');
+      transcriptSearch.value = '';
+      setTranscriptChevron();
+    };
+
+    const loadTranscript = async (videoId) => {
+      const gen = ++transcriptGeneration;
+      resetTranscript();
+      if (!videoId) return;
+      const c = cfg();
+      const pres = await innertube('player', {
+        videoId,
+        contentCheckOk: true,
+        racyCheckOk: true,
+        playbackContext: {
+          contentPlaybackContext: {
+            html5Preference: 'HTML5_PREF_WANTS',
+            signatureTimestamp: c?.STS || 0,
+            referer: location.href,
+          },
+        },
+      });
+      if (gen !== transcriptGeneration) return;
+      const track = pickCaptionTrack(pres?.captions?.playerCaptionsTracklistRenderer?.captionTracks);
+      if (!track?.baseUrl) return;
+      const tr = await fetch(track.baseUrl + '&fmt=json3', { credentials: 'omit' }).catch(() => null);
+      if (gen !== transcriptGeneration) return;
+      if (!tr?.ok) return;
+      const tj = await tr.json().catch(() => null);
+      if (gen !== transcriptGeneration) return;
+      const segments = parseJson3Transcript(tj);
+      if (!segments.length) return;
+      transcriptSegments = segments;
+      transcriptPanel.style.display = '';
+      renderTranscriptLines();
+    };
+
+    transcriptToggle.addEventListener('click', () => {
+      transcriptExpanded = !transcriptExpanded;
+      transcriptBody.classList.toggle('collapsed', !transcriptExpanded);
+      setTranscriptChevron();
+    });
+
     const showCommentsOff = () => {
       commentsLabel.textContent = 'Comments';
       const empty = document.createElement('div');
@@ -6440,6 +6649,7 @@
       }
     });
     resetComments(window.ytInitialData, !mountedFromSpa);
+    loadTranscript(resolveVideoId());
 
     let chapterSecs = parseChapters(window.ytInitialData);
     let storyboard = null;
@@ -7028,6 +7238,14 @@
           ui.live.classList.toggle('behind', video.duration - video.currentTime > 12);
         }
         paintSeek(video);
+        if (transcriptSegments.length) {
+          const idx = findActiveTranscriptIndex(video.currentTime);
+          if (idx !== transcriptActiveIndex) {
+            if (transcriptActiveIndex >= 0) transcriptLineEls[transcriptActiveIndex]?.classList.remove('active');
+            transcriptActiveIndex = idx;
+            if (idx >= 0) transcriptLineEls[idx]?.classList.add('active');
+          }
+        }
       }, bound);
       video.addEventListener('durationchange', () => {
         if (adActive) { killAd(video); return; }
@@ -7050,6 +7268,7 @@
       renderMeta(data);
       renderTicks();
       resetComments(data);
+      loadTranscript(resolveVideoId());
       updateQueue(resolveVideoId());
     };
     window.addEventListener('yt-navigate-finish', onNavigateFinish);
@@ -7316,6 +7535,7 @@
       renderMeta(data);
       renderTicks();
       resetComments(data);
+      loadTranscript(videoId);
       updateQueue(videoId);
       content.scrollTop = 0;
     };
@@ -7341,6 +7561,10 @@
       adActive = false;
       adRestoring = false;
       wired = null;
+      transcriptGeneration++;
+      transcriptSegments = [];
+      transcriptLineEls = [];
+      transcriptActiveIndex = -1;
       for (const g of boostGraphs) { try { g.gain.disconnect(); g.src.disconnect(); } catch (e) {} }
       boostGraphs.length = 0;
       if (boostCtx) { try { boostCtx.close(); } catch (e) {} boostCtx = null; }

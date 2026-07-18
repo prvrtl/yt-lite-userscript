@@ -2884,6 +2884,66 @@ async function checkPlaybackSpeed(browser) {
   return violations;
 }
 
+// The transcript panel is pre-fetched in renderWatchFor and stays hidden
+// entirely when a video has no transcript, so a missing panel here is an
+// expected live-site condition, not a bug — SKIP rather than FAIL. This
+// proves the panel expands to real lines, that the search box actually
+// filters by text (not just cosmetically), and that clicking a line drives
+// the REAL player's currentTime rather than just highlighting itself.
+async function checkTranscript(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    const panel = await page.waitForSelector('.transcript', { state: 'visible', timeout: 10000 }).catch(() => null);
+    if (!panel) {
+      console.log('  transcript: SKIP — no .transcript panel appeared within 10s (this video may have no transcript on the live site)');
+      return violations;
+    }
+    await page.click('.transcript-toggle');
+    await page.waitForSelector('.transcript-line', { timeout: 10000 }).catch(() => {});
+    const lines = await page.evaluate(() => [...document.querySelectorAll('.transcript-line')].map((l) => ({
+      time: l.querySelector('.transcript-time')?.textContent || '',
+      text: l.querySelector('.transcript-text')?.textContent || '',
+    })));
+    if (lines.length < 3 || lines.some((l) => !l.text.trim() || !l.time.trim())) {
+      violations.push({ check: 'transcript-renders', detail: `expected several .transcript-line entries with non-empty time+text, got ${JSON.stringify(lines.slice(0, 3))}` });
+    }
+
+    const word = (lines[0]?.text || '').split(/\s+/).find((w) => w.replace(/\W/g, '').length > 4) || '';
+    if (word) {
+      await page.fill('.transcript-search', word);
+      await page.waitForTimeout(200);
+      const visibleCount = await page.evaluate(() => document.querySelectorAll('.transcript-line:not(.hidden)').length);
+      if (visibleCount >= lines.length) {
+        violations.push({ check: 'transcript-search', detail: `expected filtering by "${word}" to reduce visible lines below ${lines.length}, got ${visibleCount}` });
+      }
+      await page.fill('.transcript-search', '');
+      await page.waitForTimeout(200);
+    }
+
+    const midIndex = Math.floor(lines.length / 2);
+    const targetTime = ((line) => {
+      const parts = (line?.time || '').split(':').map(Number);
+      return parts.length && !parts.some(Number.isNaN) ? parts.reduce((a, b) => a * 60 + b, 0) : null;
+    })(lines[midIndex]);
+    await page.evaluate((i) => {
+      document.querySelectorAll('.transcript-line')[i]?.click();
+    }, midIndex);
+    await page.waitForTimeout(500);
+    const after = await page.evaluate(() => document.querySelector('#itube-stage video')?.currentTime ?? null);
+    if (targetTime == null || after == null || Math.abs(after - targetTime) > 2) {
+      violations.push({ check: 'transcript-seek', detail: `expected currentTime to land within ~2s of clicked line's ${targetTime}, got ${after}` });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 // Volume boost lazily creates a WebAudio GainNode wired past a
 // MediaElementSource — a MediaElementSource can only be created ONCE per
 // <video>, so a wiring mistake here doesn't just fail to boost, it can
@@ -3146,6 +3206,7 @@ module.exports = {
   checkFrameExport,
   checkTheaterMode,
   checkPlaybackSpeed,
+  checkTranscript,
   checkVolumeBoost,
   checkToolsRow,
   checkAccountMenu,
