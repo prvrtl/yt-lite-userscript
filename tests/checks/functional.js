@@ -2823,6 +2823,81 @@ async function checkCommandPalette(browser) {
   return violations;
 }
 
+// Every clickable element is supposed to give a visible hover reaction (see
+// the itube.user.js hover-polish pass) — a resting UI with no feedback reads
+// as broken, and it is easy for a future edit to add a clickable element
+// without giving it one. This samples a representative set of controls that
+// are reliably present logged-out (sidebar rows, the brand mark, Settings
+// swatches/toggles, the command palette) rather than every single selector,
+// to keep the check fast and deterministic without requiring a watch page.
+async function checkHoverStates(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+
+    const readStyle = (el) => {
+      const cs = getComputedStyle(el);
+      return {
+        background: cs.backgroundColor,
+        color: cs.color,
+        boxShadow: cs.boxShadow,
+        borderColor: cs.borderColor,
+        transform: cs.transform,
+        filter: cs.filter,
+      };
+    };
+    const changed = (before, after) => Object.keys(before).some((k) => before[k] !== after[k]);
+
+    const assertHover = async (selector) => {
+      const handle = await page.$(selector);
+      if (!handle) return; // not present logged-out — skip rather than fail
+      const before = await handle.evaluate(readStyle);
+      await handle.hover();
+      await page.waitForTimeout(120);
+      const after = await handle.evaluate(readStyle);
+      if (!changed(before, after)) {
+        violations.push({ check: `hover-${selector}`, detail: `no computed-style change (background/color/boxShadow/borderColor/transform/filter) after hovering ${selector}` });
+      }
+      await page.mouse.move(0, 0);
+    };
+
+    // A `.nav-row.active` (the current page, Home by default) shares its
+    // background with `:hover` by design — assert on an inactive row so the
+    // sample actually exercises the hover transition rather than a no-op.
+    await assertHover('.nav-row:not(.active)');
+    await assertHover('.nav-settings');
+    await assertHover('.brand');
+
+    const navSettings = await page.$('.nav-settings');
+    if (navSettings) {
+      await navSettings.click();
+      await page.waitForSelector('.settings-overlay.open', { timeout: 5000 }).catch(() => {});
+      await assertHover('.settings-swatch');
+      await assertHover('.settings-toggle');
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(100);
+    }
+
+    await page.keyboard.press('Control+k');
+    await page.waitForTimeout(150);
+    if (!(await page.$('.cmdk-overlay.open'))) {
+      await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })));
+      await page.waitForTimeout(150);
+    }
+    // The first .cmdk-item is auto-`.selected` on open and shares its
+    // background with `:hover` by design (arrow-key highlight === hover) —
+    // assert on a later, unselected item instead.
+    await assertHover('.cmdk-item:not(.selected)');
+    await page.keyboard.press('Escape');
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 // Playback speed must be able to exceed YouTube's 2x cap and the chosen speed
 // must be remembered as a global default applied to the next video. The real
 // signal is the underlying <video>.playbackRate (the YT player clamps its own
@@ -3373,6 +3448,7 @@ module.exports = {
   checkAccountMenu,
   checkSettings,
   checkCommandPalette,
+  checkHoverStates,
   checkItubeToggle,
   checkSubscribeConfirmsOnPopup,
   checkWatchMetaReveals,

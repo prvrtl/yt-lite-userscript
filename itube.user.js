@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.38.1
+// @version      4.39.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -54,6 +54,10 @@
       st.color = '#3dff6e';
       st.font = '600 12px -apple-system, system-ui, sans-serif';
       st.cursor = 'pointer';
+      st.transition = 'background .16s ease, box-shadow .16s ease';
+      const reenableStyle = document.createElement('style');
+      reenableStyle.textContent = '#itube-reenable:hover { background: rgba(61, 255, 110, .16); box-shadow: 0 0 0 1px rgba(61, 255, 110, .5); }';
+      document.head.appendChild(reenableStyle);
       b.addEventListener('click', () => setItubeOff(false));
       document.body.appendChild(b);
     };
@@ -502,6 +506,10 @@
       height: 38px;
       text-decoration: none;
       color: var(--text);
+      transition: color var(--tr);
+    }
+    #itube .brand:hover {
+      color: var(--accent);
     }
     #itube .itube-power {
       width: 36px;
@@ -783,9 +791,13 @@
       display: block;
       flex: none;
       border-radius: 50%;
+      transition: box-shadow var(--tr);
     }
     #itube a.comment-author:hover {
       color: var(--accent);
+    }
+    #itube .comment-avatar-link:hover {
+      box-shadow: 0 0 0 2px var(--accent);
     }
     #itube .c:hover .c-thumb img {
       filter: brightness(1.06);
@@ -1193,6 +1205,12 @@
     #itube a.watch-channel-name[href] {
       cursor: pointer;
     }
+    #itube a.watch-avatar-link[href] {
+      transition: box-shadow var(--tr);
+    }
+    #itube a.watch-avatar-link[href]:hover {
+      box-shadow: 0 0 0 2px var(--accent);
+    }
     #itube .watch-subs {
       font-size: 12.5px;
       color: var(--dim);
@@ -1491,6 +1509,9 @@
       cursor: pointer;
       padding: 0;
     }
+    #itube .watch-desc-toggle:hover {
+      text-decoration: underline;
+    }
     #itube .comments {
       margin-top: 24px;
     }
@@ -1520,6 +1541,10 @@
     #itube .transcript-toggle:disabled {
       cursor: default;
       color: var(--muted);
+    }
+    #itube .comments-toggle:hover:not(:disabled),
+    #itube .transcript-toggle:hover:not(:disabled) {
+      color: var(--accent);
     }
     #itube .comments-toggle svg,
     #itube .transcript-toggle svg {
@@ -1638,6 +1663,9 @@
       cursor: pointer;
       padding: 0;
     }
+    #itube .comment-showmore:hover {
+      color: var(--text);
+    }
     #itube .comment-likes {
       margin-top: 6px;
       font-size: 12.5px;
@@ -1653,6 +1681,9 @@
       font-weight: 600;
       cursor: pointer;
       padding: 0;
+    }
+    #itube .comment-replies-btn:hover {
+      text-decoration: underline;
     }
     #itube .comment-replies {
       margin-top: 10px;
@@ -1670,6 +1701,9 @@
       font-weight: 600;
       cursor: pointer;
       padding: 12px 0 0;
+    }
+    #itube .comments-more:hover {
+      color: var(--text);
     }
     #itube .comments-spinner {
       display: none;
@@ -2008,6 +2042,9 @@
       cursor: pointer;
       position: relative;
     }
+    #itube .ch-tab:hover:not(.active) {
+      color: var(--text);
+    }
     #itube .ch-tab.active {
       color: var(--text);
       font-weight: 600;
@@ -2172,6 +2209,11 @@
       cursor: pointer;
       flex: none;
       text-align: center;
+      transition: border-color var(--tr), background var(--tr);
+    }
+    #itube-bar select:hover {
+      border-color: rgba(255, 255, 255, .35);
+      background: rgba(255, 255, 255, .16);
     }
     #itube-bar .itube-time {
       flex: none;
@@ -2617,6 +2659,9 @@
       border-color: var(--text);
       box-shadow: 0 0 0 2px var(--raised);
     }
+    #itube .settings-swatch:hover {
+      box-shadow: 0 0 0 2px var(--accent);
+    }
     #itube .settings-color {
       width: 26px;
       height: 26px;
@@ -2625,6 +2670,10 @@
       border-radius: 50%;
       background: none;
       cursor: pointer;
+      transition: border-color var(--tr);
+    }
+    #itube .settings-color:hover {
+      border-color: var(--accent);
     }
     #itube .settings-select {
       -webkit-appearance: none;
@@ -2638,6 +2687,9 @@
       font: 500 13px -apple-system, system-ui, sans-serif;
       cursor: pointer;
     }
+    #itube .settings-select:hover {
+      border-color: var(--accent);
+    }
     #itube .settings-toggle {
       width: 52px;
       height: 28px;
@@ -2649,10 +2701,16 @@
       font: 600 12px -apple-system, system-ui, sans-serif;
       cursor: pointer;
     }
+    #itube .settings-toggle:hover:not(.active) {
+      background: var(--hover);
+    }
     #itube .settings-toggle.active {
       background: var(--accent-solid);
       border-color: var(--accent-solid);
       color: var(--on-accent);
+    }
+    #itube .settings-toggle.active:hover {
+      filter: brightness(1.08);
     }
     #itube .settings-keyword-row {
       display: flex;
@@ -2834,8 +2892,13 @@
       justify-content: center;
       background: transparent;
       border: none;
+      border-radius: 50%;
       color: #fff;
       cursor: pointer;
+      transition: background var(--tr);
+    }
+    #itube-mini .mini-bar button:hover {
+      background: rgba(255, 255, 255, .18);
     }
     @media (prefers-reduced-motion: reduce) {
       #itube-mini .mini-bar {

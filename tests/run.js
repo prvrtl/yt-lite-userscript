@@ -50,6 +50,7 @@ const {
   checkAccountMenu,
   checkSettings,
   checkCommandPalette,
+  checkHoverStates,
   checkFrameExport,
   checkDislikeEstimate,
   checkSponsorBlock,
@@ -348,7 +349,7 @@ async function main() {
   // `--check=ads` and `--check=signedout` run only their own suites, which own
   // their contexts — there is no point opening every page just to run zero
   // per-page checks on it.
-  const OWN_CONTEXT_CHECKS = new Set(['ads', 'signedout']);
+  const OWN_CONTEXT_CHECKS = new Set(['ads', 'signedout', 'hover']);
   const pageNames = OWN_CONTEXT_CHECKS.has(args.check) ? [] : (args.page ? [args.page] : Object.keys(PAGES));
   for (const name of pageNames) {
     if (!PAGES[name]) {
@@ -708,6 +709,26 @@ async function main() {
     table.push({ page: 'cmdk', check: 'functional', status, count: violations.length });
     console.log(`  command palette: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=cmdk ${fmt(v)}`);
+  }
+
+  // Hover states (nav rows, brand, settings controls, cmdk items) run once,
+  // in their own context, gated on its own check name (like ads/signedout)
+  // rather than folded into 'functional' — it is a distinct concern (visual
+  // feedback, not behavior) that a caller may want to run in isolation.
+  if (!args.page && (!args.check || args.check === 'hover')) {
+    console.log('\n--- hover ---');
+    let violations;
+    try {
+      violations = await checkHoverStates(browser);
+    } catch (err) {
+      console.error(`  ERROR running the hover check: ${err.stack || err}`);
+      violations = [{ check: 'hover', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'hover', check: 'hover', status, count: violations.length });
+    console.log(`  hover: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=hover ${fmt(v)}`);
   }
 
   // Feed filtering (mute channels/keywords, hide watched) runs once, in its
