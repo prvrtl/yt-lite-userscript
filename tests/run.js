@@ -43,6 +43,8 @@ const {
   checkTheaterMode,
   checkAbLoop,
   checkWatchResponsive,
+  checkNoScrollWatch,
+  checkWatchPopups,
   checkCommentsSortVisibility,
   checkDescriptionChips,
   checkPlaybackSpeed,
@@ -213,13 +215,15 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
       violations = violations.concat(await checkCrossfadeSkipsWithPiP(page));
       violations = violations.concat(await checkDescriptionTimestampSeek(page));
       violations = violations.concat(await checkCommentsOffCopy(page));
-      const toggle = await page.$('.comments-toggle');
-      const disabled = toggle ? await page.evaluate((el) => el.disabled, toggle) : true;
-      if (toggle && !disabled) {
+      const commentsTab = await page.$('.rail-tab:has-text("Comments")');
+      const disabled = commentsTab ? await page.evaluate((el) => el.disabled, commentsTab) : true;
+      if (commentsTab && !disabled) {
         const opened = await page.evaluate(() => document.querySelectorAll('.comment-row').length > 0);
-        if (!opened) await toggle.click().catch(() => {});
+        if (!opened) await commentsTab.click().catch(() => {});
         await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 15000 }).catch(() => {});
         violations = violations.concat(await checkCommentBodyLinks(page));
+        const upNextTab = await page.$('.rail-tab:has-text("Up next")');
+        if (upNextTab) await upNextTab.click();
       }
       // Runs last on watch (it navigates to yet another related video): with
       // comments already expanded above, the page is tall enough to scroll
@@ -270,8 +274,10 @@ async function runPageChecks(context, pageName, url, { checkFilter, update, forc
     if (pageName === 'watch' && perfViolations) {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       await waitForApp(page, { timeout: 30000 });
-      const toggle = await page.$('.comments-toggle');
-      if (toggle) await toggle.click().catch(() => {});
+      await page.evaluate(() => {
+        const tab = Array.from(document.querySelectorAll('.rail-tab')).find((t) => t.textContent.includes('Comments'));
+        if (tab) tab.click();
+      }).catch(() => {});
       await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 15000 }).catch(() => {});
       for (const v of await checkNodeBudget(page, pageName)) perfViolations.push(v);
     }
@@ -800,6 +806,44 @@ async function main() {
     table.push({ page: 'descriptionchips', check: 'functional', status, count: violations.length });
     console.log(`  description link chips: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=descriptionchips ${fmt(v)}`);
+  }
+
+  // Watch v2: with description/transcript/comments moved out of the left
+  // column entirely, the watch page must fit at standard viewports without
+  // a vertical scrollbar (tools collapsed, no popup open).
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- watch page fits without scrolling ---');
+    let violations;
+    try {
+      violations = await checkNoScrollWatch(browser);
+    } catch (err) {
+      console.error(`  ERROR running the no-scroll-watch check: ${err.stack || err}`);
+      violations = [{ check: 'no-scroll-watch', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'noscrollwatch', check: 'functional', status, count: violations.length });
+    console.log(`  watch page fits without scrolling: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=noscrollwatch ${fmt(v)}`);
+  }
+
+  // Watch v2 popups: Description/Transcript pills open a fast glass popup,
+  // mutually exclusive, dismissible by Escape/backdrop; comments stay lazy
+  // until the rail's Comments tab is first activated.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- watch popups (description/transcript/comments) ---');
+    let violations;
+    try {
+      violations = await checkWatchPopups(browser);
+    } catch (err) {
+      console.error(`  ERROR running the watch-popups check: ${err.stack || err}`);
+      violations = [{ check: 'watch-popups', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'watchpopups', check: 'functional', status, count: violations.length });
+    console.log(`  watch popups: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=watchpopups ${fmt(v)}`);
   }
 
   // Audio-only mode covers the video with an art overlay and drops quality,

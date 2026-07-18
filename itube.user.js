@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.43.0
+// @version      4.44.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -193,6 +193,13 @@
     close: () => icon([
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'round', d: 'M3.5 3.5l9 9M12.5 3.5l-9 9' }],
     ]),
+    desc: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', d: 'M2.4 4.4h11.2M2.4 8h11.2M2.4 11.6h7.2' }],
+    ]),
+    transcript: () => icon([
+      ['rect', { x: '1.6', y: '3.4', width: '12.8', height: '9.2', rx: '2', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round', d: 'M4 6.4h3.2M4 9.6h5.6' }],
+    ]),
   };
 
   const pillButton = (iconFn, label, className) => {
@@ -215,6 +222,52 @@
     panel.addEventListener('click', (e) => { e.stopPropagation(); });
     overlay.addEventListener('click', close);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    return { open, close };
+  };
+
+  const supportsPopover = 'showPopover' in HTMLElement.prototype;
+
+  const makePopup = (className) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'itube-popup-overlay ' + className;
+    if (supportsPopover) overlay.setAttribute('popover', 'auto');
+    const panel = document.createElement('div');
+    panel.className = 'itube-popup-panel';
+    overlay.appendChild(panel);
+    return { overlay, panel };
+  };
+
+  const wirePopup = (overlay, panel, onClose) => {
+    let closeTimer = null;
+    const showNow = () => requestAnimationFrame(() => overlay.classList.add('show'));
+    const onEsc = (e) => { if (e.key === 'Escape') close(); };
+    const open = () => {
+      clearTimeout(closeTimer);
+      if (supportsPopover) { try { overlay.showPopover(); } catch (e) {} }
+      else { overlay.classList.add('open'); document.addEventListener('keydown', onEsc); }
+      showNow();
+    };
+    const close = () => {
+      overlay.classList.remove('show');
+      const finish = () => {
+        if (supportsPopover) { try { overlay.hidePopover(); } catch (e) {} }
+        else { overlay.classList.remove('open'); document.removeEventListener('keydown', onEsc); if (onClose) onClose(); }
+      };
+      if (prefersReducedMotion()) finish();
+      else closeTimer = setTimeout(finish, 140);
+    };
+    if (!supportsPopover) {
+      panel.addEventListener('click', (e) => { e.stopPropagation(); });
+      overlay.addEventListener('click', close);
+    } else {
+      panel.addEventListener('click', (e) => { e.stopPropagation(); });
+      overlay.addEventListener('toggle', (e) => {
+        if (e.newState === 'closed') {
+          overlay.classList.remove('show');
+          if (onClose) onClose();
+        }
+      });
+    }
     return { open, close };
   };
 
@@ -1570,20 +1623,10 @@
     }
     #itube .watch-description {
       font-size: 14px;
-      line-height: 1.5;
-      color: var(--muted);
+      line-height: 1.6;
+      color: var(--text);
       white-space: pre-wrap;
       overflow-wrap: anywhere;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    #itube .watch-description.expanded {
-      display: block;
-      color: var(--text);
-      -webkit-line-clamp: unset;
-      overflow: visible;
     }
     #itube .watch-desc-link {
       color: var(--accent);
@@ -1624,75 +1667,38 @@
       border-color: rgba(var(--accent-rgb), .4);
       color: var(--accent);
     }
-    #itube .watch-desc-toggle {
-      display: inline-flex;
+    #itube .rail-tabs {
+      display: flex;
+      gap: 6px;
+      flex: none;
+    }
+    #itube .rail-tab {
+      display: flex;
       align-items: center;
       gap: 6px;
-      align-self: flex-start;
+      height: 32px;
+      padding: 0 12px;
       background: none;
       border: none;
-      color: var(--accent);
-      font-size: 13px;
-      font-weight: 600;
+      border-radius: var(--r-pill);
+      color: var(--muted);
+      font: 600 13px -apple-system, system-ui, sans-serif;
       cursor: pointer;
-      padding: 0;
     }
-    #itube .watch-desc-toggle:hover {
-      text-decoration: underline;
-    }
-    #itube .watch-desc-toggle-icon svg {
-      transition: transform var(--tr);
-    }
-    #itube .watch-desc-toggle-icon svg.open {
-      transform: rotate(180deg);
-    }
-    @media (prefers-reduced-motion: reduce) {
-      #itube .watch-desc-toggle-icon svg {
-        transition: none;
-      }
-    }
-    #itube .comments {
-      margin-top: 24px;
-    }
-    #itube .comments-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    #itube .comments-toggle,
-    #itube .transcript-toggle {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex: 1;
-      min-width: 0;
-      background: none;
-      border: none;
+    #itube .rail-tab:hover:not(:disabled) {
+      background: var(--hover);
       color: var(--text);
-      font-size: 16px;
-      font-weight: 600;
-      letter-spacing: -.01em;
-      padding: 0;
-      cursor: pointer;
-      text-align: left;
     }
-    #itube .comments-toggle:disabled,
-    #itube .transcript-toggle:disabled {
+    #itube .rail-tab.active {
+      background: var(--surface);
+      color: var(--text);
+    }
+    #itube .rail-tab:disabled {
       cursor: default;
-      color: var(--muted);
+      opacity: .5;
     }
-    #itube .comments-toggle:hover:not(:disabled),
-    #itube .transcript-toggle:hover:not(:disabled) {
-      color: var(--accent);
-    }
-    #itube .comments-toggle svg,
-    #itube .transcript-toggle svg {
-      flex: none;
-      color: var(--muted);
-    }
-    #itube .comments-toggle svg.open,
-    #itube .transcript-toggle svg.open {
-      transform: rotate(180deg);
+    #itube .rail-panel {
+      min-width: 0;
     }
     #itube .comments-count {
       font-size: 13px;
@@ -1705,6 +1711,7 @@
       align-items: center;
       gap: 6px;
       flex: none;
+      margin-bottom: 4px;
     }
     #itube .comments-sort-btn {
       height: 28px;
@@ -1720,12 +1727,6 @@
       background: rgba(var(--accent-rgb), .14);
       border-color: rgba(var(--accent-rgb), .45);
       color: var(--accent);
-    }
-    #itube .comments-body {
-      margin-top: 16px;
-    }
-    #itube .comments-body.collapsed {
-      display: none;
     }
     #itube .comments-list {
       display: flex;
@@ -1864,20 +1865,15 @@
       padding: 24px 0;
       font-size: 14px;
     }
-    #itube .transcript {
-      margin-top: 24px;
-    }
-    #itube .transcript-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
     #itube .transcript-search {
-      flex: none;
-      width: 220px;
-      height: 30px;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      width: 100%;
+      height: 34px;
+      margin-top: 12px;
       border-radius: var(--r-xs);
-      background: var(--surface);
+      background: var(--raised);
       border: 1px solid var(--hairline);
       color: var(--text);
       padding: 0 12px;
@@ -1889,15 +1885,10 @@
       border: 2px solid var(--accent);
     }
     #itube .transcript-body {
-      margin-top: 16px;
-      max-height: 360px;
-      overflow-y: auto;
+      margin-top: 10px;
       display: flex;
       flex-direction: column;
       gap: 2px;
-    }
-    #itube .transcript-body.collapsed {
-      display: none;
     }
     #itube .transcript-line {
       display: flex;
@@ -1928,6 +1919,85 @@
       min-width: 48px;
       color: var(--muted);
       font: 500 12.5px ui-monospace, monospace;
+    }
+    #itube .itube-popup-overlay {
+      position: fixed;
+      inset: 0;
+      margin: 0;
+      padding: 0;
+      max-width: none;
+      max-height: none;
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: rgba(0, 0, 0, .6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 14000;
+    }
+    #itube .itube-popup-overlay.open,
+    #itube .itube-popup-overlay:popover-open {
+      display: flex;
+    }
+    #itube .itube-popup-panel {
+      width: min(640px, 90vw);
+      max-height: 70vh;
+      overflow-y: auto;
+      background: var(--raised);
+      border: 1px solid var(--hairline);
+      border-radius: var(--r-lg);
+      box-shadow: 0 24px 60px -16px rgba(0, 0, 0, .7);
+      padding: 20px 22px 26px;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      transform: scale(.98);
+      transition: opacity .14s ease, transform .14s ease;
+    }
+    #itube .itube-popup-overlay.show .itube-popup-panel {
+      opacity: 1;
+      transform: scale(1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #itube .itube-popup-panel {
+        transition: none;
+      }
+    }
+    #itube .popup-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex: none;
+    }
+    #itube .popup-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -.01em;
+    }
+    #itube .popup-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      padding: 6px;
+      border-radius: var(--r-xs);
+      cursor: pointer;
+      flex: none;
+    }
+    #itube .popup-close:hover {
+      background: var(--hover);
+      color: var(--text);
+    }
+    #itube .desc-popup .watch-desc-chips {
+      margin-top: 12px;
+    }
+    #itube .desc-popup .watch-description {
+      margin-top: 14px;
+    }
+    #itube .transcript-status {
+      font-size: 12.5px;
+      color: var(--muted);
     }
     #itube .rc {
       display: flex;
@@ -6359,7 +6429,6 @@
     queueWrap.className = 'queue-wrap';
     const relatedWrap = document.createElement('div');
     relatedWrap.className = 'related-wrap';
-    watchRight.append(queueWrap, relatedWrap);
 
     const title = document.createElement('h1');
     title.className = 'watch-title';
@@ -6394,10 +6463,17 @@
     likes.append(likeBtn, likeDivider, dislikeBtn);
 
     const { btn: saveBtn, label: saveLabel } = pillButton(ICONS.save, '', 'watch-action-btn');
+    const { btn: descBtn } = pillButton(ICONS.desc, 'Description', 'watch-action-btn');
+    const { btn: transcriptBtn } = pillButton(ICONS.transcript, 'Transcript', 'watch-action-btn');
     const { btn: shareBtn, label: shareLabel } = pillButton(ICONS.share, 'Share', 'watch-action-btn');
     const { btn: toolsBtn } = pillButton(ICONS.tools, 'Tools', 'watch-action-btn');
     saveBtn.title = 'Save';
     saveBtn.setAttribute('aria-label', 'Save');
+    descBtn.title = 'Description';
+    descBtn.setAttribute('aria-label', 'Description');
+    transcriptBtn.title = 'Transcript';
+    transcriptBtn.setAttribute('aria-label', 'Transcript');
+    transcriptBtn.style.display = 'none';
     shareBtn.title = 'Share';
     shareBtn.setAttribute('aria-label', 'Share');
     toolsBtn.title = 'Tools';
@@ -6405,7 +6481,7 @@
     toolsBtn.setAttribute('aria-expanded', 'false');
     const { btn: subscribeBtn, label: subscribeLabel } = pillButton(null, '', 'watch-subscribe');
 
-    actions.append(likes, saveBtn, shareBtn, toolsBtn);
+    actions.append(likes, saveBtn, descBtn, transcriptBtn, shareBtn, toolsBtn);
     channelRow.append(avatarLink, channelInfo, channelSpacer, subscribeBtn);
 
     const toolsRow = document.createElement('div');
@@ -6729,24 +6805,6 @@
     descChips.className = 'watch-desc-chips';
     const desc = document.createElement('div');
     desc.className = 'watch-description';
-    const descToggle = document.createElement('button');
-    descToggle.type = 'button';
-    descToggle.className = 'watch-desc-toggle';
-    const descToggleIcon = document.createElement('span');
-    descToggleIcon.className = 'watch-desc-toggle-icon';
-    descToggleIcon.appendChild(ICONS.chevron());
-    const descToggleLabel = document.createElement('span');
-    descToggleLabel.textContent = 'More';
-    descToggle.append(descToggleIcon, descToggleLabel);
-    descToggle.style.display = 'none';
-    let descExpanded = false;
-    descToggle.addEventListener('click', () => {
-      descExpanded = !descExpanded;
-      desc.classList.toggle('expanded', descExpanded);
-      descToggleIcon.firstChild?.classList.toggle('open', descExpanded);
-      descToggleLabel.textContent = descExpanded ? 'Less' : 'More';
-      renderDescription(currentDescSegments, currentDescFallback, descExpanded);
-    });
     const unavailable = document.createElement('div');
     unavailable.className = 'watch-unavailable';
     unavailable.textContent = "This video isn't available.";
@@ -6781,7 +6839,7 @@
     skelDesc.append(skelDescLine1, skelDescLine2, skelDescLine3);
     skeleton.append(skelChannel, skelStats, skelDesc);
 
-    const META_CONTENT_ELS = [stats, channelRow, actions, metaDivider, desc];
+    const META_CONTENT_ELS = [stats, channelRow, actions, metaDivider];
     let metaSkeletonVisible = false;
 
     const RELATED_SKELETON_COUNT = 6;
@@ -6799,7 +6857,6 @@
         contentEl.style.display = 'none';
         contentEl.style.opacity = '0';
       }
-      descToggle.style.display = 'none';
       skeleton.style.opacity = '1';
       skeleton.style.display = 'flex';
       ensureRelatedSkeleton();
@@ -6826,36 +6883,77 @@
     const watchHead = document.createElement('div');
     watchHead.className = 'watch-head';
     watchHead.append(channelRow, actions, toolsRow);
-    meta.append(unavailable, skeleton, stats, watchHead, signInHint, metaDivider, desc, descChips, descToggle);
+    meta.append(unavailable, skeleton, stats, watchHead, signInHint, metaDivider, descChips);
     showMetaSkeleton();
 
-    const transcriptPanel = document.createElement('div');
-    transcriptPanel.className = 'transcript';
-    const transcriptHeader = document.createElement('div');
-    transcriptHeader.className = 'transcript-header';
-    const { btn: transcriptToggle, icon: transcriptChevron, label: transcriptLabel } = pillButton(ICONS.chevron, 'Transcript', 'transcript-toggle');
+    const descPopup = makePopup('desc-popup');
+    const descPopupWire = wirePopup(descPopup.overlay, descPopup.panel);
+    const descPopupHeader = document.createElement('div');
+    descPopupHeader.className = 'popup-header';
+    const descPopupTitle = document.createElement('div');
+    descPopupTitle.className = 'popup-title';
+    descPopupTitle.textContent = 'Description';
+    const { btn: descPopupClose } = pillButton(ICONS.close, null, 'popup-close');
+    descPopupClose.setAttribute('aria-label', 'Close');
+    descPopupHeader.append(descPopupTitle, descPopupClose);
+    const descPopupChips = document.createElement('div');
+    descPopupChips.className = 'watch-desc-chips';
+    descPopup.panel.append(descPopupHeader, descPopupChips, desc);
+    descPopupClose.addEventListener('click', () => descPopupWire.close());
+
+    const transcriptPopup = makePopup('transcript-popup');
+    const transcriptPopupWire = wirePopup(transcriptPopup.overlay, transcriptPopup.panel, () => { transcriptExpanded = false; });
+    const transcriptPopupHeader = document.createElement('div');
+    transcriptPopupHeader.className = 'popup-header';
+    const transcriptPopupTitle = document.createElement('div');
+    transcriptPopupTitle.className = 'popup-title';
+    transcriptPopupTitle.textContent = 'Transcript';
+    const transcriptStatus = document.createElement('div');
+    transcriptStatus.className = 'transcript-status';
+    const { btn: transcriptPopupClose } = pillButton(ICONS.close, null, 'popup-close');
+    transcriptPopupClose.setAttribute('aria-label', 'Close');
+    transcriptPopupHeader.append(transcriptPopupTitle, transcriptStatus, transcriptPopupClose);
     const transcriptSearch = document.createElement('input');
     transcriptSearch.type = 'text';
     transcriptSearch.className = 'transcript-search';
     transcriptSearch.placeholder = 'Search transcript';
-    transcriptHeader.append(transcriptToggle, transcriptSearch);
     const transcriptBody = document.createElement('div');
-    transcriptBody.className = 'transcript-body collapsed';
-    transcriptPanel.append(transcriptHeader, transcriptBody);
+    transcriptBody.className = 'transcript-body';
+    transcriptPopup.panel.append(transcriptPopupHeader, transcriptSearch, transcriptBody);
+    transcriptPopupClose.addEventListener('click', () => transcriptPopupWire.close());
 
-    const commentsPanel = document.createElement('div');
-    commentsPanel.className = 'comments';
-    const commentsHeader = document.createElement('div');
-    commentsHeader.className = 'comments-header';
-    const { btn: commentsToggle, icon: commentsChevron, label: commentsLabel } = pillButton(ICONS.chevron, 'Comments', 'comments-toggle');
+    const openDescPopup = () => {
+      transcriptPopupWire.close();
+      descPopupWire.open();
+    };
+    const openTranscriptPopup = () => {
+      descPopupWire.close();
+      transcriptExpanded = true;
+      transcriptPopupWire.open();
+      loadTranscript(resolveVideoId());
+    };
+    descBtn.addEventListener('click', openDescPopup);
+    transcriptBtn.addEventListener('click', openTranscriptPopup);
+
+    const railTabs = document.createElement('div');
+    railTabs.className = 'rail-tabs';
+    const { btn: tabUpNext } = pillButton(null, 'Up next', 'rail-tab');
+    const { btn: tabComments, label: tabCommentsLabel } = pillButton(null, 'Comments', 'rail-tab');
     const commentsCount = document.createElement('span');
     commentsCount.className = 'comments-count';
-    commentsToggle.appendChild(commentsCount);
+    tabComments.appendChild(commentsCount);
+    tabUpNext.classList.add('active');
+    railTabs.append(tabUpNext, tabComments);
+
+    const upNextPanel = document.createElement('div');
+    upNextPanel.className = 'rail-panel up-next-panel';
+    upNextPanel.append(queueWrap, relatedWrap);
+
     const commentsSort = document.createElement('div');
     commentsSort.className = 'comments-sort';
-    commentsHeader.append(commentsToggle, commentsSort);
-    const commentsBody = document.createElement('div');
-    commentsBody.className = 'comments-body collapsed';
+    const commentsPanel = document.createElement('div');
+    commentsPanel.className = 'comments rail-panel';
+    commentsPanel.style.display = 'none';
     const commentsList = document.createElement('div');
     commentsList.className = 'comments-list';
     const commentsSpinner = document.createElement('div');
@@ -6865,8 +6963,23 @@
     commentsMore.className = 'comments-more';
     commentsMore.textContent = 'Show more comments';
     commentsMore.style.display = 'none';
-    commentsBody.append(commentsList, commentsSpinner, commentsMore);
-    commentsPanel.append(commentsHeader, commentsBody);
+    commentsPanel.append(commentsSort, commentsList, commentsSpinner, commentsMore);
+
+    const setRailTab = (tab) => {
+      if (tab === 'comments' && tabComments.disabled) return;
+      tabUpNext.classList.toggle('active', tab === 'upnext');
+      tabComments.classList.toggle('active', tab === 'comments');
+      upNextPanel.style.display = tab === 'upnext' ? '' : 'none';
+      commentsPanel.style.display = tab === 'comments' ? '' : 'none';
+      if (tab === 'comments' && !commentsFetched && commentsToken) {
+        commentsFetched = true;
+        fetchComments(true);
+      }
+    };
+    tabUpNext.addEventListener('click', () => setRailTab('upnext'));
+    tabComments.addEventListener('click', () => setRailTab('comments'));
+
+    watchRight.append(railTabs, upNextPanel, commentsPanel);
 
     const stageWrap = document.createElement('div');
     stageWrap.className = 'stage-wrap';
@@ -6875,8 +6988,8 @@
     ambient.width = 32;
     ambient.height = 18;
     stageWrap.append(ambient, stage);
-    watchLeft.append(stageWrap, title, meta, transcriptPanel, commentsPanel);
-    watch.append(watchLeft, watchRight);
+    watchLeft.append(stageWrap, title, meta);
+    watch.append(watchLeft, watchRight, descPopup.overlay, transcriptPopup.overlay);
 
     view.replaceChildren(watch);
 
@@ -6911,6 +7024,9 @@
                 e.stopPropagation();
                 seekPlayerTo(seg.seconds);
               });
+            } else {
+              a.target = '_blank';
+              a.rel = 'noopener';
             }
             desc.appendChild(a);
           } else {
@@ -6987,8 +7103,8 @@
       return urls.slice(0, 8);
     };
 
-    const renderDescChips = (segments, fallbackText) => {
-      descChips.replaceChildren();
+    const paintDescChips = (target, segments, fallbackText) => {
+      target.replaceChildren();
       const urls = extractDescriptionLinks(segments, fallbackText);
       for (const url of urls) {
         let domain = url;
@@ -7002,8 +7118,12 @@
         const label = document.createElement('span');
         label.textContent = domain;
         a.appendChild(label);
-        descChips.appendChild(a);
+        target.appendChild(a);
       }
+    };
+    const renderDescChips = (segments, fallbackText) => {
+      paintDescChips(descChips, segments, fallbackText);
+      paintDescChips(descPopupChips, segments, fallbackText);
     };
 
     const playabilityStatus = (data) => (
@@ -7029,9 +7149,9 @@
         stats.replaceChildren();
         currentDescSegments = null;
         currentDescFallback = '';
-        renderDescription(null, '', false);
+        renderDescription(null, '', true);
         descChips.replaceChildren();
-        descToggle.style.display = 'none';
+        descPopupChips.replaceChildren();
         relatedWrap.replaceChildren();
         firstRelatedId = null;
         return;
@@ -7079,16 +7199,8 @@
       const descFallback = details?.shortDescription || '';
       currentDescSegments = descSegments;
       currentDescFallback = descFallback;
-      descExpanded = false;
-      renderDescription(descSegments, descFallback, false);
+      renderDescription(descSegments, descFallback, true);
       renderDescChips(descSegments, descFallback);
-      desc.classList.remove('expanded');
-      descToggleIcon.firstChild?.classList.remove('open');
-      descToggleLabel.textContent = 'More';
-      descToggle.style.display = 'none';
-      requestAnimationFrame(() => {
-        if (desc.scrollHeight > desc.clientHeight + 1) descToggle.style.display = '';
-      });
 
       const related = extractVideos(data, new Set(), thumbTarget(COMPACT_THUMB_W)).slice(0, 20);
       firstRelatedId = related[0]?.id || null;
@@ -7155,11 +7267,6 @@
     let commentsShown = 0;
     let commentsLoading = false;
     let commentsFetched = false;
-    let commentsExpanded = false;
-
-    const setChevron = () => {
-      commentsChevron.classList.toggle('open', commentsExpanded);
-    };
 
     let transcriptGeneration = 0;
     let transcriptSegments = [];
@@ -7168,10 +7275,6 @@
     let transcriptExpanded = false;
     let transcriptLoading = false;
     let transcriptLoadedId = null;
-
-    const setTranscriptChevron = () => {
-      transcriptChevron.classList.toggle('open', transcriptExpanded);
-    };
 
     const applyTranscriptFilter = () => {
       const q = transcriptSearch.value.trim().toLowerCase();
@@ -7221,10 +7324,16 @@
       transcriptSegments = [];
       transcriptActiveIndex = -1;
       transcriptExpanded = false;
-      transcriptBody.classList.add('collapsed');
       transcriptSearch.value = '';
-      transcriptLabel.textContent = 'Transcript';
-      setTranscriptChevron();
+      transcriptStatus.textContent = '';
+      transcriptBtn.style.display = 'none';
+      const gen = transcriptGeneration;
+      const videoId = resolveVideoId();
+      waitForPlayerResponse(videoId, gen).then((pres) => {
+        if (gen !== transcriptGeneration) return;
+        const track = pickCaptionTrack(pres?.captions?.playerCaptionsTracklistRenderer?.captionTracks);
+        transcriptBtn.style.display = track ? '' : 'none';
+      });
     };
 
     const waitForPlayerResponse = async (videoId, gen) => {
@@ -7242,14 +7351,14 @@
       if (!videoId || transcriptLoadedId === videoId || transcriptLoading) return;
       const gen = transcriptGeneration;
       transcriptLoading = true;
-      transcriptLabel.textContent = 'Loading transcript…';
+      transcriptStatus.textContent = 'Loading transcript…';
       const pres = await waitForPlayerResponse(videoId, gen);
       if (gen !== transcriptGeneration) return;
       const track = pickCaptionTrack(pres?.captions?.playerCaptionsTracklistRenderer?.captionTracks);
       if (!track?.baseUrl) {
         transcriptLoading = false;
         if (pres) transcriptLoadedId = videoId;
-        transcriptLabel.textContent = pres ? 'Transcript unavailable' : 'Transcript not ready — try again';
+        transcriptStatus.textContent = pres ? 'Transcript unavailable' : 'Transcript not ready — try again';
         return;
       }
       const tr = await fetch(track.baseUrl + '&fmt=json3', { credentials: 'omit' }).catch(() => null);
@@ -7257,7 +7366,7 @@
       if (!tr?.ok) {
         transcriptLoading = false;
         transcriptLoadedId = videoId;
-        transcriptLabel.textContent = 'Transcript unavailable';
+        transcriptStatus.textContent = 'Transcript unavailable';
         return;
       }
       const tj = await tr.json().catch(() => null);
@@ -7266,23 +7375,16 @@
       transcriptLoading = false;
       transcriptLoadedId = videoId;
       if (!segments.length) {
-        transcriptLabel.textContent = 'Transcript unavailable';
+        transcriptStatus.textContent = 'Transcript unavailable';
         return;
       }
       transcriptSegments = segments;
-      transcriptLabel.textContent = 'Transcript';
+      transcriptStatus.textContent = '';
       renderTranscriptLines();
     };
 
-    transcriptToggle.addEventListener('click', () => {
-      transcriptExpanded = !transcriptExpanded;
-      transcriptBody.classList.toggle('collapsed', !transcriptExpanded);
-      setTranscriptChevron();
-      if (transcriptExpanded) loadTranscript(resolveVideoId());
-    });
-
     const showCommentsOff = () => {
-      commentsLabel.textContent = 'Comments';
+      tabCommentsLabel.textContent = 'Comments';
       commentsCount.textContent = '';
       const empty = document.createElement('div');
       empty.className = 'comments-empty';
@@ -7337,7 +7439,7 @@
     let sortOptions = [];
     let activeSortIndex = 0;
     const updateSortVisibility = () => {
-      commentsSort.style.display = (sortOptions.length && commentsExpanded) ? 'flex' : 'none';
+      commentsSort.style.display = sortOptions.length ? 'flex' : 'none';
     };
     const renderSortPills = () => {
       commentsSort.replaceChildren();
@@ -7369,29 +7471,16 @@
       commentsShown = 0;
       commentsLoading = false;
       commentsFetched = false;
-      commentsExpanded = false;
-      commentsBody.classList.add('collapsed');
-      setChevron();
+      setRailTab('upnext');
       commentsToken = findCommentsToken(data);
       const label = getCommentsCountLabel(data);
-      commentsLabel.textContent = commentsToken ? 'Comments' : (fresh ? 'Comments are turned off.' : 'Comments');
+      tabCommentsLabel.textContent = commentsToken ? 'Comments' : (fresh ? 'Comments are turned off.' : 'Comments');
       commentsCount.textContent = (commentsToken && label) ? ' · ' + label : '';
-      commentsToggle.disabled = !commentsToken;
+      tabComments.disabled = !commentsToken;
       sortOptions = findCommentsSortOptions(data);
       activeSortIndex = 0;
       renderSortPills();
     };
-    commentsToggle.addEventListener('click', () => {
-      if (commentsToggle.disabled) return;
-      commentsExpanded = !commentsExpanded;
-      commentsBody.classList.toggle('collapsed', !commentsExpanded);
-      setChevron();
-      updateSortVisibility();
-      if (commentsExpanded && !commentsFetched) {
-        commentsFetched = true;
-        fetchComments(true);
-      }
-    });
     resetComments(window.ytInitialData, !mountedFromSpa);
     resetTranscript();
 
@@ -7885,7 +7974,7 @@
           ui.live.classList.toggle('behind', video.duration - video.currentTime > 12);
         }
         paintSeek(video);
-        if (transcriptSegments.length) {
+        if (transcriptExpanded && transcriptSegments.length) {
           const idx = findActiveTranscriptIndex(video.currentTime);
           if (idx !== transcriptActiveIndex) {
             if (transcriptActiveIndex >= 0) transcriptLineEls[transcriptActiveIndex]?.classList.remove('active');
@@ -8173,6 +8262,8 @@
     let renderGeneration = 0;
     const renderWatchFor = async (videoId) => {
       const gen = ++renderGeneration;
+      descPopupWire.close();
+      transcriptPopupWire.close();
       showMetaSkeleton();
       const data = await innertube('next', { videoId });
       if (gen !== renderGeneration) return;

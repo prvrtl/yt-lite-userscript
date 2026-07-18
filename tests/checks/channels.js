@@ -143,13 +143,13 @@ async function checkWatchChannelRow(page) {
 // away data, not missing data.
 async function checkCommentAuthorLinks(page) {
   const violations = [];
-  const toggle = await page.$('.comments-toggle');
+  const toggle = await page.$('.rail-tab:has-text("Comments")');
   if (!toggle) {
-    violations.push({ check: 'comment-author-links', detail: 'expected a .comments-toggle on the watch page' });
+    violations.push({ check: 'comment-author-links', detail: 'expected a Comments rail tab on the watch page' });
     return violations;
   }
   if (await page.evaluate((el) => el.disabled, toggle)) {
-    violations.push({ check: 'comment-author-links', detail: 'the .comments-toggle is disabled on a video with comments — cannot assert comment author links' });
+    violations.push({ check: 'comment-author-links', detail: 'the Comments rail tab is disabled on a video with comments — cannot assert comment author links' });
     return violations;
   }
   const alreadyOpen = await page.evaluate(() => document.querySelectorAll('.comment-row').length > 0);

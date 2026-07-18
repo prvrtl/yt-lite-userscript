@@ -372,27 +372,33 @@ async function runWatchFunctional(page) {
   }
   await page.keyboard.press('Escape');
 
-  // --- comments collapsed by default, expand on click ---
+  // --- comments live in the rail's Comments tab, fetched on first activation ---
   const commentsBefore = await page.evaluate(() => document.querySelectorAll('.comment-row').length);
   if (commentsBefore !== 0) {
-    report('comments-collapsed-default', `expected 0 .comment-row before expanding, got ${commentsBefore}`);
+    report('comments-collapsed-default', `expected 0 .comment-row before activating the Comments tab, got ${commentsBefore}`);
   }
-  // The app sets `commentsToggle.disabled = !commentsToken` — i.e. the button
-  // is disabled PRECISELY when comment extraction failed. The old check said
-  // `if (!disabled) { ...assert... }`, so it silently passed on the exact
-  // failure it exists to catch. A disabled toggle on a normal video IS the
-  // violation.
-  const toggle = await page.$('.comments-toggle');
-  if (!toggle) {
-    report('comments-toggle-exists', 'expected .comments-toggle to exist');
-  } else if (await page.evaluate((el) => el.disabled, toggle)) {
-    report('comments-toggle-disabled', 'the .comments-toggle is disabled on a normal video with comments enabled — the app only disables it when the comments continuation token could not be extracted');
+  // The app sets `tabComments.disabled = !commentsToken` — i.e. the tab is
+  // disabled PRECISELY when comment extraction failed. A disabled tab on a
+  // normal video IS the violation.
+  const tab = await page.$('.rail-tab:has-text("Comments")');
+  if (!tab) {
+    report('comments-tab-exists', 'expected a Comments rail tab to exist');
+  } else if (await page.evaluate((el) => el.disabled, tab)) {
+    report('comments-tab-disabled', 'the Comments rail tab is disabled on a normal video with comments enabled — the app only disables it when the comments continuation token could not be extracted');
   } else {
-    await toggle.click();
+    await tab.click();
     await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 10000 }).catch(() => {});
     const commentsAfter = await page.evaluate(() => document.querySelectorAll('.comment-row').length);
     if (!(commentsAfter > 0)) {
-      report('comments-expand-on-click', `expected >0 .comment-row after clicking .comments-toggle, got ${commentsAfter}`);
+      report('comments-expand-on-click', `expected >0 .comment-row after activating the Comments tab, got ${commentsAfter}`);
+    }
+    // Switching to Comments hides the Up next panel (that's the point of the
+    // tabs) — switch back so the rest of this suite, which clicks .rc related
+    // cards, finds them visible again, matching the page's default state.
+    const upNextTab = await page.$('.rail-tab:has-text("Up next")');
+    if (upNextTab) {
+      await upNextTab.click();
+      await page.waitForTimeout(100);
     }
   }
 
@@ -1116,6 +1122,14 @@ async function checkDescriptionTimestampSeek(page) {
   const violations = [];
   const currentVideoId = await page.evaluate(() => new URLSearchParams(location.search).get('v'));
 
+  // Watch v2: the description (and its timestamp links) only exists inside
+  // the Description popup now — open it before looking for the link.
+  const descBtn = await page.$('.watch-action-btn[aria-label="Description"]');
+  if (descBtn) {
+    await descBtn.click();
+    await page.waitForTimeout(200);
+  }
+
   const handle = await page.evaluateHandle((vid) => {
     const links = [...document.querySelectorAll('.watch-desc-link')];
     return links.find((a) => {
@@ -1133,6 +1147,7 @@ async function checkDescriptionTimestampSeek(page) {
   const el = handle.asElement();
   if (!el) {
     console.log("  timestamp-seek: SKIP — this video's description has no same-video timestamp link (.watch-desc-link with t=)");
+    if (descBtn) { await page.keyboard.press('Escape'); await page.waitForTimeout(200); }
     return violations;
   }
 
@@ -1162,6 +1177,10 @@ async function checkDescriptionTimestampSeek(page) {
   if (targetSeconds == null || after.currentTime == null || Math.abs(after.currentTime - targetSeconds) > 2) {
     violations.push({ check: 'timestamp-seek-jumps', detail: `expected currentTime to land within ~2s of target ${targetSeconds}, before=${before} after=${after.currentTime}` });
   }
+  // The popup must stay open after a timestamp click (seek, don't close) —
+  // but leave it closed for whatever check runs next on this shared page.
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
   return violations;
 }
 
@@ -1196,6 +1215,7 @@ async function checkWatchResponsive(browser) {
         const railVisible = !!rail && getComputedStyle(rail).display !== 'none' && rail.getBoundingClientRect().width > 0;
         const meta = document.querySelector('#itube .watch-meta');
         const relatedWrap = document.querySelector('.related-wrap');
+        const railTabs = document.querySelector('.rail-tabs');
         return {
           vw: window.innerWidth,
           docOverflow: doc.scrollWidth > doc.clientWidth + 1,
@@ -1206,8 +1226,12 @@ async function checkWatchResponsive(browser) {
           metaRect: rect(meta),
           relatedTop: relatedWrap ? relatedWrap.getBoundingClientRect().top : null,
           metaBottom: meta ? meta.getBoundingClientRect().bottom : null,
+          railTabsOverflow: railTabs ? railTabs.scrollWidth > (rail ? rail.getBoundingClientRect().width : railTabs.clientWidth) + 1 : false,
         };
       });
+      if (info.railTabsOverflow) {
+        violations.push({ check: 'watch-responsive-rail-tabs-overflow', detail: `at width=${width} .rail-tabs overflows the rail column` });
+      }
       if (info.docOverflow) {
         violations.push({ check: 'watch-responsive-no-overflow', detail: `at width=${width} the document scrolls horizontally` });
       }
@@ -1251,42 +1275,177 @@ async function checkWatchResponsive(browser) {
   return violations;
 }
 
-// The Top/Newest sort segmented control must only be reachable while there
-// are actually comments on screen to sort — showing it above a collapsed
-// .comments-body was the reported "selector doesn't make sense" bug, caused
-// by the JS unconditionally setting `commentsSort.style.display = 'flex'`
-// any time sort options existed, regardless of the collapsed/expanded state.
-async function checkCommentsSortVisibility(browser) {
+// Watch v2's whole point: description, transcript and comments moved out from
+// under the meta block (into popups + a rail tab), so the watch page itself
+// should fit without scrolling at standard viewports with the tools tray
+// collapsed and both popups closed. This pins that directly rather than
+// inferring it from individual element positions.
+async function checkNoScrollWatch(browser) {
   const violations = [];
   const context = await newContext(browser);
   const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  const original = page.viewportSize();
   try {
     await waitForApp(page, { timeout: 30000 }).catch(() => {});
-    await page.waitForSelector('.comments-toggle', { timeout: 15000 }).catch(() => {});
-    const disabled = await page.evaluate(() => document.querySelector('.comments-toggle')?.disabled);
-    if (disabled) {
-      console.log('  comments-sort-visibility: SKIP — .comments-toggle is disabled (no comments continuation on this fixture right now)');
-      return violations;
-    }
-    const collapsedVisible = await page.evaluate(() => getComputedStyle(document.querySelector('.comments-sort')).display !== 'none');
-    if (collapsedVisible) {
-      violations.push({ check: 'comments-sort-hidden-collapsed', detail: 'expected .comments-sort to be display:none while .comments-body is collapsed' });
-    }
-    await page.click('.comments-toggle');
-    await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 10000 }).catch(() => {});
-    await page.waitForTimeout(200);
-    const sortOptionCount = await page.evaluate(() => document.querySelectorAll('.comments-sort-btn').length);
-    if (sortOptionCount > 0) {
-      const expandedVisible = await page.evaluate(() => getComputedStyle(document.querySelector('.comments-sort')).display !== 'none');
-      if (!expandedVisible) {
-        violations.push({ check: 'comments-sort-visible-expanded', detail: 'expected .comments-sort to become visible once comments are expanded and sort options exist' });
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.watch-subscribe', { state: 'visible', timeout: 15000 }).catch(() => {});
+    const sizes = [{ width: 1512, height: 900 }, { width: 1280, height: 800 }];
+    for (const size of sizes) {
+      await page.setViewportSize(size);
+      await page.waitForTimeout(300);
+      const info = await page.evaluate(() => {
+        const content = document.querySelector('#itube .content');
+        const toolsOpen = document.querySelector('.watch-tools')?.classList.contains('open');
+        const popupsOpen = [...document.querySelectorAll('.itube-popup-overlay')].some((o) => o.classList.contains('show'));
+        const titleLines = (() => {
+          const t = document.querySelector('.watch-title');
+          if (!t) return 0;
+          const lh = parseFloat(getComputedStyle(t).lineHeight) || 1;
+          return Math.round(t.getBoundingClientRect().height / lh);
+        })();
+        return {
+          scrollHeight: content ? content.scrollHeight : 0,
+          clientHeight: content ? content.clientHeight : 0,
+          toolsOpen: !!toolsOpen,
+          popupsOpen,
+          titleLines,
+        };
+      });
+      if (info.toolsOpen || info.popupsOpen) {
+        violations.push({ check: 'no-scroll-watch-precondition', detail: `at ${size.width}x${size.height} expected tools collapsed and no popup open before measuring, got toolsOpen=${info.toolsOpen} popupsOpen=${info.popupsOpen}` });
+        continue;
+      }
+      if (info.titleLines >= 3) {
+        console.log(`  no-scroll-watch: SKIP at ${size.width}x${size.height} — title wraps ${info.titleLines} lines on this video, which is an explicitly tolerated overflow case`);
+        continue;
+      }
+      if (info.scrollHeight > info.clientHeight + 24) {
+        violations.push({ check: 'no-scroll-watch', detail: `at ${size.width}x${size.height} .content scrollHeight=${info.scrollHeight} exceeds clientHeight=${info.clientHeight} by more than the 24px tolerance — the watch page should fit without scrolling with tools collapsed and popups closed` });
       }
     }
-    await page.click('.comments-toggle');
-    await page.waitForTimeout(200);
-    const collapsedAgainVisible = await page.evaluate(() => getComputedStyle(document.querySelector('.comments-sort')).display !== 'none');
-    if (collapsedAgainVisible) {
-      violations.push({ check: 'comments-sort-hidden-recollapsed', detail: 'expected .comments-sort to hide again after re-collapsing .comments-body' });
+  } finally {
+    if (original) await page.setViewportSize(original);
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// Description/Transcript popups: a fast glass panel (native `popover` when
+// supported, wireOverlay fallback otherwise) opened from an action pill,
+// mutually exclusive with each other, closed by Escape/backdrop. The
+// Transcript pill only renders once caption-track availability is known —
+// never before, and never by fetching the transcript body itself. Comments
+// stay lazy: no continuation POST until the rail's Comments tab is first
+// activated, and the Top/Newest sort control only ever renders inside that
+// tab panel.
+async function checkWatchPopups(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  const commentContinuations = [];
+  page.on('request', (req) => {
+    if (/\/youtubei\/v1\/next/.test(req.url()) && req.method() === 'POST') {
+      const body = req.postData() || '';
+      if (body.includes('continuation')) commentContinuations.push(req.url());
+    }
+  });
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.watch-action-btn[aria-label="Description"]', { timeout: 15000 }).catch(() => {});
+
+    const descBtn = await page.$('.watch-action-btn[aria-label="Description"]');
+    if (!descBtn) {
+      violations.push({ check: 'description-popup-button-exists', detail: 'expected a Description pill in the action row' });
+    } else {
+      await descBtn.click();
+      await page.waitForTimeout(200);
+      const afterOpen = await page.evaluate(() => {
+        const overlay = document.querySelector('.desc-popup');
+        const text = document.querySelector('.desc-popup .watch-description')?.textContent || '';
+        return { visible: !!overlay && overlay.classList.contains('show'), textLength: text.trim().length };
+      });
+      if (!afterOpen.visible) {
+        violations.push({ check: 'description-popup-opens', detail: 'expected the Description pill to open .desc-popup' });
+      }
+      if (afterOpen.textLength === 0) {
+        violations.push({ check: 'description-popup-full-text', detail: 'expected the Description popup body to contain the full description text' });
+      }
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(250);
+      const afterEscape = await page.evaluate(() => document.querySelector('.desc-popup')?.classList.contains('show'));
+      if (afterEscape) {
+        violations.push({ check: 'description-popup-escape-closes', detail: 'expected Escape to close the Description popup' });
+      }
+    }
+
+    const transcriptBtn = await page.$('.watch-action-btn[aria-label="Transcript"]');
+    if (!transcriptBtn) {
+      console.log('  watch-popups: note — no Transcript pill on this video (no caption tracks), skipping the transcript/mutual-exclusion assertions');
+    } else {
+      if (descBtn) await descBtn.click();
+      await page.waitForTimeout(200);
+      // Both popups are full-viewport overlays, so once one is open it
+      // physically covers the other action pill — a real mouse click on
+      // Transcript would land on the Description backdrop first (dismissing
+      // it) rather than reach the button underneath in the same gesture.
+      // Dispatch the click directly on the element to exercise the mutual-
+      // exclusion handler itself, the same defensive path a focus+Enter
+      // activation (or the backdrop's own light-dismiss racing a click)
+      // would take.
+      await page.evaluate((el) => el.click(), transcriptBtn);
+      await page.waitForTimeout(200);
+      const state = await page.evaluate(() => ({
+        descOpen: document.querySelector('.desc-popup')?.classList.contains('show'),
+        transcriptOpen: document.querySelector('.transcript-popup')?.classList.contains('show'),
+      }));
+      if (state.descOpen) {
+        violations.push({ check: 'popups-mutually-exclusive', detail: 'expected opening the Transcript popup to close an already-open Description popup' });
+      }
+      if (!state.transcriptOpen) {
+        violations.push({ check: 'transcript-popup-opens', detail: 'expected the Transcript pill to open .transcript-popup' });
+      }
+      const backdropDismiss = await page.evaluate(() => {
+        const overlay = document.querySelector('.transcript-popup');
+        if (!overlay) return null;
+        overlay.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        return true;
+      });
+      if (backdropDismiss) {
+        await page.waitForTimeout(250);
+        const stillOpen = await page.evaluate(() => document.querySelector('.transcript-popup')?.classList.contains('show'));
+        if (stillOpen && !(await page.evaluate(() => 'showPopover' in HTMLElement.prototype))) {
+          violations.push({ check: 'transcript-popup-backdrop-closes', detail: 'expected clicking the overlay backdrop to close the Transcript popup' });
+        }
+      }
+      // The transcript popup is a full-viewport overlay too — close it via
+      // Escape (works for both the native-popover and fallback paths) before
+      // interacting with anything else underneath.
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(200);
+    }
+
+    const tab = await page.$('.rail-tab:has-text("Comments")');
+    const disabled = tab ? await page.evaluate((el) => el.disabled, tab) : true;
+    if (!disabled) {
+      if (commentContinuations.length > 0) {
+        violations.push({ check: 'comments-lazy-no-early-fetch', detail: `expected 0 comments continuation POSTs before the Comments tab is first activated, got ${commentContinuations.length}` });
+      }
+      // .comments-sort's OWN inline display is 'flex' whenever sort options
+      // exist — visibility while a tab is inactive comes from the ancestor
+      // .comments panel being display:none, so check actual rendered
+      // visibility (offsetParent), not the element's own display property.
+      const sortVisibleBefore = await page.evaluate(() => document.querySelector('.comments-sort')?.offsetParent !== null);
+      if (sortVisibleBefore) {
+        violations.push({ check: 'comments-sort-only-in-tab', detail: 'expected .comments-sort to be hidden while the Up next tab is active' });
+      }
+      await tab.click();
+      await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 10000 }).catch(() => {});
+      await page.waitForTimeout(200);
+      if (commentContinuations.length === 0) {
+        violations.push({ check: 'comments-fetch-on-activation', detail: 'expected activating the Comments tab to trigger a comments continuation POST' });
+      }
     }
   } finally {
     await page.close();
@@ -1295,12 +1454,57 @@ async function checkCommentsSortVisibility(browser) {
   return violations;
 }
 
-// The description "Show more" card was replaced with a flat 2-line preview
-// plus a row of link chips extracted from the description's real URLs
-// (preferring the runs' navigationEndpoints, falling back to a text regex),
-// capped at 8 and de-duped. This is best-effort against a real video: if the
-// live description no longer contains a URL, that's a content change on
-// YouTube's end, not a regression, so it SKIPs rather than fails.
+// Watch v2: comments moved off the page entirely into a tabbed right rail
+// ("Up next" | "Comments · N"), fetched lazily on first tab activation. The
+// Top/Newest sort segmented control must only be reachable inside the
+// Comments tab panel, never in Up next — this is the tab-based descendant of
+// the old bug where the sort control could render above a collapsed
+// .comments-body regardless of expand state.
+async function checkCommentsSortVisibility(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.rail-tab', { timeout: 15000 }).catch(() => {});
+    const disabled = await page.evaluate(() => [...document.querySelectorAll('.rail-tab')].find((b) => /Comments/.test(b.textContent))?.disabled);
+    if (disabled) {
+      console.log('  comments-sort-visibility: SKIP — the Comments rail tab is disabled (no comments continuation on this fixture right now)');
+      return violations;
+    }
+    const upNextVisible = await page.evaluate(() => getComputedStyle(document.querySelector('.up-next-panel')).display !== 'none');
+    if (!upNextVisible) {
+      violations.push({ check: 'rail-defaults-to-upnext', detail: 'expected the rail to default to the Up next tab on mount' });
+    }
+    const collapsedVisible = await page.evaluate(() => getComputedStyle(document.querySelector('.comments-sort')).display !== 'none' && getComputedStyle(document.querySelector('.comments')).display !== 'none');
+    if (collapsedVisible) {
+      violations.push({ check: 'comments-sort-hidden-collapsed', detail: 'expected the Comments panel (and its sort control) to be hidden while the Up next tab is active' });
+    }
+    await page.click('.rail-tab:has-text("Comments")');
+    await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(200);
+    const sortOptionCount = await page.evaluate(() => document.querySelectorAll('.comments-sort-btn').length);
+    if (sortOptionCount > 0) {
+      const expandedVisible = await page.evaluate(() => getComputedStyle(document.querySelector('.comments-sort')).display !== 'none');
+      if (!expandedVisible) {
+        violations.push({ check: 'comments-sort-visible-expanded', detail: 'expected .comments-sort to become visible once the Comments tab is active and sort options exist' });
+      }
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// Watch v2: the inline description preview + "More" expander were removed
+// from under the meta block entirely — description text now only renders
+// inside the Description popup (opened via the .watch-action-btn pill), kept
+// instant/zero-network because renderMeta() builds it once per video. The
+// link-chips row stays in the meta (compact, loved) AND is repeated at the
+// top of the popup. This is best-effort against a real video: if the live
+// description no longer contains a URL, that's a content change on YouTube's
+// end, not a regression, so it SKIPs rather than fails.
 const DESC_LINKS_VIDEO_ID = 'aircAruvnKk';
 async function checkDescriptionChips(browser) {
   const violations = [];
@@ -1310,7 +1514,7 @@ async function checkDescriptionChips(browser) {
     await waitForApp(page, { timeout: 30000 }).catch(() => {});
     await page.waitForSelector('.watch-desc-chips', { timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(300);
-    const chips = await page.evaluate(() => Array.from(document.querySelectorAll('.watch-desc-chip')).map((a) => a.href));
+    const chips = await page.evaluate(() => Array.from(document.querySelectorAll('.watch-meta .watch-desc-chip')).map((a) => a.href));
     if (!chips.length) {
       console.log(`  description-chips: SKIP — ${DESC_LINKS_VIDEO_ID}'s description has no extractable URL right now (a content change, not a regression) — nothing to assert`);
       return violations;
@@ -1333,16 +1537,29 @@ async function checkDescriptionChips(browser) {
         violations.push({ check: 'description-chip-matches-text', detail: `chip href ${href} — domain "${domain}" was not found anywhere in ytInitialData/ytInitialPlayerResponse, so it may not correspond to a real URL from the description` });
       }
     }
-    const toggle = await page.$('.watch-desc-toggle');
-    if (!toggle) {
-      violations.push({ check: 'description-expand-exists', detail: 'expected a .watch-desc-toggle "More" affordance to exist alongside the link chips' });
+    const descBtn = await page.$('.watch-action-btn[aria-label="Description"]');
+    if (!descBtn) {
+      violations.push({ check: 'description-popup-button-exists', detail: 'expected a Description pill in the action row alongside the link chips' });
     } else {
-      const beforeExpanded = await page.evaluate(() => document.querySelector('.watch-description').classList.contains('expanded'));
-      await toggle.click();
-      await page.waitForTimeout(150);
-      const afterExpanded = await page.evaluate(() => document.querySelector('.watch-description').classList.contains('expanded'));
-      if (beforeExpanded || !afterExpanded) {
-        violations.push({ check: 'description-expand-toggles', detail: `expected clicking .watch-desc-toggle to add .expanded to .watch-description, before=${beforeExpanded} after=${afterExpanded}` });
+      await descBtn.click();
+      await page.waitForTimeout(200);
+      const opened = await page.evaluate(() => {
+        const overlay = document.querySelector('.desc-popup');
+        const body = document.querySelector('.desc-popup .watch-description');
+        return {
+          visible: !!overlay && getComputedStyle(overlay).display !== 'none',
+          hasText: !!body && (body.textContent || '').trim().length > 0,
+          chipCount: document.querySelectorAll('.desc-popup .watch-desc-chip').length,
+        };
+      });
+      if (!opened.visible) {
+        violations.push({ check: 'description-popup-opens', detail: 'expected clicking the Description pill to reveal .desc-popup' });
+      }
+      if (!opened.hasText) {
+        violations.push({ check: 'description-popup-text', detail: 'expected the Description popup to render the full description text' });
+      }
+      if (opened.chipCount !== chips.length) {
+        violations.push({ check: 'description-popup-chips-repeated', detail: `expected the popup to repeat the ${chips.length} link chip(s) at its top, found ${opened.chipCount}` });
       }
     }
   } finally {
@@ -1383,16 +1600,16 @@ async function checkCommentBodyLinks(page) {
 async function checkCommentsOffCopy(page) {
   const violations = [];
   const info = await page.evaluate(() => {
-    const toggle = document.querySelector('.comments-toggle');
-    const label = toggle ? toggle.querySelector('span') : null;
-    return { disabled: toggle ? toggle.disabled : null, text: label ? label.textContent : null };
+    const tab = [...document.querySelectorAll('.rail-tab')].find((b) => /Comments/.test(b.textContent));
+    const label = tab ? tab.querySelector('span') : null;
+    return { disabled: tab ? tab.disabled : null, text: label ? label.textContent : null };
   });
   if (!info.disabled) {
     console.log('  comments-off-copy: SKIP — this video has comments enabled, nothing to assert');
     return violations;
   }
   if (info.text !== 'Comments are turned off.') {
-    violations.push({ check: 'comments-off-copy', detail: `expected the comments pill label to read "Comments are turned off." on a video with comments disabled, got "${info.text}"` });
+    violations.push({ check: 'comments-off-copy', detail: `expected the Comments rail tab label to read "Comments are turned off." on a video with comments disabled, got "${info.text}"` });
   }
   return violations;
 }
@@ -3145,15 +3362,18 @@ async function checkTranscript(browser) {
   try {
     await waitForApp(page, { timeout: 30000 }).catch(() => {});
     await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
-    // The transcript panel is now lazy: it's always present (collapsed) and
-    // only fetches captions once the toggle is clicked open, so there's no
-    // pre-click visibility gate to wait on any more (see checkTranscriptLazy).
-    const panel = await page.waitForSelector('.transcript', { timeout: 10000 }).catch(() => null);
-    if (!panel) {
-      console.log('  transcript: SKIP — no .transcript panel appeared within 10s (unexpected: the panel should always mount)');
+    // The transcript now lives entirely in a popup opened from the Transcript
+    // action pill, which only renders once caption-track availability is
+    // known (a cheap poll of the player response, never a caption fetch), so
+    // there's no unconditional pre-click selector to wait on any more (see
+    // checkTranscriptLazy).
+    const pill = await page.waitForSelector('.watch-action-btn[aria-label="Transcript"]', { timeout: 10000 }).catch(() => null);
+    if (!pill) {
+      console.log('  transcript: SKIP — no Transcript pill appeared within 10s (this video may have no caption tracks)');
       return violations;
     }
-    await page.click('.transcript-toggle');
+    await pill.click();
+    await page.waitForSelector('.transcript-popup.show', { timeout: 5000 }).catch(() => {});
     await page.waitForSelector('.transcript-line', { timeout: 10000 }).catch(() => {});
     const lineCount = await page.evaluate(() => document.querySelectorAll('.transcript-line').length);
     if (lineCount === 0) {
@@ -3674,28 +3894,32 @@ async function checkTranscriptLazy(browser) {
   try {
     await waitForApp(page, { timeout: 30000 }).catch(() => {});
     await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
-    await page.waitForSelector('.transcript', { timeout: 10000 }).catch(() => {});
+    const pill = await page.waitForSelector('.watch-action-btn[aria-label="Transcript"]', { timeout: 10000 }).catch(() => null);
+    if (!pill) {
+      console.log('  transcript-lazy: SKIP — no Transcript pill appeared within 10s (this video may have no caption tracks)');
+      return violations;
+    }
     await page.waitForTimeout(1000);
     // YouTube's own (parked, headless) player independently prefetches an
     // auto-caption chunk for itself regardless of any iTube UI action — that
     // shows up here as a genuine /api/timedtext request we don't control and
     // isn't the regression this check exists to catch. What IS ours to
     // control is loadTranscript(), which we can observe directly: it must
-    // not have started before the toggle is clicked.
-    const startedEarly = await page.evaluate(() => document.querySelector('.transcript-toggle span')?.textContent === 'Loading transcript…');
+    // not have started before the popup is opened.
+    const startedEarly = await page.evaluate(() => document.querySelector('.transcript-status')?.textContent === 'Loading transcript…');
     if (timedtextRequests.length > 0) {
       console.log(`  transcript-lazy: note — ${timedtextRequests.length} /api/timedtext request(s) fired before the click; this is YouTube's own player prefetching auto-captions, not iTube (see loadTranscript's own state below)`);
     }
     if (startedEarly) {
-      violations.push({ check: 'transcript-lazy-no-fetch', detail: 'expected loadTranscript() to stay idle until the toggle is clicked, but the label already read "Loading transcript…" before the click' });
+      violations.push({ check: 'transcript-lazy-no-fetch', detail: 'expected loadTranscript() to stay idle until the Transcript pill is clicked, but the status already read "Loading transcript…" before the click' });
     }
 
-    await page.click('.transcript-toggle');
+    await pill.click();
     await page.waitForSelector('.transcript-line', { timeout: 10000 }).catch(() => {});
     const lineCount = await page.evaluate(() => document.querySelectorAll('.transcript-line').length);
-    const label = await page.evaluate(() => document.querySelector('.transcript-toggle span')?.textContent || '');
+    const label = await page.evaluate(() => document.querySelector('.transcript-status')?.textContent || '');
     if (lineCount === 0 && !/unavailable/i.test(label)) {
-      console.log(`  transcript-lazy: SKIP — no rows rendered and no "unavailable" label after expanding (label="${label}", possibly an empty caption body on the sandbox)`);
+      console.log(`  transcript-lazy: SKIP — no rows rendered and no "unavailable" status after opening (status="${label}", possibly an empty caption body on the sandbox)`);
       return violations;
     }
   } finally {
@@ -3919,61 +4143,84 @@ async function checkListSkeleton(page) {
 async function checkFlyOffscreenGuard(page) {
   const violations = [];
 
-  const toggle = await page.$('.comments-toggle');
-  if (toggle) {
-    const disabled = await page.evaluate((el) => el.disabled, toggle);
-    if (!disabled) {
-      const opened = await page.evaluate(() => document.querySelectorAll('.comment-row').length > 0);
-      if (!opened) await toggle.click().catch(() => {});
-      await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 15000 }).catch(() => {});
+  // Watch v2 moved comments into the right rail's own scroll container, so
+  // expanding the Comments tab no longer grows `.content` at the default
+  // (>=1240px) two-column width — that's the point of the redesign. Below
+  // 1240px the rail stacks back into the document's normal flow (see
+  // checkWatchResponsive), so this narrows the viewport to reliably get a
+  // page tall enough to scroll for the regression this check pins.
+  const original = page.viewportSize();
+  await page.setViewportSize({ width: 900, height: original ? original.height : 900 });
+  await page.waitForTimeout(200);
+
+  try {
+    const commentsTab = await page.$('.rail-tab:has-text("Comments")');
+    if (commentsTab) {
+      const disabled = await page.evaluate((el) => el.disabled, commentsTab);
+      if (!disabled) {
+        const opened = await page.evaluate(() => document.querySelectorAll('.comment-row').length > 0);
+        if (!opened) await commentsTab.click().catch(() => {});
+        await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 15000 }).catch(() => {});
+      }
     }
-  }
 
-  await page.waitForSelector('.rc', { timeout: 10000 }).catch(() => {});
-  const related = await page.$('.rc');
-  if (!related) {
-    violations.push({ check: 'fly-offscreen-precondition', detail: 'expected at least one .rc related card to click' });
+    // Scroll while the (tall) Comments panel is active to make the page
+    // deep enough, THEN switch back to Up next — the related cards this
+    // check needs to click live there and are display:none while Comments
+    // is the active tab. Switching tabs only toggles which panel is shown;
+    // it does not itself reset the shared `.content` scroll position, which
+    // is exactly the state this regression guard needs.
+    await page.evaluate(() => {
+      const el = document.querySelector('#itube .content');
+      if (el) el.scrollTop = el.scrollHeight - el.clientHeight;
+    });
+    const upNextTab = await page.$('.rail-tab:has-text("Up next")');
+    if (upNextTab) await upNextTab.click();
+    await page.waitForTimeout(100);
+
+    await page.waitForSelector('.rc', { timeout: 10000 }).catch(() => {});
+    const related = await page.$('.rc');
+    if (!related) {
+      violations.push({ check: 'fly-offscreen-precondition', detail: 'expected at least one .rc related card to click' });
+      return violations;
+    }
+
+    const scrolled = await page.evaluate(() => document.querySelector('#itube .content')?.scrollTop ?? null);
+    if (!scrolled || scrolled < 150) {
+      violations.push({ check: 'fly-offscreen-precondition', detail: `expected .content to still be scrolled past 150px after switching back to Up next (comments expanded it to make the page tall enough), got ${scrolled}` });
+      return violations;
+    }
+
+    const clicked = await clickCardPart(page, related, '.rc-title');
+    if (!clicked) {
+      violations.push({ check: 'fly-offscreen-precondition', detail: 'the first .rc related card has no layout box to click' });
+      return violations;
+    }
+
+    const scrollTopAfterClick = await page.evaluate(() => document.querySelector('#itube .content')?.scrollTop);
+    if (scrollTopAfterClick !== 0) {
+      violations.push({ check: 'fly-scroll-resets-synchronously', detail: `expected .content.scrollTop to be reset to 0 synchronously on a related-card click, got ${scrollTopAfterClick} — a reset that only happens after the fetch resolves means flyThumbToStage measures the stage while it is still scrolled off-screen` });
+    }
+
+    // Give the fly animation's own rAF a turn to run and measure the stage,
+    // the same frame flyThumbToStage measures it on.
+    await page.waitForTimeout(60);
+    const stageRect = await page.evaluate(() => {
+      const stage = document.getElementById('itube-stage');
+      if (!stage) return null;
+      const r = stage.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, innerHeight: window.innerHeight };
+    });
+    if (!stageRect) {
+      violations.push({ check: 'fly-offscreen-stage-missing', detail: 'expected #itube-stage to exist after clicking a related card' });
+    } else if (stageRect.bottom < 0 || stageRect.top > stageRect.innerHeight) {
+      violations.push({ check: 'fly-offscreen-stage-visible', detail: `expected #itube-stage to be on-screen at fly-measurement time, got top=${stageRect.top} bottom=${stageRect.bottom} innerHeight=${stageRect.innerHeight}` });
+    }
+
     return violations;
+  } finally {
+    if (original) await page.setViewportSize(original);
   }
-
-  const scrolled = await page.evaluate(() => {
-    const el = document.querySelector('#itube .content');
-    if (!el) return null;
-    el.scrollTop = el.scrollHeight - el.clientHeight;
-    return el.scrollTop;
-  });
-  if (!scrolled || scrolled < 150) {
-    violations.push({ check: 'fly-offscreen-precondition', detail: `expected to scroll .content past 150px (comments expanded to make the page tall enough), got ${scrolled}` });
-    return violations;
-  }
-
-  const clicked = await clickCardPart(page, related, '.rc-title');
-  if (!clicked) {
-    violations.push({ check: 'fly-offscreen-precondition', detail: 'the first .rc related card has no layout box to click' });
-    return violations;
-  }
-
-  const scrollTopAfterClick = await page.evaluate(() => document.querySelector('#itube .content')?.scrollTop);
-  if (scrollTopAfterClick !== 0) {
-    violations.push({ check: 'fly-scroll-resets-synchronously', detail: `expected .content.scrollTop to be reset to 0 synchronously on a related-card click, got ${scrollTopAfterClick} — a reset that only happens after the fetch resolves means flyThumbToStage measures the stage while it is still scrolled off-screen` });
-  }
-
-  // Give the fly animation's own rAF a turn to run and measure the stage,
-  // the same frame flyThumbToStage measures it on.
-  await page.waitForTimeout(60);
-  const stageRect = await page.evaluate(() => {
-    const stage = document.getElementById('itube-stage');
-    if (!stage) return null;
-    const r = stage.getBoundingClientRect();
-    return { top: r.top, bottom: r.bottom, innerHeight: window.innerHeight };
-  });
-  if (!stageRect) {
-    violations.push({ check: 'fly-offscreen-stage-missing', detail: 'expected #itube-stage to exist after clicking a related card' });
-  } else if (stageRect.bottom < 0 || stageRect.top > stageRect.innerHeight) {
-    violations.push({ check: 'fly-offscreen-stage-visible', detail: `expected #itube-stage to be on-screen at fly-measurement time, got top=${stageRect.top} bottom=${stageRect.bottom} innerHeight=${stageRect.innerHeight}` });
-  }
-
-  return violations;
 }
 
 // v4.42.0 refetched a feed from scratch every time Back/Forward landed on it
@@ -4156,6 +4403,8 @@ module.exports = {
   checkResponsive,
   checkDescriptionTimestampSeek,
   checkWatchResponsive,
+  checkNoScrollWatch,
+  checkWatchPopups,
   checkCommentsSortVisibility,
   checkDescriptionChips,
   checkAudioTrackSelector,
