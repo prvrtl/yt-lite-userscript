@@ -24,7 +24,7 @@ own API (InnerTube) and nothing else.
 1. Install [Tampermonkey](https://www.tampermonkey.net/) or Violentmonkey.
 2. Open the raw script — the manager offers to install it:
 
-   https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/refs/heads/main/itube.user.js
+   https://raw.githubusercontent.com/prvrtl/yt-lite-userscript/main/itube.user.js
 
 Updates are automatic: the script carries an `@updateURL`.
 
@@ -40,13 +40,29 @@ Measured on a live watch page, median of 3 runs: **DOM nodes 22,107 → 6,865
 repro script, and the metrics deliberately *not* claimed: [PERF.md](PERF.md).
 
 **Design.** System typeface, macOS focus rings, glass surfaces, a custom icon
-set, flat cards. A Liquid Glass player bar with seek preview, quality, speed,
-captions, PiP and fullscreen.
+set, flat cards. A Liquid Glass player bar with seek preview, PiP, fullscreen,
+and a Tools tray for the rest (quality, speed, captions, audio track, A-B
+repeat, autoplay, SponsorBlock, volume boost, audio-only) — kept off the bar
+itself so the bar stays uncluttered. The watch page fits without scrolling:
+description, transcript and comments live behind popups and a rail tab instead
+of stacking under the player.
 
 **No functionality lost.** This is the hard part and it is done: quality up to
-4320p, playback speed, caption languages, chapters, seek-preview thumbnails,
-playlists and queue, autoplay-next, PiP, live and DVR scrubbing, search filters,
-comments and replies, and every keyboard shortcut.
+4320p, playback speed, caption languages and a searchable transcript popup,
+chapters, seek-preview thumbnails, playlists and queue, autoplay-next, a
+seamless mini-player (collapse/expand without a reload), PiP, live and DVR
+scrubbing, theater mode, search filters, comments (as a rail tab, with sort)
+and replies, back/forward view restoration (no re-fetch, no skeleton flash),
+media-key / OS now-playing integration, a command palette, accent themes, and
+every keyboard shortcut.
+
+**Privacy.** SponsorBlock auto-skip and the Return YouTube Dislike estimate are
+both third-party, opt-out, and off means off: disabling either stops the
+network call, not just the display.
+
+**Chronological subscriptions.** The Subscriptions feed sorts by actual upload
+recency instead of YouTube's engagement ranking (locale-aware; ranked feeds
+like Home are left alone on purpose).
 
 **Shorts.** A `/shorts/<id>` link redirects to the normal watch page, where you
 get a real scrubber.

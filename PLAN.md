@@ -1,18 +1,19 @@
 # iTube — plan and quality control
 
-Goal: make YouTube dramatically faster in Safari, replace Google's UI with an
-Apple-style Liquid Glass one, and lose zero functionality. Ship first as a
-userscript, later as a Safari extension for the App Store.
+**This file is a historical milestone log, not an active spec.** Everything
+below M5 documents the **v2.9 skin** (restyled/pruned YouTube's own `ytd-*`
+DOM), an approach abandoned at v3.0. iTube is now an **app** (`itube.user.js`,
+currently v4.50) that renders its own UI from YouTube's data and never reuses a
+`ytd-*` component — no sweeper, no per-card pruning, no `content-visibility`
+over YouTube's nodes, no feature flags. None of that code exists any more. For
+what the app actually does today — invariants, data shapes, current stages —
+read `ARCHITECTURE.md`; for the recovery runbook read `RECOVERY.md`; for the
+current per-commit quality gates read `CLAUDE.md`.
 
-**Read this first.** Milestones M1–M4.5 below are the history of the **v2 skin**,
-which restyled and pruned YouTube's own DOM. That approach was abandoned at v3.0:
-iTube is now an **app** (`itube.user.js`) that renders its own UI from YouTube's
-data and never reuses a `ytd-*` component. Those milestones are kept as a record
-of what was learned — the "hard-won constraints" at the bottom are still binding
-— but the mechanisms they describe (the sweeper, per-card pruning,
-`content-visibility` over YouTube's nodes, the feature flags) **do not exist any
-more**. See `ARCHITECTURE.md` for the shape of the current program, and its
-Stages list for the v3/v4 milestones.
+Original goal (still true): make YouTube dramatically faster in Safari,
+replace Google's UI with an Apple-style Liquid Glass one, and lose zero
+functionality. Shipped first as a userscript; the Safari-extension packaging
+below (M5) was never completed and is not in progress.
 
 ## Milestones (M1–M4.5: the legacy v2 skin — see note above)
 
@@ -291,17 +292,36 @@ Every loop iteration must pass ALL gates before commit:
    per-event player API writes, no defineProperty traps on media elements.
 8. Commit with a plain message, no AI attribution, push.
 
-## Hard-won constraints (do not relearn these)
+## Hard-won constraints from the v2 skin era
 
-- YouTube enforces Trusted Types: no innerHTML anywhere.
+These describe manipulating **YouTube's own DOM** (`ytd-*` components) — the
+thing v3.0 stopped doing. Kept only as history; the still-true ones are
+carried forward (and kept current) in `ARCHITECTURE.md`'s "Non-negotiables"
+section — that is the list to actually follow today, not this one.
+
+- YouTube enforces Trusted Types: no innerHTML anywhere. **Still true**, still
+  binding, still in ARCHITECTURE.md — this one was never skin-specific.
 - YT strips the controls attribute; never fight it synchronously (tab freeze).
+  **Dead**: v4 never touches YouTube's native `<video controls>` attribute at
+  all — it has its own player bar and the native controls stay hidden/unused.
 - YT fades volume on mute/unmute; volume sync must be debounced ≥300ms.
+  **Still true**, still in ARCHITECTURE.md.
 - Loudness normalization: element volume = ratio × player volume; write back
-  through the measured ratio or sliders drift.
+  through the measured ratio or sliders drift. **Still true**, still in
+  ARCHITECTURE.md.
 - Comments arrive through ytd-continuation-item-renderer: remove it only after
-  the cap is reached, never before first load.
-- ytd-lottie-player IS the like-button icon; never remove it.
-- engagement-panel-structured-description powers "...more"; keep it.
-- Safari gets the same desktop Polymer app as Chrome (verified: same build hash,
-  same shells) — Chrome-verified selectors are valid, but Safari-only behaviors
-  (webkitPresentationMode, native fullscreen) need manual spot checks.
+  the cap is reached, never before first load. **Dead**: v4 does not reuse
+  YouTube's comment renderer at all; it extracts comment data itself
+  (`extractComment`/`commentEntityMap` — see RECOVERY.md §2.3) and renders its
+  own comment cards with its own cap (`MAX_COMMENTS`/`MAX_REPLIES`).
+- ytd-lottie-player IS the like-button icon; never remove it. **Dead**: the
+  like/dislike buttons are iTube's own elements with iTube's own icon set.
+- engagement-panel-structured-description powers "...more"; keep it. **Dead**:
+  the description card, its "…more" expansion, and its link chips are all
+  iTube's own (`buildDescriptionSegments`, see RECOVERY.md §1).
+- Safari gets the same desktop Polymer app as Chrome (verified: same build
+  hash, same shells). **Still relevant**: `ytd-app` is still the parked,
+  headless engine underneath v4, so this remains true, but it is no longer
+  about selector parity — v4 has no `ytd-*` selectors to keep parity on.
+  Safari-only player behaviors (webkitPresentationMode, native fullscreen)
+  still need manual spot checks.

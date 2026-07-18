@@ -48,7 +48,15 @@ cd tests && npm run test:selftest   # proves the layout checks can actually fail
 cd tests && node bench.js   # the repro script behind PERF.md
 ```
 
-Useful flags: `--page=watch`, `--check=layout|snapshot|functional|hardnav|responsive|errors`.
+Useful flags: `--page=watch`, `--check=layout|snapshot|functional|hardnav|responsive|errors|feedorder|ads|channels|perf|signedout`.
+`feedorder`, `ads`, `channels`, `perf` and `signedout` are their own
+run-once/own-context suites (`tests/checks/feedorder.js`, `ads.js`,
+`channels.js`, `perf.js`, `signedout.js`), not part of the per-page dispatch.
+`functional` is itself a table of ~50 named sub-checks
+(`FUNCTIONAL_ENTRIES` in `tests/run.js`); pass `--check=<subname>` (e.g.
+`--check=transcript`, `--check=miniplayer`, `--check=back-forward-cache`) to
+run exactly one of them instead of the whole table — see the table in
+`tests/run.js` for the full list of subnames.
 
 `npm run test:update` rewrites the geometry baselines in `tests/baselines/`. It
 deliberately REFUSES to overwrite structural geometry (`.hd`, `.sidebar`,

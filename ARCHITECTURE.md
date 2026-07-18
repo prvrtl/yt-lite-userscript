@@ -89,6 +89,29 @@ Channel tabs: never hardcode the `params` blob. Read the browseEndpoint params
 off the page and pick the tab by **base64-decoding** them and matching the tab
 name (`videos`, `shorts`, `streams`) — locale-independent, survives redesigns.
 
+**Chronological subscriptions (v4.46).** YouTube's Subscriptions feed is
+engagement-ranked, not chronological, so iTube re-sorts it: `parseRelativeTime`
+parses each item's published-time string ("3 hours ago", "vor 3 Stunden",
+"3 години тому", "3 часа назад" — en/de/uk/ru only) into a rough age, and
+`sortByRecency` orders the extracted items by it before rendering. This is
+applied ONLY to the Subscriptions feed (`isSubscriptions`) — ranked feeds like
+Home are deliberately exempt (`checkHomeOrderNotSorted` asserts Home is left
+alone), because re-sorting a feed YouTube didn't mean to be chronological
+would just replace one arbitrary order with another. An item whose
+relative-time string doesn't match any of the four locales silently fails to
+parse and sorts as if undated — there is no guard for a fifth locale.
+
+**Seamless mini-player expand (v4.47).** The mini-player's expand control does
+NOT reload the video: `ensureWatchPlayback` checks
+`player().getVideoData().video_id === videoId` and, when it already matches,
+skips `loadVideoById` entirely and just resumes/keeps playing through the
+existing player instance. This is the same no-reload invariant the SPA watch
+nav already relied on, extended to mini-player expand specifically so
+collapsing to mini and expanding back is instant and glitch-free
+(`checkMiniExpandSeamless`). Calling `loadVideoById` when the id already
+matches would restart the stream and flash a fresh buffering state for no
+reason.
+
 ## Comment replies (resolved — was a known gap)
 
 Replies work. Each thread with replies renders a `.comment-replies-btn` that
@@ -102,10 +125,34 @@ it is wrong — the first attempt at it broke comment extraction entirely (20 ro
 -> 0). The token lives on a separate structure in the response, not on the
 thread. If replies regress, that is the distinction to re-check.
 
-## Player bar
+## Player bar and Tools tray (redesigned v4.41+)
 
-Two-row grid: the seek bar spans the FULL width of the bar (its own grid row),
-with controls beneath it. Verified: seek 713px inside a 743px bar.
+The on-video bar (`#itube-bar`) is still a two-row grid: the seek bar spans the
+FULL width of the bar in its own grid row (`grid-template-areas: 'seek seek
+seek' 'left center right'`), with prev/play/next/time on the left, the LIVE
+badge centered, and time/mute/volume/PiP/theater/frame-save/fullscreen on the
+right. What changed in the v4.41 redesign is what is **not** on it any more:
+quality, speed, captions, audio track, A-B repeat, autoplay, SponsorBlock,
+volume boost, and audio-only all moved off the bar entirely, into a **Tools
+tray** (`.watch-tools`, an expandable row under the watch header, toggled via
+a "Tools" button and built with `inert` so its collapsed contents are never
+tab-reachable — guarded by `checkA11yTabStops`). The player-bar geometry
+numbers from the pre-redesign layout are gone along with those controls; the
+bar's remaining job is playback transport and stream-adjacent state (mute,
+PiP, theater, live), not the settings menu.
+
+## Mini-player
+
+Navigating away from the watch page (to home/search/a feed) while a video is
+playing re-parents the SAME `<video>` element into a small floating `#itube-mini`
+box instead of stopping it — the video is never paused or reloaded, just moved
+in the DOM. It carries its own play/pause, expand and close controls and is
+draggable. Expand hands off to `expandMini` → `watchNav(miniVideoId)`, which is
+the seamless path described above (v4.47): because the player's current video
+id already matches, the watch page reassembles around the still-playing video
+instead of restarting it. Closing the mini-player pauses the video and hands
+it back to the (offscreen, parked) `#movie_player` element rather than
+destroying it.
 
 ## Back/forward list cache
 

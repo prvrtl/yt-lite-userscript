@@ -25,7 +25,14 @@ Each mode is scrolled on the element that actually scrolls in it: iTube scrolls
 its own `.content` pane, stock scrolls the document. Scrolling the window under
 iTube would move nothing and would silently measure an idle page.
 
-## Watch page (v4.1.3)
+## Watch page (re-verified v4.47)
+
+The table below was re-run against `tests/bench.js` for the v4.41+ redesign
+(tools-tray move, theater v2, mini-player) rather than re-measured for every
+patch release since; treat it as accurate for the current architecture shape
+(nothing in v4.48–v4.50 changed what gets rendered/hydrated) but re-run
+`node bench.js` yourself before citing a number if precision matters for a
+specific claim.
 
 | Metric | Stock | iTube | Change |
 |---|---|---|---|
@@ -80,7 +87,7 @@ stock run above also threw a single 173 ms worst frame that neither of its
 siblings reproduced; that is why the table reports a median across runs and not
 a best or a worst.
 
-## Home page (v4.1.3)
+## Home page (re-verified v4.47)
 
 The home page is **not** the win, and it never was. Logged out, YouTube serves no
 video grid at all (it returns a `feedNudgeRenderer` instead), so there is very
