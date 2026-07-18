@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.47.0
+// @version      4.48.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -4040,11 +4040,6 @@
     const raw = getCommentsCount(root);
     if (!raw) return null;
     const n = parseCount(raw);
-    // If the count text carries no parseable digits (some locales' initial
-    // ytInitialData ships a bare word like "Kommentare" with the number only
-    // arriving later, in the `next` continuation response), showing the raw
-    // string would duplicate/garble the fixed "Comments" label next to it —
-    // omit the count entirely rather than show something that isn't a count.
     return Number.isFinite(n) ? formatCompact(n) : null;
   };
 
@@ -7516,6 +7511,8 @@
     };
 
     let currentPlaylist = null;
+    let renderGeneration = 0;
+    let lastNavHandledId = null;
     let firstRelatedId = null;
 
     const resolveNextId = () => {
@@ -7625,7 +7622,9 @@
         return;
       }
       if (!currentPlaylist || currentPlaylist.id !== listId) {
+        const gen = renderGeneration;
         const res = await innertube('next', { videoId, playlistId: listId });
+        if (gen !== renderGeneration || listId !== new URLSearchParams(location.search).get('list')) return;
         const panel = res ? extractPlaylistPanel(res) : null;
         currentPlaylist = panel ? { id: listId, title: panel.title, items: panel.items } : null;
       }
@@ -7835,8 +7834,10 @@
         }
         commentsMore.style.display = (commentsToken && commentsShown < MAX_COMMENTS) ? '' : 'none';
       } finally {
-        commentsLoading = false;
-        commentsSpinner.classList.remove('show');
+        if (gen === commentsGeneration) {
+          commentsLoading = false;
+          commentsSpinner.classList.remove('show');
+        }
       }
     };
     commentsMore.addEventListener('click', () => fetchComments(false));
@@ -8426,12 +8427,18 @@
 
     const onNavigateFinish = (e) => {
       const data = e.detail?.response?.response || e.detail?.response || window.ytInitialData;
+      const dataId = data?.currentVideoEndpoint?.watchEndpoint?.videoId
+        || data?.playerResponse?.videoDetails?.videoId;
+      const currentId = resolveVideoId();
+      if (dataId && dataId !== currentId) return;
+      if (currentId && currentId === lastNavHandledId) return;
+      lastNavHandledId = currentId;
       chapterSecs = parseChapters(data);
       renderMeta(data);
       renderTicks();
       resetComments(data);
       resetTranscript();
-      updateQueue(resolveVideoId());
+      updateQueue(currentId);
     };
     window.addEventListener('yt-navigate-finish', onNavigateFinish);
 
@@ -8743,9 +8750,9 @@
     };
     document.addEventListener('visibilitychange', onVisibility);
 
-    let renderGeneration = 0;
     const renderWatchFor = async (videoId) => {
       const gen = ++renderGeneration;
+      lastNavHandledId = videoId;
       descPopupWire.close();
       transcriptPopupWire.close();
       showMetaSkeleton();
