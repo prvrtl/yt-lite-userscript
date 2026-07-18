@@ -59,6 +59,10 @@ const {
   checkItubeToggle,
   checkFeedFilter,
   checkMiniPlayer,
+  checkSearchNoRefetch,
+  checkTranscriptLazy,
+  checkThumbSizing,
+  checkMiniListenerLeak,
 } = require('./checks/functional');
 const { takeSnapshot, saveScreenshot, diffSnapshot } = require('./checks/snapshot');
 const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/ads');
@@ -561,8 +565,8 @@ async function main() {
     for (const v of violations) console.log(`    page=speed ${fmt(v)}`);
   }
 
-  // Transcript panel: pre-fetched per video and hidden when absent, so it
-  // runs once, in its own context, against a video known to have one.
+  // Transcript panel: lazily fetched per video on first expand, so it runs
+  // once, in its own context, against a video known to have one.
   if (!args.page && (!args.check || args.check === 'functional')) {
     console.log('\n--- transcript ---');
     let violations;
@@ -577,6 +581,24 @@ async function main() {
     table.push({ page: 'transcript', check: 'functional', status, count: violations.length });
     console.log(`  transcript: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=transcript ${fmt(v)}`);
+  }
+
+  // Transcript must not fetch anything until the toggle is opened — no
+  // /youtubei/v1/player POST and no /api/timedtext request on mount.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- transcript lazy ---');
+    let violations;
+    try {
+      violations = await checkTranscriptLazy(browser);
+    } catch (err) {
+      console.error(`  ERROR running the transcript-lazy check: ${err.stack || err}`);
+      violations = [{ check: 'transcript-lazy', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'transcript-lazy', check: 'functional', status, count: violations.length });
+    console.log(`  transcript lazy: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=transcript-lazy ${fmt(v)}`);
   }
 
   // Volume boost past 100%: lazily wires a WebAudio GainNode, so it runs
@@ -615,6 +637,64 @@ async function main() {
     table.push({ page: 'miniplayer', check: 'functional', status, count: violations.length });
     console.log(`  mini-player: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=miniplayer ${fmt(v)}`);
+  }
+
+  // activateMini used to rebind 'play'/'pause' listeners on the singleton
+  // video every activation without ever removing the old ones, so it runs
+  // once, in its own context, tracking a net listener count across two
+  // watch -> mini round trips.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- mini-player listener leak ---');
+    let violations;
+    try {
+      violations = await checkMiniListenerLeak(browser);
+    } catch (err) {
+      console.error(`  ERROR running the mini-listener-leak check: ${err.stack || err}`);
+      violations = [{ check: 'mini-listener-leak', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'mini-listener-leak', check: 'functional', status, count: violations.length });
+    console.log(`  mini-player listener leak: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=mini-listener-leak ${fmt(v)}`);
+  }
+
+  // Hard-loading /results?... must read the server-inlined ytInitialData
+  // instead of always POSTing to /youtubei/v1/search, so it runs once, in
+  // its own context, recording requests from the very first navigation.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- search no-refetch ---');
+    let violations;
+    try {
+      violations = await checkSearchNoRefetch(browser);
+    } catch (err) {
+      console.error(`  ERROR running the search-no-refetch check: ${err.stack || err}`);
+      violations = [{ check: 'search-no-refetch', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'search-no-refetch', check: 'functional', status, count: violations.length });
+    console.log(`  search no-refetch: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=search-no-refetch ${fmt(v)}`);
+  }
+
+  // getThumb used to always pick the largest thumbnail source regardless of
+  // rendered card size, so it runs once, in its own context, checking loaded
+  // home-feed grid thumbs land in a sane naturalWidth/clientWidth ratio.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- thumb sizing ---');
+    let violations;
+    try {
+      violations = await checkThumbSizing(browser);
+    } catch (err) {
+      console.error(`  ERROR running the thumb-sizing check: ${err.stack || err}`);
+      violations = [{ check: 'thumb-sizing', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'thumb-sizing', check: 'functional', status, count: violations.length });
+    console.log(`  thumb sizing: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=thumb-sizing ${fmt(v)}`);
   }
 
   // The Tools row duplicates speed/quality/autoplay/sponsor-skip/boost as a

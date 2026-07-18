@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.39.0
+// @version      4.40.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -23,14 +23,17 @@
 (() => {
   'use strict';
 
-  const itubeOff = () => { try { return localStorage.getItem('itube-off') === '1'; } catch (e) { return false; } };
-  const setItubeOff = (off) => { try { localStorage.setItem('itube-off', off ? '1' : '0'); } catch (e) {} location.reload(); };
-  const theaterPref = () => { try { return localStorage.getItem('itube-theater') === '1'; } catch (e) { return false; } };
-  const setTheaterPref = (on) => { try { localStorage.setItem('itube-theater', on ? '1' : '0'); } catch (e) {} };
-  const sponsorSkipOn = () => { try { return localStorage.getItem('itube-skip-sponsors') !== '0'; } catch (e) { return true; } };
-  const setSponsorSkipOn = (on) => { try { localStorage.setItem('itube-skip-sponsors', on ? '1' : '0'); } catch (e) {} };
-  const savedBoost = () => { try { const v = parseFloat(localStorage.getItem('itube-boost')); return v >= 1 && v <= 2 ? v : 1; } catch (e) { return 1; } };
-  const setSavedBoost = (b) => { try { localStorage.setItem('itube-boost', String(b)); } catch (e) {} };
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+
+  const itubeOff = () => lsGet('itube-off') === '1';
+  const setItubeOff = (off) => { lsSet('itube-off', off ? '1' : '0'); location.reload(); };
+  const theaterPref = () => lsGet('itube-theater') === '1';
+  const setTheaterPref = (on) => lsSet('itube-theater', on ? '1' : '0');
+  const sponsorSkipOn = () => lsGet('itube-skip-sponsors') !== '0';
+  const setSponsorSkipOn = (on) => lsSet('itube-skip-sponsors', on ? '1' : '0');
+  const savedBoost = () => { const v = parseFloat(lsGet('itube-boost')); return v >= 1 && v <= 2 ? v : 1; };
+  const setSavedBoost = (b) => lsSet('itube-boost', String(b));
 
   if (itubeOff()) {
     const mountReenable = () => {
@@ -157,10 +160,6 @@
     chevron: () => icon([
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', 'stroke-linejoin': 'round', d: 'M4.5 6.2 8 9.7l3.5-3.5' }],
     ]),
-    explore: () => icon([
-      ['circle', { cx: '8', cy: '8', r: '5.9', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75' }],
-      ['path', { fill: 'currentColor', d: 'M10.6 5.4 9.1 9.1 5.4 10.6 6.9 6.9z' }],
-    ]),
     thumbsUp: () => icon([
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M4.5 9.75 8 6.25l3.5 3.5' }],
     ]),
@@ -208,6 +207,25 @@
       btn.appendChild(labelEl);
     }
     return { btn, icon: iconEl, label: labelEl };
+  };
+
+  const wireOverlay = (overlay, panel) => {
+    const close = () => overlay.classList.remove('open');
+    const open = () => overlay.classList.add('open');
+    panel.addEventListener('click', (e) => { e.stopPropagation(); });
+    overlay.addEventListener('click', close);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    return { open, close };
+  };
+
+  const fadeInImg = (src) => {
+    const img = document.createElement('img');
+    img.addEventListener('load', () => img.classList.add('in'), { once: true });
+    img.addEventListener('error', () => img.classList.add('in'), { once: true });
+    img.setAttribute('loading', 'lazy');
+    img.setAttribute('decoding', 'async');
+    if (src) img.src = src;
+    return img;
   };
 
   const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5];
@@ -3136,17 +3154,30 @@
 
   const handleFromHref = (href) => (typeof href === 'string' && href.startsWith('/@') ? href.slice(1) : '');
 
-  const getThumb = (node) => {
+  const pickThumbUrl = (sources, targetWidth) => {
+    if (!Array.isArray(sources) || !sources.length) return null;
+    if (targetWidth) {
+      let best = null;
+      for (const s of sources) {
+        const w = s?.width;
+        if (typeof w !== 'number' || w < targetWidth) continue;
+        if (!best || w < best.width) best = s;
+      }
+      if (best?.url) return best.url;
+    }
+    return sources[sources.length - 1]?.url || null;
+  };
+
+  const thumbTarget = (cssWidth) => cssWidth * Math.min(window.devicePixelRatio || 1, 2);
+  const GRID_THUMB_W = 340;
+  const COMPACT_THUMB_W = 168;
+  const ROW_THUMB_W = 246;
+
+  const getThumb = (node, targetWidth) => {
     const list = node?.thumbnail?.thumbnails;
-    if (Array.isArray(list) && list.length) {
-      const last = list[list.length - 1];
-      if (last?.url) return last.url;
-    }
+    if (Array.isArray(list) && list.length) return pickThumbUrl(list, targetWidth);
     const sources = node?.thumbnail?.sources;
-    if (Array.isArray(sources) && sources.length) {
-      const last = sources[sources.length - 1];
-      if (last?.url) return last.url;
-    }
+    if (Array.isArray(sources) && sources.length) return pickThumbUrl(sources, targetWidth);
     return null;
   };
 
@@ -3306,7 +3337,7 @@
     || null
   );
 
-  const lockupItem = (node, seen) => {
+  const lockupItem = (node, seen, targetWidth) => {
     const lk = node.lockupViewModel;
     if (!lk || lk.contentType !== 'LOCKUP_CONTENT_TYPE_VIDEO') return null;
     const id = lk.contentId;
@@ -3314,8 +3345,7 @@
     const meta = lk.metadata?.lockupMetadataViewModel;
     const title = meta?.title?.content;
     const img = lk.contentImage?.thumbnailViewModel;
-    const sources = img?.image?.sources || [];
-    const thumb = sources.length ? sources[sources.length - 1].url : null;
+    const thumb = pickThumbUrl(img?.image?.sources, targetWidth);
     if (!title || !thumb) return null;
     const texts = [];
     walk(img?.overlays, (n) => {
@@ -3341,10 +3371,10 @@
     };
   };
 
-  const extractVideos = (root, seen) => {
+  const extractVideos = (root, seen, targetWidth) => {
     const out = [];
     walk(root, (node) => {
-      const lk = lockupItem(node, seen);
+      const lk = lockupItem(node, seen, targetWidth);
       if (lk) {
         out.push(lk);
         return;
@@ -3352,7 +3382,7 @@
       if (typeof node.videoId !== 'string' || !node.videoId || seen.has(node.videoId)) return;
       const title = getTitle(node);
       if (!title) return;
-      const thumb = getThumb(node);
+      const thumb = getThumb(node, targetWidth);
       if (!thumb) return;
       seen.add(node.videoId);
       out.push({
@@ -3381,7 +3411,7 @@
     return null;
   };
 
-  const extractResumeItems = (root, seen) => {
+  const extractResumeItems = (root, seen, targetWidth) => {
     const out = [];
     walk(root, (node) => {
       if (typeof node.videoId !== 'string' || !node.videoId || seen.has(node.videoId)) return;
@@ -3389,7 +3419,7 @@
       if (percent == null) return;
       const title = getTitle(node);
       if (!title) return;
-      const thumb = getThumb(node);
+      const thumb = getThumb(node, targetWidth);
       if (!thumb) return;
       seen.add(node.videoId);
       out.push({
@@ -3408,7 +3438,7 @@
     return out;
   };
 
-  const extractPlaylists = (root, seen) => {
+  const extractPlaylists = (root, seen, targetWidth) => {
     const out = [];
     walk(root, (node) => {
       const lk = node.lockupViewModel;
@@ -3418,8 +3448,7 @@
         const meta = lk.metadata?.lockupMetadataViewModel;
         const title = meta?.title?.content;
         const img = lk.contentImage?.thumbnailViewModel || lk.contentImage?.collectionThumbnailViewModel?.primaryThumbnail?.thumbnailViewModel;
-        const sources = img?.image?.sources || [];
-        const thumb = sources.length ? sources[sources.length - 1].url : null;
+        const thumb = pickThumbUrl(img?.image?.sources, targetWidth);
         if (!title || !thumb) return;
         seen.add(id);
         out.push({ id, type: 'playlist', title, channel: '', channelHref: null, thumb, duration: '', views: '', published: '', snippet: '' });
@@ -3431,7 +3460,7 @@
       if (typeof id !== 'string' || !id || seen.has(id)) return;
       const title = getTitle(legacy);
       if (!title) return;
-      const thumb = getThumb(legacy) || getThumb(legacy.thumbnailRenderer?.playlistVideoThumbnailRenderer);
+      const thumb = getThumb(legacy, targetWidth) || getThumb(legacy.thumbnailRenderer?.playlistVideoThumbnailRenderer, targetWidth);
       if (!thumb) return;
       const count = legacy.videoCount
         || (Array.isArray(legacy.videoCountText?.runs) ? legacy.videoCountText.runs.map((r) => r?.text || '').join('') : null)
@@ -3455,7 +3484,7 @@
         title: getTitle(r) || '',
         channel: getChannel(r) || '',
         channelHref: getChannelHref(r),
-        thumb: getThumb(r),
+        thumb: getThumb(r, thumbTarget(COMPACT_THUMB_W)),
         duration: r.lengthText?.simpleText
           || (Array.isArray(r.lengthText?.runs) ? r.lengthText.runs.map((x) => x?.text || '').join('') : ''),
       });
@@ -3476,6 +3505,12 @@
       if (typeof t === 'string' && t) token = t;
     });
     return token;
+  };
+
+  const continuationFetcher = (endpoint, extract) => async (token, seen) => {
+    const res = await innertube(endpoint, { continuation: token });
+    if (!res) return null;
+    return { items: extract(res, seen), token: findContinuationToken(res) };
   };
 
   const findAnyContinuationToken = (root) => {
@@ -3681,9 +3716,9 @@
     return el;
   };
 
-  const mutedChannelsSet = () => { try { return new Set(JSON.parse(localStorage.getItem('itube-mute-channels') || '[]')); } catch (e) { return new Set(); } };
-  const mutedKeywordsList = () => { try { return JSON.parse(localStorage.getItem('itube-mute-keywords') || '[]'); } catch (e) { return []; } };
-  const hideWatchedOn = () => { try { return localStorage.getItem('itube-hide-watched') === '1'; } catch (e) { return false; } };
+  const mutedChannelsSet = () => { try { return new Set(JSON.parse(lsGet('itube-mute-channels') || '[]')); } catch (e) { return new Set(); } };
+  const mutedKeywordsList = () => { try { return JSON.parse(lsGet('itube-mute-keywords') || '[]'); } catch (e) { return []; } };
+  const hideWatchedOn = () => lsGet('itube-hide-watched') === '1';
   const normChannel = (href) => (href || '').toLowerCase().replace(/\/+$/, '');
   let muteChannels = mutedChannelsSet();
   let muteKeywords = mutedKeywordsList();
@@ -3706,12 +3741,7 @@
     const link = createItemLink(item, 'c-link');
     const thumbWrap = document.createElement('div');
     thumbWrap.className = 'c-thumb';
-    const img = document.createElement('img');
-    img.addEventListener('load', () => img.classList.add('in'), { once: true });
-    img.addEventListener('error', () => img.classList.add('in'), { once: true });
-    img.setAttribute('loading', 'lazy');
-    img.setAttribute('decoding', 'async');
-    img.src = item.thumb;
+    const img = fadeInImg(item.thumb);
     thumbWrap.appendChild(img);
     if (item.duration) {
       const dur = document.createElement('span');
@@ -3745,12 +3775,7 @@
     const link = createItemLink(item, 'rc-link');
     const thumbWrap = document.createElement('div');
     thumbWrap.className = 'rc-thumb';
-    const img = document.createElement('img');
-    img.addEventListener('load', () => img.classList.add('in'), { once: true });
-    img.addEventListener('error', () => img.classList.add('in'), { once: true });
-    img.setAttribute('loading', 'lazy');
-    img.setAttribute('decoding', 'async');
-    img.src = item.thumb;
+    const img = fadeInImg(item.thumb);
     thumbWrap.appendChild(img);
     if (item.duration) {
       const dur = document.createElement('span');
@@ -3778,12 +3803,7 @@
     const link = createItemLink(item, 'row-link');
     const thumbWrap = document.createElement('div');
     thumbWrap.className = 'row-thumb';
-    const img = document.createElement('img');
-    img.addEventListener('load', () => img.classList.add('in'), { once: true });
-    img.addEventListener('error', () => img.classList.add('in'), { once: true });
-    img.setAttribute('loading', 'lazy');
-    img.setAttribute('decoding', 'async');
-    img.src = item.thumb;
+    const img = fadeInImg(item.thumb);
     thumbWrap.appendChild(img);
     if (item.duration) {
       const dur = document.createElement('span');
@@ -3814,13 +3834,8 @@
   const createCommentRow = (item) => {
     const row = document.createElement('div');
     row.className = 'comment-row';
-    const avatar = document.createElement('img');
+    const avatar = fadeInImg(item.avatar);
     avatar.className = 'comment-avatar';
-    avatar.addEventListener('load', () => avatar.classList.add('in'), { once: true });
-    avatar.addEventListener('error', () => avatar.classList.add('in'), { once: true });
-    avatar.setAttribute('loading', 'lazy');
-    avatar.setAttribute('decoding', 'async');
-    if (item.avatar) avatar.src = item.avatar;
     let avatarEl = avatar;
     if (item.authorHref) {
       const avatarLink = document.createElement('a');
@@ -3955,7 +3970,7 @@
     { name: 'Sky', hex: '#38bdf8' },
     { name: 'Emerald', hex: '#10d98a' },
   ];
-  const savedAccent = () => { try { return localStorage.getItem('itube-accent'); } catch (e) { return null; } };
+  const savedAccent = () => lsGet('itube-accent');
   const hexToRgb = (hex) => {
     const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
     if (!m) return null;
@@ -3972,7 +3987,7 @@
     accentRoot.style.setProperty('--accent-rgb', rgb.join(', '));
     accentRoot.style.setProperty('--accent-solid', hex);
     accentRoot.style.setProperty('--on-accent', lum > 0.6 ? '#04140a' : '#ffffff');
-    if (persist) { try { localStorage.setItem('itube-accent', hex); } catch (e) {} }
+    if (persist) lsSet('itube-accent', hex);
   };
 
   const hdLeft = document.createElement('div');
@@ -4113,11 +4128,9 @@
   avatar.setAttribute('aria-haspopup', 'menu');
   avatar.setAttribute('aria-expanded', 'false');
   avatar.style.display = 'none';
-  const avatarImg = document.createElement('img');
+  const avatarImg = fadeInImg();
   avatarImg.className = 'hd-avatar-img';
   avatarImg.alt = '';
-  avatarImg.setAttribute('decoding', 'async');
-  avatarImg.addEventListener('load', () => avatarImg.classList.add('in'), { once: true });
   avatar.appendChild(avatarImg);
   hdRight.append(hdSignIn, avatar);
 
@@ -4218,7 +4231,7 @@
     hdSignIn.style.display = out ? '' : 'none';
     avatar.style.display = out ? 'none' : '';
     if (out) closeAcctMenu();
-    if (!out) loadAccount();
+    if (!out) idle(loadAccount);
   };
 
   const nav = document.createElement('nav');
@@ -4406,13 +4419,13 @@
     speedSelect.appendChild(opt);
   }
   speedSelect.addEventListener('change', () => {
-    try { localStorage.setItem('itube-speed', speedSelect.value); } catch (e) {}
+    lsSet('itube-speed', speedSelect.value);
   });
   settingsPanel.appendChild(settingsRowEl('Default playback speed', speedSelect));
 
   const autoplayToggle = settingsToggle(
-    () => { try { return localStorage.getItem('itube-autoplay') !== '0'; } catch (e) { return true; } },
-    (on) => { try { localStorage.setItem('itube-autoplay', on ? '1' : '0'); } catch (e) {} },
+    () => lsGet('itube-autoplay') !== '0',
+    (on) => lsSet('itube-autoplay', on ? '1' : '0'),
   );
   settingsPanel.appendChild(settingsRowEl('Autoplay', autoplayToggle.el));
 
@@ -4440,14 +4453,14 @@
     qualitySelect.appendChild(opt);
   }
   qualitySelect.addEventListener('change', () => {
-    try { localStorage.setItem('itube-quality', qualitySelect.value); } catch (e) {}
+    lsSet('itube-quality', qualitySelect.value);
   });
   settingsPanel.appendChild(settingsRowEl('Preferred quality', qualitySelect));
 
   const reduceMotionToggle = settingsToggle(
-    () => { try { return localStorage.getItem('itube-reduce-motion') === '1'; } catch (e) { return false; } },
+    () => lsGet('itube-reduce-motion') === '1',
     (on) => {
-      try { localStorage.setItem('itube-reduce-motion', on ? '1' : '0'); } catch (e) {}
+      lsSet('itube-reduce-motion', on ? '1' : '0');
       root.classList.toggle('itube-reduce-motion', on);
     },
   );
@@ -4485,7 +4498,7 @@
       remove.textContent = '✕';
       remove.addEventListener('click', () => {
         const list = mutedKeywordsList().filter((k) => k !== kw);
-        try { localStorage.setItem('itube-mute-keywords', JSON.stringify(list)); } catch (e) {}
+        lsSet('itube-mute-keywords', JSON.stringify(list));
         refreshMuteState();
         renderKeywordChips();
       });
@@ -4500,7 +4513,7 @@
     const list = mutedKeywordsList();
     if (!list.includes(kw)) {
       list.push(kw);
-      try { localStorage.setItem('itube-mute-keywords', JSON.stringify(list)); } catch (e) {}
+      lsSet('itube-mute-keywords', JSON.stringify(list));
       refreshMuteState();
     }
     keywordInput.value = '';
@@ -4527,7 +4540,7 @@
       remove.addEventListener('click', () => {
         const list = mutedChannelsSet();
         list.delete(href);
-        try { localStorage.setItem('itube-mute-channels', JSON.stringify([...list])); } catch (e) {}
+        lsSet('itube-mute-channels', JSON.stringify([...list]));
         refreshMuteState();
         renderChannelChips();
       });
@@ -4539,10 +4552,7 @@
   const hideWatchedToggle = settingsToggle(
     () => hideWatchedOn(),
     (on) => {
-      try {
-        if (on) localStorage.setItem('itube-hide-watched', '1');
-        else localStorage.removeItem('itube-hide-watched');
-      } catch (e) {}
+      lsSet('itube-hide-watched', on ? '1' : '0');
       refreshMuteState();
     },
   );
@@ -4551,25 +4561,27 @@
   settingsOverlay.appendChild(settingsPanel);
   root.appendChild(settingsOverlay);
 
+  const settingsWire = wireOverlay(settingsOverlay, settingsPanel);
   const openSettings = () => {
     syncSettingsAccent();
-    speedSelect.value = (() => { try { return localStorage.getItem('itube-speed') || '1'; } catch (e) { return '1'; } })();
-    qualitySelect.value = (() => { try { return localStorage.getItem('itube-quality') || 'auto'; } catch (e) { return 'auto'; } })();
+    speedSelect.value = lsGet('itube-speed') || '1';
+    qualitySelect.value = lsGet('itube-quality') || 'auto';
     autoplayToggle.sync();
     skipSponsorsToggle.sync();
     reduceMotionToggle.sync();
     renderKeywordChips();
     renderChannelChips();
     hideWatchedToggle.sync();
-    settingsOverlay.classList.add('open');
+    settingsWire.open();
   };
-  const closeSettings = () => { settingsOverlay.classList.remove('open'); };
+  const closeSettings = () => settingsWire.close();
   settingsRow.addEventListener('click', openSettings);
   settingsClose.addEventListener('click', closeSettings);
-  settingsPanel.addEventListener('click', (e) => { e.stopPropagation(); });
-  settingsOverlay.addEventListener('click', closeSettings);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSettings(); });
 
+  const whenReady = (fn) => {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once: true });
+    else fn();
+  };
   const idle = window.requestIdleCallback
     ? (cb) => window.requestIdleCallback(cb, { timeout: 1500 })
     : (cb) => setTimeout(cb, 200);
@@ -4756,15 +4768,16 @@
     rows[i].scrollIntoView({ block: 'nearest' });
   };
 
+  const cmdkWire = wireOverlay(cmdkOverlay, cmdkPanel);
   const openPalette = () => {
     cmdkItems = buildCmdkItems();
     cmdkInput.value = '';
     cmdkVisible = cmdkFilter('');
     renderCmdkList();
-    cmdkOverlay.classList.add('open');
+    cmdkWire.open();
     cmdkInput.focus();
   };
-  const closeCmdk = () => { cmdkOverlay.classList.remove('open'); };
+  const closeCmdk = () => cmdkWire.close();
 
   cmdkInput.addEventListener('input', () => {
     cmdkVisible = cmdkFilter(cmdkInput.value);
@@ -4776,8 +4789,6 @@
     else if (e.key === 'Enter') { e.preventDefault(); activateCmdkItem(cmdkVisible[cmdkSelectedIndex()]); }
     else if (e.key === 'Escape') { e.preventDefault(); closeCmdk(); }
   });
-  cmdkPanel.addEventListener('click', (e) => { e.stopPropagation(); });
-  cmdkOverlay.addEventListener('click', closeCmdk);
 
   document.addEventListener('keydown', (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'k') return;
@@ -4840,15 +4851,17 @@
   const syncMiniPlayIcon = () => {
     miniPlay.replaceChildren(miniVideoEl && miniVideoEl.paused ? ICONS.play() : ICONS.pause());
   };
+  const onMiniPlay = () => syncMiniPlayIcon();
+  const onMiniPause = () => syncMiniPlayIcon();
 
   const activateMini = (video, videoId) => {
     if (miniVideoEl && miniVideoEl !== video) {
-      miniVideoEl.removeEventListener('play', syncMiniPlayIcon);
-      miniVideoEl.removeEventListener('pause', syncMiniPlayIcon);
+      miniVideoEl.removeEventListener('play', onMiniPlay);
+      miniVideoEl.removeEventListener('pause', onMiniPause);
     }
     miniVideoEl = video;
-    video.addEventListener('play', syncMiniPlayIcon);
-    video.addEventListener('pause', syncMiniPlayIcon);
+    video.addEventListener('play', onMiniPlay);
+    video.addEventListener('pause', onMiniPause);
     if (video.parentElement !== mini) mini.insertBefore(video, mini.firstChild);
     mini.style.display = 'block';
     miniActive = true;
@@ -4858,6 +4871,11 @@
   };
 
   const deactivateMini = () => {
+    if (miniVideoEl) {
+      miniVideoEl.removeEventListener('play', onMiniPlay);
+      miniVideoEl.removeEventListener('pause', onMiniPause);
+      miniVideoEl = null;
+    }
     miniActive = false;
     mini.style.display = 'none';
   };
@@ -4929,7 +4947,7 @@
     document.body.appendChild(root);
     const a = savedAccent();
     if (a) setAccent(a, false);
-    try { if (localStorage.getItem('itube-reduce-motion') === '1') root.classList.add('itube-reduce-motion'); } catch (e) {}
+    if (lsGet('itube-reduce-motion') === '1') root.classList.add('itube-reduce-motion');
   };
   mountRoot();
 
@@ -5088,16 +5106,12 @@
       itemClass: 'c',
       containerClass: 'grid',
       renderItem: createCard,
-      fetchMore: async (token, seen) => {
-        const res = await innertube('browse', { continuation: token });
-        if (!res) return null;
-        return { items: extractVideos(res, seen), token: findContinuationToken(res) };
-      },
+      fetchMore: continuationFetcher('browse', (res, seen) => extractVideos(res, seen, thumbTarget(GRID_THUMB_W))),
       fetchInitial: async (seen) => {
         let data = spaNav ? null : window.ytInitialData;
         if (!data) data = await innertube('browse', { browseId: 'FEwhat_to_watch' });
         if (!data) return null;
-        const resumeItems = extractResumeItems(data, new Set());
+        const resumeItems = extractResumeItems(data, new Set(), thumbTarget(GRID_THUMB_W));
         for (const it of resumeItems) seen.add(it.id);
         if (resumeItems.length) {
           const cwHeading = document.createElement('h2');
@@ -5112,7 +5126,7 @@
           view.insertBefore(cwHeading, heading);
           view.insertBefore(cwGrid, heading);
         }
-        const items = extractVideos(data, seen);
+        const items = extractVideos(data, seen, thumbTarget(GRID_THUMB_W));
         heading.style.display = items.length ? '' : 'none';
         if (!items.length && !resumeItems.length && loggedOut()) {
           const prompt = feedSignInPrompt(data) || feedNudgePrompt(data) || HOME_SIGNED_OUT;
@@ -5124,12 +5138,7 @@
     });
 
     view.replaceChildren(heading, list.container, list.spinner);
-    const run = () => list.loadInitial();
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', run, { once: true });
-    } else {
-      run();
-    }
+    whenReady(() => list.loadInitial());
 
     return list.cleanup;
   };
@@ -5160,15 +5169,24 @@
     search.value = query;
 
     let activeFilter = null;
+    let usedInitialData = false;
 
     const spParam = new URLSearchParams(location.search).get('sp') || '';
 
     const fetchSearch = async (seen) => {
       if (!query) return { items: [], token: null, message: 'Type something to search.' };
+      if (!spaNav && !usedInitialData) {
+        usedInitialData = true;
+        const data = window.ytInitialData;
+        if (data) {
+          const items = extractVideos(data, seen, thumbTarget(ROW_THUMB_W));
+          if (items.length) return { items, token: findContinuationToken(data), message: 'No results for "' + query + '"' };
+        }
+      }
       const body = activeFilter ? { query, params: activeFilter.value } : { query };
       const res = await innertube('search', body);
       if (!res) return { items: [], token: null, message: 'Something went wrong.' };
-      return { items: extractVideos(res, seen), token: findContinuationToken(res), message: 'No results for "' + query + '"' };
+      return { items: extractVideos(res, seen, thumbTarget(ROW_THUMB_W)), token: findContinuationToken(res), message: 'No results for "' + query + '"' };
     };
 
     const list = createListView({
@@ -5176,11 +5194,7 @@
       containerClass: 'list',
       renderItem: createRowCard,
       fetchInitial: fetchSearch,
-      fetchMore: async (token, seen) => {
-        const res = await innertube('search', { continuation: token });
-        if (!res) return null;
-        return { items: extractVideos(res, seen), token: findContinuationToken(res) };
-      },
+      fetchMore: continuationFetcher('search', (res, seen) => extractVideos(res, seen, thumbTarget(ROW_THUMB_W))),
     });
 
     const makeFilterSelect = (options) => {
@@ -5237,12 +5251,7 @@
       view.replaceChildren(list.container, list.spinner);
     }
 
-    const run = () => list.loadInitial();
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', run, { once: true });
-    } else {
-      run();
-    }
+    whenReady(() => list.loadInitial());
 
     return list.cleanup;
   };
@@ -5338,19 +5347,17 @@
       itemClass: 'c',
       containerClass: 'grid',
       renderItem: createCard,
-      fetchMore: async (token, seen) => {
-        const res = await innertube('browse', { continuation: token });
-        if (!res) return null;
+      fetchMore: continuationFetcher('browse', (res, seen) => {
         const extractor = activeTab === 'playlists' ? extractPlaylists : extractVideos;
-        return { items: fillOwner(extractor(res, seen)), token: findContinuationToken(res) };
-      },
+        return fillOwner(extractor(res, seen, thumbTarget(GRID_THUMB_W)));
+      }),
       fetchInitial: async (seen) => {
         const params = tabParams(activeTab);
         const res = await innertube('browse', params ? { browseId, params } : { browseId });
         if (!res) return null;
         paintHeader(res);
         const extractor = activeTab === 'playlists' ? extractPlaylists : extractVideos;
-        return { items: fillOwner(extractor(res, seen)), token: findContinuationToken(res) };
+        return { items: fillOwner(extractor(res, seen, thumbTarget(GRID_THUMB_W))), token: findContinuationToken(res) };
       },
       emptyMessage: "Couldn't load this channel.",
     });
@@ -5428,23 +5435,13 @@
       const bannerUrl = thumbFrom(h?.banner) || imgFrom(vm?.banner);
 
       if (bannerUrl) {
-        const banner = document.createElement('img');
+        const banner = fadeInImg(bannerUrl);
         banner.className = 'ch-banner';
-        banner.addEventListener('load', () => banner.classList.add('in'), { once: true });
-        banner.addEventListener('error', () => banner.classList.add('in'), { once: true });
-        banner.setAttribute('loading', 'lazy');
-        banner.setAttribute('decoding', 'async');
-        banner.src = bannerUrl;
         header.appendChild(banner);
       }
       if (avatarUrl) {
-        const avatar = document.createElement('img');
+        const avatar = fadeInImg(avatarUrl);
         avatar.className = 'ch-avatar';
-        avatar.addEventListener('load', () => avatar.classList.add('in'), { once: true });
-        avatar.addEventListener('error', () => avatar.classList.add('in'), { once: true });
-        avatar.setAttribute('loading', 'lazy');
-        avatar.setAttribute('decoding', 'async');
-        avatar.src = avatarUrl;
         header.appendChild(avatar);
       }
       const nameEl = document.createElement('h1');
@@ -5502,7 +5499,7 @@
         const muted = list.has(chMuteKey);
         if (muted) list.delete(chMuteKey);
         else list.add(chMuteKey);
-        try { localStorage.setItem('itube-mute-channels', JSON.stringify([...list])); } catch (e) {}
+        lsSet('itube-mute-channels', JSON.stringify([...list]));
         refreshMuteState();
         setChMuteUI(!muted);
       });
@@ -5642,7 +5639,7 @@
       if (vm) aboutLoaded = true;
     };
 
-    const run = async () => {
+    whenReady(async () => {
       browseId = await resolveBrowseId();
       if (!browseId) {
         showEmpty("Couldn't load this channel.");
@@ -5655,12 +5652,7 @@
         view.replaceChildren(header, list.container, list.spinner);
         await list.loadInitial();
       }
-    };
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', run, { once: true });
-    } else {
-      run();
-    }
+    });
 
     return list.cleanup;
   };
@@ -5696,7 +5688,7 @@
         const prompt = signedOutPrompt(res);
         if (prompt) return { items: [], token: null, signIn: prompt };
         if (id.startsWith('VL')) setPlaylistTitle(res);
-        const items = extractVideos(res, seen);
+        const items = extractVideos(res, seen, thumbTarget(GRID_THUMB_W));
         const token = findContinuationToken(res);
         if (items.length || token) return { items, token };
       }
@@ -5712,7 +5704,7 @@
           const pageData = window.ytInitialData;
           const prompt = signedOutPrompt(pageData);
           if (prompt) return { items: [], token: null, signIn: prompt };
-          const initialItems = pageData ? extractVideos(pageData, seen) : [];
+          const initialItems = pageData ? extractVideos(pageData, seen, thumbTarget(GRID_THUMB_W)) : [];
           if (initialItems.length) {
             if (ids[0].startsWith('VL')) setPlaylistTitle(pageData);
             return { items: initialItems, token: findContinuationToken(pageData) };
@@ -5721,21 +5713,12 @@
         const result = await fetchFromApi(seen);
         return result || { items: [], token: null };
       },
-      fetchMore: async (token, seen) => {
-        const res = await innertube('browse', { continuation: token });
-        if (!res) return null;
-        return { items: extractVideos(res, seen), token: findContinuationToken(res) };
-      },
+      fetchMore: continuationFetcher('browse', (res, seen) => extractVideos(res, seen, thumbTarget(GRID_THUMB_W))),
       emptyMessage: 'Nothing here yet.',
     });
 
     view.replaceChildren(headingEl, list.container, list.spinner);
-    const run = () => list.loadInitial();
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', run, { once: true });
-    } else {
-      run();
-    }
+    whenReady(() => list.loadInitial());
 
     return list.cleanup;
   };
@@ -6363,7 +6346,7 @@
     tCC.b.addEventListener('click', () => { player()?.toggleSubtitles?.(); tCC.b.classList.toggle('active'); });
     tAuto.b.addEventListener('click', () => {
       autoplayEnabled = !autoplayEnabled;
-      try { localStorage.setItem('itube-autoplay', autoplayEnabled ? '1' : '0'); } catch (e) {}
+      lsSet('itube-autoplay', autoplayEnabled ? '1' : '0');
       ui?.syncAuto?.();
       syncTools();
       showOSD(ICONS.tools, autoplayEnabled ? 'Autoplay on' : 'Autoplay off');
@@ -6515,10 +6498,9 @@
 
     const transcriptPanel = document.createElement('div');
     transcriptPanel.className = 'transcript';
-    transcriptPanel.style.display = 'none';
     const transcriptHeader = document.createElement('div');
     transcriptHeader.className = 'transcript-header';
-    const { btn: transcriptToggle, icon: transcriptChevron } = pillButton(ICONS.chevron, 'Transcript', 'transcript-toggle');
+    const { btn: transcriptToggle, icon: transcriptChevron, label: transcriptLabel } = pillButton(ICONS.chevron, 'Transcript', 'transcript-toggle');
     const transcriptSearch = document.createElement('input');
     transcriptSearch.type = 'text';
     transcriptSearch.className = 'transcript-search';
@@ -6675,7 +6657,7 @@
         if (desc.scrollHeight > desc.clientHeight + 1) descToggle.style.display = '';
       });
 
-      const related = extractVideos(data, new Set()).slice(0, 20);
+      const related = extractVideos(data, new Set(), thumbTarget(COMPACT_THUMB_W)).slice(0, 20);
       firstRelatedId = related[0]?.id || null;
       relatedWrap.replaceChildren();
       for (const item of related) relatedWrap.appendChild(createCompactCard(item));
@@ -6751,6 +6733,8 @@
     let transcriptLineEls = [];
     let transcriptActiveIndex = -1;
     let transcriptExpanded = false;
+    let transcriptLoading = false;
+    let transcriptLoadedId = null;
 
     const setTranscriptChevron = () => {
       transcriptChevron.classList.toggle('open', transcriptExpanded);
@@ -6796,7 +6780,9 @@
     };
 
     const resetTranscript = () => {
-      transcriptPanel.style.display = 'none';
+      transcriptGeneration++;
+      transcriptLoading = false;
+      transcriptLoadedId = null;
       transcriptBody.replaceChildren();
       transcriptLineEls = [];
       transcriptSegments = [];
@@ -6804,38 +6790,54 @@
       transcriptExpanded = false;
       transcriptBody.classList.add('collapsed');
       transcriptSearch.value = '';
+      transcriptLabel.textContent = 'Transcript';
       setTranscriptChevron();
     };
 
+    const waitForPlayerResponse = async (videoId, gen) => {
+      const deadline = Date.now() + 3000;
+      while (true) {
+        const pres = player()?.getPlayerResponse?.();
+        if (pres?.videoDetails?.videoId === videoId) return pres;
+        if (window.ytInitialPlayerResponse?.videoDetails?.videoId === videoId) return window.ytInitialPlayerResponse;
+        if (gen !== transcriptGeneration || Date.now() >= deadline) return null;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    };
+
     const loadTranscript = async (videoId) => {
-      const gen = ++transcriptGeneration;
-      resetTranscript();
-      if (!videoId) return;
-      const c = cfg();
-      const pres = await innertube('player', {
-        videoId,
-        contentCheckOk: true,
-        racyCheckOk: true,
-        playbackContext: {
-          contentPlaybackContext: {
-            html5Preference: 'HTML5_PREF_WANTS',
-            signatureTimestamp: c?.STS || 0,
-            referer: location.href,
-          },
-        },
-      });
+      if (!videoId || transcriptLoadedId === videoId || transcriptLoading) return;
+      const gen = transcriptGeneration;
+      transcriptLoading = true;
+      transcriptLabel.textContent = 'Loading transcript…';
+      const pres = await waitForPlayerResponse(videoId, gen);
       if (gen !== transcriptGeneration) return;
       const track = pickCaptionTrack(pres?.captions?.playerCaptionsTracklistRenderer?.captionTracks);
-      if (!track?.baseUrl) return;
+      if (!track?.baseUrl) {
+        transcriptLoading = false;
+        if (pres) transcriptLoadedId = videoId;
+        transcriptLabel.textContent = pres ? 'Transcript unavailable' : 'Transcript not ready — try again';
+        return;
+      }
       const tr = await fetch(track.baseUrl + '&fmt=json3', { credentials: 'omit' }).catch(() => null);
       if (gen !== transcriptGeneration) return;
-      if (!tr?.ok) return;
+      if (!tr?.ok) {
+        transcriptLoading = false;
+        transcriptLoadedId = videoId;
+        transcriptLabel.textContent = 'Transcript unavailable';
+        return;
+      }
       const tj = await tr.json().catch(() => null);
       if (gen !== transcriptGeneration) return;
       const segments = parseJson3Transcript(tj);
-      if (!segments.length) return;
+      transcriptLoading = false;
+      transcriptLoadedId = videoId;
+      if (!segments.length) {
+        transcriptLabel.textContent = 'Transcript unavailable';
+        return;
+      }
       transcriptSegments = segments;
-      transcriptPanel.style.display = '';
+      transcriptLabel.textContent = 'Transcript';
       renderTranscriptLines();
     };
 
@@ -6843,6 +6845,7 @@
       transcriptExpanded = !transcriptExpanded;
       transcriptBody.classList.toggle('collapsed', !transcriptExpanded);
       setTranscriptChevron();
+      if (transcriptExpanded) loadTranscript(resolveVideoId());
     });
 
     const showCommentsOff = () => {
@@ -6951,7 +6954,7 @@
       }
     });
     resetComments(window.ytInitialData, !mountedFromSpa);
-    loadTranscript(resolveVideoId());
+    resetTranscript();
 
     let chapterSecs = parseChapters(window.ytInitialData);
     let storyboard = null;
@@ -6970,7 +6973,7 @@
     let adObserved = null;
     const mountAbort = new AbortController();
     const bound = { signal: mountAbort.signal };
-    let autoplayEnabled = localStorage.getItem('itube-autoplay') !== '0';
+    let autoplayEnabled = lsGet('itube-autoplay') !== '0';
     let sbEnabled = sponsorSkipOn();
     let sbSegments = [];
     let sbVideoId = null;
@@ -7038,7 +7041,7 @@
         }
       }
     };
-    let desiredRate = (() => { const v = parseFloat(localStorage.getItem('itube-speed')); return v >= 0.1 && v <= 5 ? v : 1; })();
+    let desiredRate = (() => { const v = parseFloat(lsGet('itube-speed')); return v >= 0.1 && v <= 5 ? v : 1; })();
     const applyRate = (rate) => {
       rate = Math.min(5, Math.max(0.1, rate));
       desiredRate = rate;
@@ -7046,7 +7049,7 @@
       if (video) video.playbackRate = rate;
       if (rate <= 2) player()?.setPlaybackRate?.(rate);
       if (ui) ui.speed.value = String(rate);
-      try { localStorage.setItem('itube-speed', String(rate)); } catch (e) {}
+      lsSet('itube-speed', String(rate));
     };
     let boost = savedBoost();
     let boostCtx = null;
@@ -7115,8 +7118,8 @@
         showOSD(ICONS.camera, 'Capture unavailable');
       }
     };
-    const audioOnlyPref = () => { try { return localStorage.getItem('itube-audio-only') === '1'; } catch (e) { return false; } };
-    const setAudioOnlyPref = (on) => { try { localStorage.setItem('itube-audio-only', on ? '1' : '0'); } catch (e) {} };
+    const audioOnlyPref = () => lsGet('itube-audio-only') === '1';
+    const setAudioOnlyPref = (on) => lsSet('itube-audio-only', on ? '1' : '0');
     let audioOnly = audioOnlyPref();
     let audioOnlyPrevQuality = null;
     if (audioOnly) stage.classList.add('audio-only');
@@ -7138,7 +7141,7 @@
           audioOnlyPrevQuality = p?.getPlaybackQuality?.() || audioOnlyPrevQuality;
           p?.setPlaybackQualityRange?.('tiny', 'tiny');
         } else {
-          const q = localStorage.getItem('itube-quality') || audioOnlyPrevQuality || 'auto';
+          const q = lsGet('itube-quality') || audioOnlyPrevQuality || 'auto';
           if (q && q !== 'auto') p?.setPlaybackQualityRange?.(q, q);
         }
       } catch (e) {}
@@ -7324,8 +7327,8 @@
       ui.seek.style.background = `linear-gradient(to right, rgba(255,255,255,.95) ${played}%, rgba(255,255,255,.4) ${played}%, rgba(255,255,255,.4) ${buffered}%, rgba(255,255,255,.16) ${buffered}%)`;
     };
 
-    const savedVolume = () => Math.max(0, Math.min(100, Number(localStorage.getItem('itube-volume')) || 100));
-    const savedMuted = () => localStorage.getItem('itube-muted') === '1';
+    const savedVolume = () => Math.max(0, Math.min(100, Number(lsGet('itube-volume')) || 100));
+    const savedMuted = () => lsGet('itube-muted') === '1';
 
     const restoreUserVolume = (p) => {
       const vol = savedVolume();
@@ -7469,7 +7472,7 @@
       };
       ui.auto.addEventListener('click', () => {
         autoplayEnabled = !autoplayEnabled;
-        localStorage.setItem('itube-autoplay', autoplayEnabled ? '1' : '0');
+        lsSet('itube-autoplay', autoplayEnabled ? '1' : '0');
         ui.syncAuto();
         showOSD(ICONS.next, autoplayEnabled ? 'Autoplay on' : 'Autoplay off');
       });
@@ -7519,7 +7522,7 @@
       ui.quality.addEventListener('mousedown', () => populateQuality(p));
       ui.quality.addEventListener('change', () => {
         p.setPlaybackQualityRange?.(ui.quality.value, ui.quality.value);
-        localStorage.setItem('itube-quality', ui.quality.value);
+        lsSet('itube-quality', ui.quality.value);
       });
       ui.audio.addEventListener('change', () => {
         const t = audioTracks[Number(ui.audio.value)];
@@ -7599,7 +7602,7 @@
       renderMeta(data);
       renderTicks();
       resetComments(data);
-      loadTranscript(resolveVideoId());
+      resetTranscript();
       updateQueue(resolveVideoId());
     };
     window.addEventListener('yt-navigate-finish', onNavigateFinish);
@@ -7634,7 +7637,7 @@
       if (vid && vid !== lastVideoId) {
         lastVideoId = vid;
         miniDismissed = false;
-        const saved = localStorage.getItem('itube-quality');
+        const saved = lsGet('itube-quality');
         if (saved && saved !== 'auto') p.setPlaybackQualityRange?.(saved, saved);
         populateQuality(p);
         if (saved) ui.quality.value = saved;
@@ -7718,8 +7721,8 @@
         }
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
-          localStorage.setItem('itube-muted', muted ? '1' : '0');
-          if (!muted && pv > 0) localStorage.setItem('itube-volume', String(pv));
+          lsSet('itube-muted', muted ? '1' : '0');
+          if (!muted && pv > 0) lsSet('itube-volume', String(pv));
         }, 300);
       }, bound);
 
@@ -7872,7 +7875,7 @@
       renderMeta(data);
       renderTicks();
       resetComments(data);
-      loadTranscript(videoId);
+      resetTranscript();
       updateQueue(videoId);
       content.scrollTop = 0;
     };
@@ -8142,7 +8145,7 @@
 
   const spaRoute = () => { spaNav = true; route(); };
   const prefersReducedMotion = () => {
-    try { if (localStorage.getItem('itube-reduce-motion') === '1') return true; } catch (e) {}
+    if (lsGet('itube-reduce-motion') === '1') return true;
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
     catch (e) { return false; }
   };

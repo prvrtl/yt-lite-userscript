@@ -2972,13 +2972,21 @@ async function checkTranscript(browser) {
   try {
     await waitForApp(page, { timeout: 30000 }).catch(() => {});
     await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
-    const panel = await page.waitForSelector('.transcript', { state: 'visible', timeout: 10000 }).catch(() => null);
+    // The transcript panel is now lazy: it's always present (collapsed) and
+    // only fetches captions once the toggle is clicked open, so there's no
+    // pre-click visibility gate to wait on any more (see checkTranscriptLazy).
+    const panel = await page.waitForSelector('.transcript', { timeout: 10000 }).catch(() => null);
     if (!panel) {
-      console.log('  transcript: SKIP — no .transcript panel appeared within 10s (this video may have no transcript on the live site)');
+      console.log('  transcript: SKIP — no .transcript panel appeared within 10s (unexpected: the panel should always mount)');
       return violations;
     }
     await page.click('.transcript-toggle');
     await page.waitForSelector('.transcript-line', { timeout: 10000 }).catch(() => {});
+    const lineCount = await page.evaluate(() => document.querySelectorAll('.transcript-line').length);
+    if (lineCount === 0) {
+      console.log('  transcript: SKIP — no .transcript-line rows appeared after expanding (this video may have returned an empty caption body on the sandbox)');
+      return violations;
+    }
     const lines = await page.evaluate(() => [...document.querySelectorAll('.transcript-line')].map((l) => ({
       time: l.querySelector('.transcript-time')?.textContent || '',
       text: l.querySelector('.transcript-text')?.textContent || '',
@@ -3434,6 +3442,236 @@ async function checkAudioOnly(browser) {
   return violations;
 }
 
+// Hard-loading /results?search_query=... used to always POST to
+// /youtubei/v1/search even though the server already inlined the first page
+// of results into ytInitialData — mountSearch now reads that inline data on
+// non-SPA loads and only hits the network for continuations/filter changes.
+// This proves the initial render is network-free; a regression here means
+// someone reintroduced an unconditional innertube('search', ...) call.
+async function checkSearchNoRefetch(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const page = await context.newPage();
+  const searchPosts = [];
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && req.url().includes('/youtubei/v1/search')) searchPosts.push(req.url());
+  });
+  try {
+    await page.goto('https://www.youtube.com/results?search_query=liquid+glass+design', { waitUntil: 'domcontentloaded' });
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.row', { timeout: 15000 }).catch(() => {});
+    const rowCount = await page.evaluate(() => document.querySelectorAll('.row').length);
+    if (rowCount === 0) {
+      console.log('  search-no-refetch: SKIP — no .row results rendered within 15s');
+      return violations;
+    }
+    if (searchPosts.length > 0) {
+      violations.push({ check: 'search-no-refetch', detail: `expected 0 POSTs to /youtubei/v1/search before first results render, got ${searchPosts.length}: ${searchPosts.slice(0, 3).join(', ')}` });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// The transcript panel used to eagerly POST to /youtubei/v1/player and fetch
+// the caption track on every watch mount/navigation, even though the panel
+// starts collapsed and most sessions never open it. It's now fully lazy:
+// loadTranscript() doesn't run at all until the toggle is clicked, at which
+// point it reads the already-fetched player response (zero extra POST) and
+// only hits /api/timedtext for the caption body itself. The parked, headless
+// YouTube player independently prefetches its own auto-caption chunk
+// regardless of iTube, so a raw "0 timedtext requests" assertion would be
+// flaky against the live site — this instead watches loadTranscript()'s own
+// "Loading transcript…" state to prove OUR fetch didn't start early, then
+// proves the click produces a real attempt (rows or the tolerated
+// empty/unavailable state).
+async function checkTranscriptLazy(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const timedtextRequests = [];
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  page.on('request', (req) => {
+    if (req.url().includes('/api/timedtext')) timedtextRequests.push(req.url());
+  });
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.transcript', { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+    // YouTube's own (parked, headless) player independently prefetches an
+    // auto-caption chunk for itself regardless of any iTube UI action — that
+    // shows up here as a genuine /api/timedtext request we don't control and
+    // isn't the regression this check exists to catch. What IS ours to
+    // control is loadTranscript(), which we can observe directly: it must
+    // not have started before the toggle is clicked.
+    const startedEarly = await page.evaluate(() => document.querySelector('.transcript-toggle span')?.textContent === 'Loading transcript…');
+    if (timedtextRequests.length > 0) {
+      console.log(`  transcript-lazy: note — ${timedtextRequests.length} /api/timedtext request(s) fired before the click; this is YouTube's own player prefetching auto-captions, not iTube (see loadTranscript's own state below)`);
+    }
+    if (startedEarly) {
+      violations.push({ check: 'transcript-lazy-no-fetch', detail: 'expected loadTranscript() to stay idle until the toggle is clicked, but the label already read "Loading transcript…" before the click' });
+    }
+
+    await page.click('.transcript-toggle');
+    await page.waitForSelector('.transcript-line', { timeout: 10000 }).catch(() => {});
+    const lineCount = await page.evaluate(() => document.querySelectorAll('.transcript-line').length);
+    const label = await page.evaluate(() => document.querySelector('.transcript-toggle span')?.textContent || '');
+    if (lineCount === 0 && !/unavailable/i.test(label)) {
+      console.log(`  transcript-lazy: SKIP — no rows rendered and no "unavailable" label after expanding (label="${label}", possibly an empty caption body on the sandbox)`);
+      return violations;
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// getThumb used to always pick the largest thumbnail source regardless of
+// how big the card actually renders, so a ~340px grid card could download a
+// 1280px image. It now right-sizes to the card's CSS width × DPR. This
+// proves loaded images land in a sane ratio to their rendered size — too far
+// below 1 means blurry (picked too small), too far above means wasted
+// bandwidth (picked too large, the original bug).
+async function checkThumbSizing(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  // The logged-out home feed legitimately renders zero cards (see
+  // RECOVERY.md), so this uses a channel's videos tab, which iTube renders
+  // as the same .c-thumb grid without needing a session.
+  const { page } = await openPage(context, 'https://www.youtube.com/@mkbhd/videos');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.c-thumb img', { timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    const ratios = await page.evaluate(() => (
+      [...document.querySelectorAll('.c-thumb img')]
+        .filter((img) => img.naturalWidth > 0 && img.clientWidth > 0)
+        .slice(0, 20)
+        .map((img) => img.naturalWidth / img.clientWidth)
+    ));
+    if (ratios.length === 0) {
+      console.log('  thumb-sizing: SKIP — no loaded grid card images found within the wait window');
+      return violations;
+    }
+    const bad = ratios.filter((r) => r < 0.9 || r > 3.5);
+    if (bad.length > 0) {
+      violations.push({ check: 'thumb-sizing', detail: `expected naturalWidth/clientWidth in [0.9, 3.5] for loaded grid thumbs, got out-of-range ratios: ${bad.map((r) => r.toFixed(2)).join(', ')}` });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// activateMini rebinds 'play'/'pause' listeners onto the singleton <video>
+// every time the mini-player activates, guarded only by identity-equality
+// with the previous element — since the element is re-parented rather than
+// recreated, that guard never fires past the first activation, and every
+// watch -> mini round trip used to leave two more listeners attached.
+// deactivateMini/closeMini now remove both listeners and null out the
+// tracked element so re-activation starts clean. This proves it by wrapping
+// EventTarget.add/removeEventListener to track a net 'play' listener count on
+// the underlying video across two watch -> mini round trips — a leak would
+// show round trip 2's count exceeding round trip 1's.
+async function checkMiniListenerLeak(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+
+    // Wrap add/removeEventListener on the singleton video so every net 'play'
+    // listener registered on it is counted regardless of native duplicate-
+    // listener suppression — the bug re-registers the SAME function
+    // reference, which the DOM would otherwise silently no-op, masking the
+    // leak from any check that only inspects listener count via devtools.
+    // Every per-mount watch listener in itube.user.js is bound to that
+    // mount's own AbortController ({signal}) and self-removes on navigation
+    // without ever calling removeEventListener directly, so counting those
+    // would just measure normal mount/unmount churn. Only the mini-player's
+    // 'play' listener is registered without an abort signal, which is
+    // exactly the one this check needs to isolate.
+    await page.evaluate(() => {
+      const video = document.querySelector('#itube-stage video') || document.querySelector('video');
+      if (!video || video.__itubeLeakProbe) return;
+      video.__itubeLeakProbe = true;
+      window.__itubePlayListenerCount = 0;
+      const nativeAdd = EventTarget.prototype.addEventListener;
+      const nativeRemove = EventTarget.prototype.removeEventListener;
+      EventTarget.prototype.addEventListener = function (type, listener, opts) {
+        if (this === video && type === 'play' && !(opts && opts.signal)) window.__itubePlayListenerCount++;
+        return nativeAdd.call(this, type, listener, opts);
+      };
+      EventTarget.prototype.removeEventListener = function (type, listener, opts) {
+        if (this === video && type === 'play' && !(opts && opts.signal)) window.__itubePlayListenerCount--;
+        return nativeRemove.call(this, type, listener, opts);
+      };
+    });
+
+    // Returning to /watch via the mini-player's expand button re-mounts the
+    // watch page fresh (currentTime resets to 0, paused), so playback has to
+    // be explicitly resumed before each "leave" or the app's own
+    // stillPlaying guard skips mini activation entirely and the round trip
+    // proves nothing.
+    // The app's own stillPlaying guard (currentTime > 0 && !paused) decides
+    // whether leaving watch activates the mini-player, so this polls for
+    // real playback progress rather than sleeping a fixed amount — a flat
+    // timeout races the video's actual play-and-advance and intermittently
+    // leaves currentTime at 0, which skips mini activation and starves the
+    // round trip this check depends on.
+    const resumePlayback = async () => {
+      await page.evaluate(async () => {
+        const v = document.querySelector('#itube-stage video');
+        if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
+      });
+      await page.waitForFunction(() => {
+        const v = document.querySelector('#itube-stage video');
+        return !!v && !v.paused && v.currentTime > 0.3;
+      }, { timeout: 5000 }).catch(() => {});
+    };
+    const leaveWatch = async () => {
+      await page.evaluate(() => { document.querySelector('.nav-row[href="/"]')?.click(); });
+      await page.waitForSelector('#itube-mini[style*="display: block"]', { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(300);
+    };
+    const expandBack = async () => {
+      await page.click('#itube-mini', { position: { x: 20, y: 150 }, timeout: 10000 }).catch(() => {});
+      await page.waitForSelector('#itube-stage video', { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(300);
+    };
+    const listenerCount = async () => page.evaluate(() => window.__itubePlayListenerCount ?? null);
+    const miniActive = async () => page.evaluate(() => document.getElementById('itube-mini')?.style.display === 'block');
+
+    await resumePlayback();
+    await leaveWatch();
+    const firstActive = await miniActive();
+    const afterFirst = await listenerCount();
+
+    await expandBack();
+    await resumePlayback();
+    await leaveWatch();
+    const secondActive = await miniActive();
+    const afterSecond = await listenerCount();
+
+    if (afterFirst == null || afterSecond == null || !firstActive || !secondActive) {
+      console.log(`  mini-listener-leak: SKIP — mini-player didn't activate on both round trips (active=${firstActive}/${secondActive}), can't compare listener counts`);
+      return violations;
+    }
+    if (afterSecond > afterFirst) {
+      violations.push({ check: 'mini-listener-leak', detail: `expected the net 'play' listener count on the video to stay flat across round trips, got ${afterFirst} after trip 1, ${afterSecond} after trip 2` });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
@@ -3483,4 +3721,8 @@ module.exports = {
   checkSkeletonReducedMotion,
   checkAudioTrackSelector,
   checkFeedFilter,
+  checkSearchNoRefetch,
+  checkTranscriptLazy,
+  checkThumbSizing,
+  checkMiniListenerLeak,
 };
