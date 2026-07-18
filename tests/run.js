@@ -78,6 +78,7 @@ const { checkVideoAds, checkFeedAds, checkAdStateMachine } = require('./checks/a
 const { runChannelChecks } = require('./checks/channels');
 const { checkNodeBudget } = require('./checks/perf');
 const { checkGatedFeeds, checkHeaderSignIn, checkWatchActions } = require('./checks/signedout');
+const { checkSubscriptionsChronological, checkHomeOrderNotSorted } = require('./checks/feedorder');
 
 const PAGES = {
   home: 'https://www.youtube.com/',
@@ -371,7 +372,7 @@ async function main() {
   // `--check=ads` and `--check=signedout` run only their own suites, which own
   // their contexts — there is no point opening every page just to run zero
   // per-page checks on it.
-  const OWN_CONTEXT_CHECKS = new Set(['ads', 'signedout', 'hover']);
+  const OWN_CONTEXT_CHECKS = new Set(['ads', 'signedout', 'hover', 'feedorder']);
   const pageNames = OWN_CONTEXT_CHECKS.has(args.check) ? [] : (args.page ? [args.page] : Object.keys(PAGES));
   for (const name of pageNames) {
     if (!PAGES[name]) {
@@ -1118,6 +1119,29 @@ async function main() {
       table.push({ page: 'signedout', check: name, status, count: res.violations.length });
       console.log(`  signedout / ${name}: ${status} — ${res.detail}`);
       for (const v of res.violations) console.log(`    page=signedout ${fmt(v)}`);
+    }
+  }
+
+  // Subscriptions ordering runs once, in its own context: it mocks the
+  // FEsubscriptions browse call (the live feed only renders a sign-in prompt
+  // logged out — see checks/signedout.js) to prove the chronological sort
+  // actually reaches the DOM, plus a source-level guard that the sort never
+  // leaks into home/search/channel.
+  if (!args.page && (!args.check || args.check === 'feedorder')) {
+    for (const [name, fn] of [['subscriptions', checkSubscriptionsChronological], ['home-unsorted', checkHomeOrderNotSorted]]) {
+      console.log(`\n--- feedorder / ${name} ---`);
+      let res;
+      try {
+        res = await fn(browser);
+      } catch (err) {
+        console.error(`  ERROR running the feedorder/${name} check: ${err.stack || err}`);
+        res = { violations: [{ check: 'feedorder-' + name, detail: String(err.message || err).split('\n')[0] }], detail: '' };
+      }
+      const status = res.violations.length ? 'FAIL' : 'PASS';
+      if (status === 'FAIL') anyFail = true;
+      table.push({ page: 'feedorder', check: name, status, count: res.violations.length });
+      console.log(`  feedorder / ${name}: ${status} — ${res.detail}`);
+      for (const v of res.violations) console.log(`    page=feedorder ${fmt(v)}`);
     }
   }
 

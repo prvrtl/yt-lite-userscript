@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.45.0
+// @version      4.46.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -3641,6 +3641,45 @@
 
   const getPublished = (node) => node?.publishedTimeText?.simpleText || null;
 
+  const RELATIVE_TIME_UNITS = [
+    [/second|секунд|sekunde/, 1],
+    [/minute|хвилин|минут/, 60],
+    [/hour|годин|час|stunde/, 3600],
+    [/week|тижд|недел|woche/, 604800],
+    [/day|день|дні|днів|дня|дней|tag/, 86400],
+    [/month|місяц|месяц|monat/, 2592000],
+    [/year|рік|рок|год|лет|jahr/, 31536000],
+  ];
+
+  const parseRelativeTime = (text) => {
+    if (typeof text !== 'string' || !text) return null;
+    const lower = text.toLowerCase().trim();
+    if (/^premieres\b/.test(lower) || /^scheduled/.test(lower)) return null;
+    let seconds = null;
+    for (const [re, mult] of RELATIVE_TIME_UNITS) {
+      if (re.test(lower)) { seconds = mult; break; }
+    }
+    if (seconds == null) return null;
+    const numMatch = lower.match(/(\d+(?:[.,]\d+)?)/);
+    let value;
+    if (numMatch) {
+      value = parseFloat(numMatch[1].replace(',', '.'));
+    } else if (/\ban?\b|\bein(?:e[mrs]?)?\b/.test(lower)) {
+      value = 1;
+    } else {
+      return null;
+    }
+    if (!isFinite(value) || value < 0) return null;
+    return value * seconds;
+  };
+
+  const sortByRecency = (items) => {
+    const keyed = items.map((item, i) => ({ item, i, secs: parseRelativeTime(item.published) }));
+    const sorted = keyed.filter((x) => x.secs != null).sort((a, b) => (a.secs - b.secs) || (a.i - b.i));
+    let s = 0;
+    return keyed.map((k) => (k.secs == null ? k.item : sorted[s++].item));
+  };
+
   const getSnippet = (node) => (
     node?.detailedMetadataSnippets?.[0]?.snippetText?.runs?.map((r) => r?.text || '').join('')
     || node?.descriptionSnippet?.runs?.map((r) => r?.text || '').join('')
@@ -6160,6 +6199,11 @@
     const ids = Array.isArray(browseIds) ? browseIds : [browseIds];
     const useInitialData = !!opts.useInitialData;
     const listId = ids[0] && ids[0].startsWith('VL') ? ids[0].slice(2) : null;
+    const isSubscriptions = ids.includes('FEsubscriptions');
+    const extractOrdered = (res, seen) => {
+      const items = extractVideos(res, seen, thumbTarget(GRID_THUMB_W));
+      return isSubscriptions ? sortByRecency(items) : items;
+    };
 
     const headingEl = document.createElement('h1');
     headingEl.className = 'page-heading';
@@ -6187,7 +6231,7 @@
         const prompt = signedOutPrompt(res);
         if (prompt) return { items: [], token: null, signIn: prompt };
         if (id.startsWith('VL')) setPlaylistTitle(res);
-        const items = extractVideos(res, seen, thumbTarget(GRID_THUMB_W));
+        const items = extractOrdered(res, seen);
         const token = findContinuationToken(res);
         if (items.length || token) return { items, token };
       }
@@ -6203,7 +6247,7 @@
           const pageData = window.ytInitialData;
           const prompt = signedOutPrompt(pageData);
           if (prompt) return { items: [], token: null, signIn: prompt };
-          const initialItems = pageData ? extractVideos(pageData, seen, thumbTarget(GRID_THUMB_W)) : [];
+          const initialItems = pageData ? extractOrdered(pageData, seen) : [];
           if (initialItems.length) {
             if (ids[0].startsWith('VL')) setPlaylistTitle(pageData);
             return { items: initialItems, token: findContinuationToken(pageData) };
@@ -6212,7 +6256,7 @@
         const result = await fetchFromApi(seen);
         return result || { items: [], token: null };
       },
-      fetchMore: continuationFetcher('browse', (res, seen) => extractVideos(res, seen, thumbTarget(GRID_THUMB_W))),
+      fetchMore: continuationFetcher('browse', extractOrdered),
       emptyMessage: 'Nothing here yet.',
     });
 
