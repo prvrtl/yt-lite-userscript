@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.46.0
+// @version      4.47.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -5284,6 +5284,8 @@
   let miniVideoId = null;
   let miniDismissed = false;
   let miniVideoEl = null;
+  let expandFromMini = false;
+  let miniFlying = false;
 
   const syncMiniPlayIcon = () => {
     miniPlay.replaceChildren(miniVideoEl && miniVideoEl.paused ? ICONS.play() : ICONS.pause());
@@ -5318,6 +5320,7 @@
   };
 
   const closeMini = () => {
+    if (miniFlying) return;
     if (miniVideoEl) {
       miniVideoEl.pause();
       const moviePlayer = player();
@@ -5328,7 +5331,9 @@
   };
 
   const expandMini = () => {
-    if (miniVideoId) watchNav(miniVideoId);
+    if (!miniVideoId) return;
+    expandFromMini = true;
+    watchNav(miniVideoId);
   };
 
   miniPlay.addEventListener('click', (e) => {
@@ -6576,7 +6581,15 @@
   };
 
   const mountWatch = () => {
-    if (miniActive) deactivateMini();
+    const fromMini = expandFromMini && miniActive;
+    expandFromMini = false;
+    if (miniActive && !fromMini) deactivateMini();
+    let miniHandoffPending = fromMini;
+    let miniFlyCancel = null;
+    let miniFlySafety = null;
+    let miniFlyAnim = null;
+    let pendingTheater = null;
+    const flyVideoId = fromMini ? miniVideoId : null;
     const stage = el('div', 'itube-stage');
     const stageAudio = document.createElement('div');
     stageAudio.className = 'stage-audio';
@@ -8124,6 +8137,7 @@
     const applyTheater = (on) => {
       const next = !!on;
       if (next === theaterOn) return;
+      if (miniFlying) { pendingTheater = next; return; }
       if (prefersReducedMotion()) { applyTheaterInstant(next); return; }
       clearTheaterScrim();
       const scrim = document.createElement('div');
@@ -8427,8 +8441,10 @@
       if (!video || !p) return;
       if (video.hasAttribute('controls')) video.removeAttribute('controls');
       if (video.disablePictureInPicture) video.disablePictureInPicture = false;
-      adoptVideo(stage);
-      adoptCaptions(stage);
+      if (!miniHandoffPending) {
+        adoptVideo(stage);
+        adoptCaptions(stage);
+      }
       fit(video);
       if (!ui) {
         ui = buildBar(stage);
@@ -8450,6 +8466,7 @@
       const vid = p.getVideoData?.()?.video_id;
       if (vid) sbLoad(vid);
       if (vid && vid !== lastVideoId) {
+        if (miniFlying && vid !== flyVideoId && miniFlyCancel) miniFlyCancel();
         lastVideoId = vid;
         miniDismissed = false;
         const saved = lsGet('itube-quality');
@@ -8539,6 +8556,59 @@
     };
     tick();
     const timer = setInterval(tick, 500);
+
+    const finishMiniHandoff = () => {
+      if (!miniFlying) return;
+      clearTimeout(miniFlySafety);
+      miniFlying = false;
+      miniFlyCancel = null;
+      mini.style.transition = '';
+      mini.style.transform = '';
+      mini.style.transformOrigin = '';
+      mini.style.pointerEvents = '';
+      miniBar.style.opacity = '';
+      miniHandoffPending = false;
+      adoptVideo(stage);
+      adoptCaptions(stage);
+      const v = stage.querySelector('video');
+      if (v) fit(v);
+      deactivateMini();
+      if (miniFlyAnim) { const a = miniFlyAnim; miniFlyAnim = null; a.cancel(); }
+      if (pendingTheater !== null) {
+        const t = pendingTheater;
+        pendingTheater = null;
+        applyTheater(t);
+      }
+    };
+    if (fromMini) {
+      miniFlying = true;
+      miniFlyCancel = finishMiniHandoff;
+      miniBar.style.opacity = '0';
+      mini.style.pointerEvents = 'none';
+      const startRect = mini.getBoundingClientRect();
+      if (prefersReducedMotion()) {
+        finishMiniHandoff();
+      } else {
+        requestAnimationFrame(() => {
+          if (!miniFlying) return;
+          const stageEl = document.getElementById('itube-stage');
+          const target = stageEl ? stageEl.getBoundingClientRect() : null;
+          if (!target || target.width < 8 || target.height < 8) { finishMiniHandoff(); return; }
+          const dx = target.left - startRect.left;
+          const dy = target.top - startRect.top;
+          const sx = target.width / startRect.width;
+          const sy = target.height / startRect.height;
+          mini.style.transformOrigin = 'top left';
+          miniFlyAnim = mini.animate([
+            { transform: 'translate(0px, 0px) scale(1, 1)' },
+            { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
+          ], { duration: 400, easing: 'cubic-bezier(.22, .61, .36, 1)', fill: 'forwards' });
+          miniFlySafety = setTimeout(finishMiniHandoff, 500);
+          miniFlyAnim.onfinish = finishMiniHandoff;
+          miniFlyAnim.oncancel = finishMiniHandoff;
+        });
+      }
+    }
 
     const HANDLED_KEYS = new Set([' ', 'k', 'j', 'l', 'm', 'f', 'c', 'i', 't', ',', '.', '<', '>', '/', 'Escape', '[', ']', '\\',
       'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
@@ -8697,6 +8767,7 @@
     }
 
     return () => {
+      if (miniFlying && miniFlyCancel) miniFlyCancel();
       clearInterval(timer);
       mountAbort.abort();
       if (sbAbort) sbAbort.abort();
@@ -8873,7 +8944,7 @@
     const pl = playable();
     if (!pl) return bootWatch(videoId, listId);
     history.pushState({}, '', watchHref(videoId, listId));
-    requestPlayback(pl, videoId);
+    if (pl.getVideoData?.()?.video_id !== videoId) requestPlayback(pl, videoId);
     if (watchApi) {
       setCurrentKey();
       syncNav();

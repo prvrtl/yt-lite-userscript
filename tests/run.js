@@ -65,6 +65,7 @@ const {
   checkItubeToggle,
   checkFeedFilter,
   checkMiniPlayer,
+  checkMiniExpandSeamless,
   checkSearchNoRefetch,
   checkTranscriptLazy,
   checkThumbSizing,
@@ -674,6 +675,27 @@ async function main() {
     table.push({ page: 'miniplayer', check: 'functional', status, count: violations.length });
     console.log(`  mini-player: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=miniplayer ${fmt(v)}`);
+  }
+
+  // Expanding the mini-player back to watch used to hand the singleton video
+  // to a fresh mountWatch() mid-build, jumping/blanking the frame (and could
+  // even restart playback via an unconditional loadVideoById), so this runs
+  // once, in its own context, sampling every rAF across the whole expand
+  // transition.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- mini-player expand (seamless) ---');
+    let violations;
+    try {
+      violations = await checkMiniExpandSeamless(browser);
+    } catch (err) {
+      console.error(`  ERROR running the mini-expand-seamless check: ${err.stack || err}`);
+      violations = [{ check: 'mini-expand-seamless', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'mini-expand-seamless', check: 'functional', status, count: violations.length });
+    console.log(`  mini-player expand (seamless): ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=mini-expand-seamless ${fmt(v)}`);
   }
 
   // activateMini used to rebind 'play'/'pause' listeners on the singleton

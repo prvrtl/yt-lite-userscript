@@ -3981,6 +3981,161 @@ async function checkMiniPlayer(browser) {
   return violations;
 }
 
+// Expanding the mini-player back to the watch page used to hand the singleton
+// video to a fresh mountWatch() while the page was still building, which
+// visibly jumped/blanked the frame and could even restart playback (watchNav
+// unconditionally reloaded the same video id). The seamless version keeps the
+// video floating in #itube-mini, untouched, while everything else mounts,
+// then FLIPs the mini container onto the stage and only re-parents the video
+// once the rects coincide. This samples every rAF across the whole transition
+// and proves: playback never pauses, currentTime only advances, there is
+// never more than one <video> in the document, the video's rect never
+// collapses to zero, and it never teleports partway through (only the final,
+// coincident frame may snap) — then checks the handoff actually lands in
+// #itube-stage with the mini gone.
+async function checkMiniExpandSeamless(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.evaluate(async () => {
+      const v = document.querySelector('#itube-stage video');
+      if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
+    });
+    await page.waitForTimeout(600);
+
+    await page.evaluate(() => {
+      const home = document.querySelector('.nav-row[href="/"]');
+      if (home) home.click();
+    });
+    await page.waitForSelector('#itube-mini[style*="display: block"]', { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
+
+    const preExpand = await page.evaluate(() => {
+      const v = document.querySelector('#itube-mini video');
+      return { hasMiniVideo: !!v, paused: v ? v.paused : null };
+    });
+    if (!preExpand.hasMiniVideo || preExpand.paused) {
+      violations.push({ check: 'mini-expand-seamless-setup', detail: `expected a playing mini-player before expanding, got ${JSON.stringify(preExpand)}` });
+      return violations;
+    }
+
+    const samples = await page.evaluate(() => new Promise((resolve) => {
+      const out = [];
+      let stop = false;
+      const sample = () => {
+        const stageVideo = document.querySelector('#itube-stage video');
+        const miniVideo = document.querySelector('#itube-mini video');
+        const v = stageVideo || miniVideo || document.querySelector('#movie_player video');
+        const rect = v ? v.getBoundingClientRect() : null;
+        out.push({
+          t: performance.now(),
+          videoCount: document.querySelectorAll('video').length,
+          paused: v ? v.paused : null,
+          currentTime: v ? v.currentTime : null,
+          inStage: !!stageVideo,
+          inMini: !!miniVideo,
+          rect: rect ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height } : null,
+        });
+        if (!stop) requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+      document.querySelector('#itube-mini .mini-expand')?.click();
+      setTimeout(() => { stop = true; setTimeout(() => resolve(out), 80); }, 900);
+    }));
+
+    if (samples.length < 2) {
+      violations.push({ check: 'mini-expand-seamless-samples', detail: `expected multiple per-frame samples across the transition, got ${samples.length}` });
+      return violations;
+    }
+
+    const viewportSize = page.viewportSize() || { width: 1440, height: 900 };
+    const teleportThreshold = Math.max(viewportSize.width, viewportSize.height) / 2;
+
+    let pausedSamples = 0;
+    let missingVideoSamples = 0;
+    let multiVideoSamples = 0;
+    let zeroRectSamples = 0;
+    let regressedTimeSamples = 0;
+    let teleportSamples = 0;
+
+    for (let i = 0; i < samples.length; i++) {
+      const s = samples[i];
+      if (s.paused) pausedSamples++;
+      if (s.currentTime == null) missingVideoSamples++;
+      if (s.videoCount !== 1) multiVideoSamples++;
+      if (!s.rect || s.rect.width * s.rect.height < 4) zeroRectSamples++;
+      if (i > 0) {
+        const prev = samples[i - 1];
+        if (prev.currentTime != null && s.currentTime != null && s.currentTime < prev.currentTime - 0.1) {
+          regressedTimeSamples++;
+        }
+        const isLast = i === samples.length - 1;
+        if (!isLast && prev.rect && s.rect) {
+          const dx = Math.abs(s.rect.left - prev.rect.left);
+          const dy = Math.abs(s.rect.top - prev.rect.top);
+          if (dx > teleportThreshold || dy > teleportThreshold) teleportSamples++;
+        }
+      }
+    }
+
+    if (pausedSamples > 0) {
+      violations.push({ check: 'mini-expand-seamless-paused', detail: `video.paused was true on ${pausedSamples}/${samples.length} samples during expand` });
+    }
+    if (missingVideoSamples > 0) {
+      violations.push({ check: 'mini-expand-seamless-missing', detail: `no <video> found (neither stage/mini/movie_player) on ${missingVideoSamples}/${samples.length} samples` });
+    }
+    if (multiVideoSamples > 0) {
+      violations.push({ check: 'mini-expand-seamless-clone', detail: `document had != 1 <video> element on ${multiVideoSamples}/${samples.length} samples (singleton was cloned or briefly duplicated)` });
+    }
+    if (zeroRectSamples > 0) {
+      violations.push({ check: 'mini-expand-seamless-blank', detail: `video bounding rect collapsed to ~0 area on ${zeroRectSamples}/${samples.length} samples` });
+    }
+    if (regressedTimeSamples > 0) {
+      violations.push({ check: 'mini-expand-seamless-rewind', detail: `currentTime went backwards on ${regressedTimeSamples}/${samples.length} sample transitions` });
+    }
+    if (teleportSamples > 0) {
+      violations.push({ check: 'mini-expand-seamless-teleport', detail: `video rect jumped >viewport/2 between consecutive frames on ${teleportSamples} transitions (not the final coincident handoff)` });
+    }
+
+    const first = samples[0];
+    const last = samples[samples.length - 1];
+    if (last.currentTime == null || first.currentTime == null || last.currentTime <= first.currentTime) {
+      violations.push({ check: 'mini-expand-seamless-advance', detail: `expected currentTime to advance across the whole transition, got ${first.currentTime} then ${last.currentTime}` });
+    }
+
+    await page.waitForTimeout(200);
+    const final = await page.evaluate(() => ({
+      hasStageVideo: !!document.querySelector('#itube-stage video'),
+      miniHidden: document.getElementById('itube-mini')?.style.display === 'none',
+      videoCount: document.querySelectorAll('video').length,
+      // The fly uses fill:'forwards'; if the animation is never cancel()ed the
+      // final transform keeps applying via the animation (independent of
+      // style.transform), so the NEXT mini activation would appear scaled and
+      // translated to wherever the stage was. Identity here proves cancel ran.
+      miniTransform: getComputedStyle(document.getElementById('itube-mini')).transform,
+    }));
+    if (!final.hasStageVideo) {
+      violations.push({ check: 'mini-expand-seamless-final', detail: `expected the video to end up parented in #itube-stage, got ${JSON.stringify(final)}` });
+    }
+    if (!final.miniHidden) {
+      violations.push({ check: 'mini-expand-seamless-final', detail: `expected #itube-mini to be hidden after the expand completes, got ${JSON.stringify(final)}` });
+    }
+    if (final.videoCount !== 1) {
+      violations.push({ check: 'mini-expand-seamless-final', detail: `expected exactly one <video> element after the expand completes, got ${final.videoCount}` });
+    }
+    if (final.miniTransform !== 'none' && final.miniTransform !== 'matrix(1, 0, 0, 1, 0, 0)') {
+      violations.push({ check: 'mini-expand-seamless-stale-fill', detail: `expected #itube-mini to carry no residual transform after handoff (forwards-fill animation must be cancelled), got ${final.miniTransform}` });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 // Audio-only mode hides the video behind an art overlay and drops quality to
 // save bandwidth, but the whole point is that decoding/playback must keep
 // running — the <video> is never display:none'd, just covered. The critical
@@ -4615,6 +4770,7 @@ module.exports = {
   checkWatchToWatchNavigation,
   checkHomeNavigation,
   checkMiniPlayer,
+  checkMiniExpandSeamless,
   checkFeedToWatchNavigation,
   checkShortsRedirect,
   checkInfiniteScroll,
