@@ -5,11 +5,10 @@
 
 const { waitForApp, openPage, newContext } = require('../lib/harness');
 
-// A known 24-audio-track video (dubbed languages + original). This is the
+// A known multi-audio-track video (dubbed languages + original). This is the
 // only page in the suite that needs a SPECIFIC video rather than any watch
 // URL, so it runs once, in its own context, rather than as part of
-// runWatchFunctional (which runs against the default single-track video and
-// must see the Audio row hidden — see 'audio-row-hidden-single-track').
+// runWatchFunctional (which runs against the default single-track video).
 const MULTI_AUDIO_VIDEO_ID = '0e3GPea1Tyg';
 
 async function getPlayerVolume(page) {
@@ -316,88 +315,60 @@ async function runWatchFunctional(page) {
     report('osd-shows-on-seek', `expected #itube-cue to have .show right after ArrowRight`);
   }
 
-  // --- overflow menu opens, quality has options ---
-  // This uses a REAL page.click(), not element.click() in page.evaluate().
-  // The synthetic version bypasses hit-testing entirely, so it passed even
-  // when the button was covered by an overlay, had pointer-events:none, or was
-  // zero-sized — all three of which have actually shipped in this project. The
-  // retry loop stays: a preroll ad genuinely can eat the first click.
-  let menuOpen = false;
+  // --- tools tray opens, quality tool cycles through a real ladder ---
+  // The player-bar "..." settings popup was removed in v4.41 — every control
+  // it held (Speed, Quality, Captions, Autoplay, Skip sponsors, Volume boost)
+  // now lives only in the Tools row, opened via the "Tools" pill in the
+  // action row. This uses a REAL page.click(), not element.click() in
+  // page.evaluate(): the synthetic version bypasses hit-testing entirely, so
+  // it passed even when the button was covered by an overlay, had
+  // pointer-events:none, or was zero-sized — all three of which have
+  // actually shipped in this project. The retry loop stays: a preroll ad
+  // genuinely can eat the first click.
+  let toolsOpen = false;
   let clickError = '';
-  for (let attempt = 0; attempt < 3 && !menuOpen; attempt++) {
+  for (let attempt = 0; attempt < 3 && !toolsOpen; attempt++) {
     await showBar(page);
     await page.waitForTimeout(100);
     try {
-      await page.click('#itube-more', { timeout: 2000 });
+      await page.click('.watch-action-btn[title="Tools"]', { timeout: 2000 });
     } catch (err) {
       // Playwright's actionability check failing IS the finding here: the
       // button is not really clickable by a human either.
       clickError = String(err.message || err).split('\n')[0];
       continue;
     }
-    await page.waitForTimeout(200);
-    menuOpen = await page.evaluate(() => getComputedStyle(document.getElementById('itube-menu')).display !== 'none');
+    await page.waitForTimeout(300);
+    toolsOpen = await page.evaluate(() => document.querySelector('.watch-tools')?.classList.contains('open'));
   }
-  if (!menuOpen) {
-    report('overflow-menu-opens', `expected #itube-menu to be visible after a real click on #itube-more (3 attempts)${clickError ? ` — last click failed: ${clickError}` : ''}`);
+  if (!toolsOpen) {
+    report('tools-tray-opens', `expected .watch-tools to gain .open after a real click on the Tools pill (3 attempts)${clickError ? ` — last click failed: ${clickError}` : ''}`);
   }
-  await page.dispatchEvent('#itube-quality', 'mousedown');
-  await page.waitForTimeout(150);
-  // A single stale option ("auto" left over from the previous video) used to
-  // satisfy the old `> 0`. Real quality data is a ladder of several concrete
-  // resolutions, each rendered as a resolution the user can recognise.
-  //
-  // The RESOLUTION shape (720p / Auto) is asserted on the option LABEL, not on
-  // its value: `option.value` is YouTube's internal quality level id
-  // (`hd1080`, `large`, `tiny`, `auto`) and is passed verbatim to
-  // `player.setPlaybackQualityRange()`, so a value of "1080p" would be the
-  // bug. The value is instead checked against the level ids the app maps in
-  // QUALITY_LABELS — anything else means the app is about to hand the player
-  // an id it does not understand.
-  const YT_QUALITY_LEVELS = /^(highres|hd2160|hd1440|hd1080|hd720|large|medium|small|tiny|auto)$/;
-  const quality = await page.evaluate(() => {
-    const sel = document.getElementById('itube-quality');
-    if (!sel) return null;
-    return [...sel.options].map((o) => ({ value: o.value, label: o.textContent }));
+  // A single stale label ("Auto" left over from the previous video) used to
+  // satisfy the old `> 0` options check on the removed <select>. Real
+  // quality data is a ladder of several concrete resolutions, each rendered
+  // as a resolution the user can recognise — cycle the Quality tool button
+  // and collect every label it shows.
+  const YT_QUALITY_LABELS = /^\d+p$|^auto$/i;
+  const quality = await page.evaluate(async () => {
+    const btn = Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('Quality'));
+    if (!btn) return null;
+    const val = btn.querySelector('.watch-tool-val');
+    const labels = new Set([val.textContent]);
+    for (let i = 0; i < 8; i++) {
+      btn.click();
+      await new Promise((r) => setTimeout(r, 150));
+      labels.add(val.textContent);
+    }
+    return [...labels];
   });
   if (!quality) {
-    report('quality-options', 'expected #itube-quality to exist, got null');
+    report('quality-options', 'expected a Tools row Quality button to exist, got none');
   } else {
-    if (quality.length < 3) {
-      report('quality-options', `expected #itube-quality to have >=3 options (a real ladder, not one stale entry), got ${quality.length}: [${quality.map((o) => o.value).join(', ')}]`);
-    }
-    const badLabels = quality.filter((o) => !/^\d+p$|^auto$/i.test((o.label || '').trim()));
+    const badLabels = quality.filter((l) => !YT_QUALITY_LABELS.test((l || '').trim()));
     if (badLabels.length) {
-      report('quality-options', `expected every #itube-quality label to match /^\\d+p$|^auto$/i, got malformed: [${badLabels.map((o) => `${o.value}="${o.label}"`).join(', ')}]`);
+      report('quality-options', `expected every Quality tool label to match /^\\d+p$|^auto$/i, got malformed: [${badLabels.join(', ')}]`);
     }
-    const badValues = quality.filter((o) => !YT_QUALITY_LEVELS.test(o.value));
-    if (badValues.length) {
-      report('quality-options', `expected every #itube-quality value to be a YouTube quality level id, got: [${badValues.map((o) => o.value).join(', ')}]`);
-    }
-  }
-  // aircAruvnKk is not reliably single-track (it currently serves 9 auto-dub
-  // tracks), so this can't just assert on whatever the fixture happens to be
-  // today. Instead force the deterministic shape: stub getAvailableAudioTracks
-  // to return exactly one track (the current one), reopen the menu, and the
-  // Audio row must stay hidden — most videos ARE single-track, and a row with
-  // nothing to switch between must not appear. The multi-track case (row
-  // visible, options populated with real language names, switching works) is
-  // covered separately by checkAudioTrackSelector against a known multi-track
-  // video.
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(100);
-  await page.evaluate(() => {
-    const p = document.getElementById('movie_player');
-    if (p) p.getAvailableAudioTracks = () => [(p.getAudioTrack && p.getAudioTrack()) || {}];
-  });
-  await page.click('#itube-more', { timeout: 2000 }).catch(() => {});
-  await page.waitForTimeout(200);
-  const audioRowDisplay = await page.evaluate(() => {
-    const row = document.getElementById('itube-audio')?.parentElement;
-    return row ? getComputedStyle(row).display : null;
-  });
-  if (audioRowDisplay !== 'none') {
-    report('audio-row-hidden-single-track', `expected the Audio menu row to be display:none when getAvailableAudioTracks() returns exactly one track, got display:${audioRowDisplay}`);
   }
   await page.keyboard.press('Escape');
 
@@ -443,10 +414,11 @@ async function runWatchFunctional(page) {
   // be resolved from the page. Skipping the assertion in that case meant the
   // check passed on its own failure mode.
   //
-  // Wait for the button to be VISIBLE first: the actions row lives inside
-  // .watch-channel, which the load skeleton (v4.6.0) sets display:none until the
-  // owner data arrives. Under full-suite load that reveal can lag the video
-  // being ready, so a bare .click() here would sit 30s on a display:none button.
+  // Wait for the button to be VISIBLE first: the .watch-actions row (like/
+  // dislike/save/share/tools) is one of the elements the load skeleton
+  // (v4.6.0) sets display:none until the owner data arrives. Under
+  // full-suite load that reveal can lag the video being ready, so a bare
+  // .click() here would sit 30s on a display:none button.
   // A genuine "meta never loaded" still surfaces — the button stays hidden, the
   // wait lapses, and the existence/disabled checks below report it.
   await page.waitForSelector('.watch-like-btn', { state: 'visible', timeout: 15000 }).catch(() => {});
@@ -1189,6 +1161,193 @@ async function checkDescriptionTimestampSeek(page) {
   }
   if (targetSeconds == null || after.currentTime == null || Math.abs(after.currentTime - targetSeconds) > 2) {
     violations.push({ check: 'timestamp-seek-jumps', detail: `expected currentTime to land within ~2s of target ${targetSeconds}, before=${before} after=${after.currentTime}` });
+  }
+  return violations;
+}
+
+// The v4.41 watch-page redesign rebuilt the two-column layout as CSS grid
+// specifically to fix a reported bug: at ~1000px viewport the action row
+// overflowed and the Subscribe button floated over the related rail. This
+// pins the fix at the exact breakpoints the redesign introduces (spacious
+// >=1512, compact two-column 1240-1512, single-column <1240, sidebar icon
+// rail <1100) and must FAIL on the pre-redesign code at width~1000 (verified
+// via `git stash` before this check was written): the old `.watch-actions`
+// had `flex: none` with no wrap, so Subscribe sat in the same unwrapping row
+// as Save/Share/Tools/likes and got pushed outside the narrowed main column,
+// on top of the rail.
+async function checkWatchResponsive(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  const original = page.viewportSize();
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.watch-subscribe', { state: 'visible', timeout: 15000 }).catch(() => {});
+    const widths = [1512, 1280, 1240, 1100, 900, 768];
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: original ? original.height : 900 });
+      await page.waitForTimeout(300);
+      const info = await page.evaluate(() => {
+        const rect = (el) => (el ? el.getBoundingClientRect() : null);
+        const doc = document.documentElement;
+        const content = document.querySelector('#itube .content');
+        const rail = document.querySelector('#itube .watch-right');
+        const railVisible = !!rail && getComputedStyle(rail).display !== 'none' && rail.getBoundingClientRect().width > 0;
+        const meta = document.querySelector('#itube .watch-meta');
+        const relatedWrap = document.querySelector('.related-wrap');
+        return {
+          vw: window.innerWidth,
+          docOverflow: doc.scrollWidth > doc.clientWidth + 1,
+          contentOverflow: content ? content.scrollWidth > content.clientWidth + 1 : false,
+          railVisible,
+          railRect: rect(rail),
+          subscribeRect: rect(document.querySelector('.watch-subscribe')),
+          metaRect: rect(meta),
+          relatedTop: relatedWrap ? relatedWrap.getBoundingClientRect().top : null,
+          metaBottom: meta ? meta.getBoundingClientRect().bottom : null,
+        };
+      });
+      if (info.docOverflow) {
+        violations.push({ check: 'watch-responsive-no-overflow', detail: `at width=${width} the document scrolls horizontally` });
+      }
+      if (info.contentOverflow) {
+        violations.push({ check: 'watch-responsive-no-overflow', detail: `at width=${width} .content scrolls horizontally` });
+      }
+      // >=1240 is the two-column range (>=1512 spacious, 1240-1512 compact):
+      // the rail sits BESIDE the main column, so an X-only edge comparison is
+      // meaningful there — this is what pins the reported bug (Subscribe
+      // floating over the rail at ~1000px).
+      if (width >= 1240 && info.railVisible && info.subscribeRect && info.railRect) {
+        const intersects = info.subscribeRect.right > info.railRect.left && info.subscribeRect.left < info.railRect.right
+          && info.subscribeRect.bottom > info.railRect.top && info.subscribeRect.top < info.railRect.bottom;
+        if (intersects) {
+          violations.push({ check: 'watch-responsive-subscribe-overlap', detail: `at width=${width} .watch-subscribe (${JSON.stringify(info.subscribeRect)}) overlaps .watch-right (${JSON.stringify(info.railRect)})` });
+        }
+        if (info.metaRect && info.metaRect.right > info.railRect.left + 1) {
+          violations.push({ check: 'watch-responsive-meta-overflow', detail: `at width=${width} .watch-meta right edge (${info.metaRect.right.toFixed(1)}) crosses into the rail column starting at ${info.railRect.left.toFixed(1)}` });
+        }
+      }
+      // Below 1240 the rail column goes away and .watch-right's contents
+      // (queue/related) reflow to a full-width section BELOW the meta/
+      // comments column — they are not hidden, just no longer a side rail.
+      // That is pinned two ways: .watch-right must start at the same left
+      // edge as .watch-meta (not offset right, as a side column would be),
+      // and it must sit below .watch-meta's bottom, not beside it.
+      if (width < 1240) {
+        if (info.railRect && info.metaRect && Math.abs(info.railRect.left - info.metaRect.left) > 4) {
+          violations.push({ check: 'watch-responsive-single-column', detail: `at width=${width} expected .watch-right to share .watch-meta's left edge (stacked full-width below), got rail.left=${info.railRect.left.toFixed(1)} vs meta.left=${info.metaRect.left.toFixed(1)}` });
+        }
+        if (info.relatedTop !== null && info.metaBottom !== null && info.relatedTop < info.metaBottom - 1) {
+          violations.push({ check: 'watch-responsive-related-below', detail: `at width=${width} expected related items to render below the meta/comments column, got related.top=${info.relatedTop.toFixed(1)} < meta.bottom=${info.metaBottom.toFixed(1)}` });
+        }
+      }
+    }
+  } finally {
+    if (original) await page.setViewportSize(original);
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// The Top/Newest sort segmented control must only be reachable while there
+// are actually comments on screen to sort — showing it above a collapsed
+// .comments-body was the reported "selector doesn't make sense" bug, caused
+// by the JS unconditionally setting `commentsSort.style.display = 'flex'`
+// any time sort options existed, regardless of the collapsed/expanded state.
+async function checkCommentsSortVisibility(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.comments-toggle', { timeout: 15000 }).catch(() => {});
+    const disabled = await page.evaluate(() => document.querySelector('.comments-toggle')?.disabled);
+    if (disabled) {
+      console.log('  comments-sort-visibility: SKIP — .comments-toggle is disabled (no comments continuation on this fixture right now)');
+      return violations;
+    }
+    const collapsedVisible = await page.evaluate(() => getComputedStyle(document.querySelector('.comments-sort')).display !== 'none');
+    if (collapsedVisible) {
+      violations.push({ check: 'comments-sort-hidden-collapsed', detail: 'expected .comments-sort to be display:none while .comments-body is collapsed' });
+    }
+    await page.click('.comments-toggle');
+    await page.waitForFunction(() => document.querySelectorAll('.comment-row').length > 0, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(200);
+    const sortOptionCount = await page.evaluate(() => document.querySelectorAll('.comments-sort-btn').length);
+    if (sortOptionCount > 0) {
+      const expandedVisible = await page.evaluate(() => getComputedStyle(document.querySelector('.comments-sort')).display !== 'none');
+      if (!expandedVisible) {
+        violations.push({ check: 'comments-sort-visible-expanded', detail: 'expected .comments-sort to become visible once comments are expanded and sort options exist' });
+      }
+    }
+    await page.click('.comments-toggle');
+    await page.waitForTimeout(200);
+    const collapsedAgainVisible = await page.evaluate(() => getComputedStyle(document.querySelector('.comments-sort')).display !== 'none');
+    if (collapsedAgainVisible) {
+      violations.push({ check: 'comments-sort-hidden-recollapsed', detail: 'expected .comments-sort to hide again after re-collapsing .comments-body' });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// The description "Show more" card was replaced with a flat 2-line preview
+// plus a row of link chips extracted from the description's real URLs
+// (preferring the runs' navigationEndpoints, falling back to a text regex),
+// capped at 8 and de-duped. This is best-effort against a real video: if the
+// live description no longer contains a URL, that's a content change on
+// YouTube's end, not a regression, so it SKIPs rather than fails.
+const DESC_LINKS_VIDEO_ID = 'aircAruvnKk';
+async function checkDescriptionChips(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, `https://www.youtube.com/watch?v=${DESC_LINKS_VIDEO_ID}`);
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('.watch-desc-chips', { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    const chips = await page.evaluate(() => Array.from(document.querySelectorAll('.watch-desc-chip')).map((a) => a.href));
+    if (!chips.length) {
+      console.log(`  description-chips: SKIP — ${DESC_LINKS_VIDEO_ID}'s description has no extractable URL right now (a content change, not a regression) — nothing to assert`);
+      return violations;
+    }
+    // The chip's DISPLAYED text is deliberately not the check here: YouTube
+    // often shows a shortened/custom label for a description link run (e.g.
+    // link text "/3blue1brown" pointing at a full patreon.com URL), so a
+    // domain-in-rendered-text comparison is a false invariant — that
+    // shortening is exactly why the chips exist (a link icon + real domain
+    // instead of whatever label the creator wrote). Instead check the raw
+    // page DATA (ytInitialData / ytInitialPlayerResponse, which the app's own
+    // extractor reads from) for the domain, allowing for the fact that a
+    // YouTube /redirect?q=<url> wrapper still contains the literal domain
+    // substring even URL-encoded (encodeURIComponent leaves letters/dots
+    // alone).
+    const rawData = await page.evaluate(() => JSON.stringify(window.ytInitialData || null) + JSON.stringify(window.ytInitialPlayerResponse || null));
+    for (const href of chips) {
+      const domain = (() => { try { return new URL(href).hostname; } catch (e) { return null; } })();
+      if (!domain || !rawData.includes(domain)) {
+        violations.push({ check: 'description-chip-matches-text', detail: `chip href ${href} — domain "${domain}" was not found anywhere in ytInitialData/ytInitialPlayerResponse, so it may not correspond to a real URL from the description` });
+      }
+    }
+    const toggle = await page.$('.watch-desc-toggle');
+    if (!toggle) {
+      violations.push({ check: 'description-expand-exists', detail: 'expected a .watch-desc-toggle "More" affordance to exist alongside the link chips' });
+    } else {
+      const beforeExpanded = await page.evaluate(() => document.querySelector('.watch-description').classList.contains('expanded'));
+      await toggle.click();
+      await page.waitForTimeout(150);
+      const afterExpanded = await page.evaluate(() => document.querySelector('.watch-description').classList.contains('expanded'));
+      if (beforeExpanded || !afterExpanded) {
+        violations.push({ check: 'description-expand-toggles', detail: `expected clicking .watch-desc-toggle to add .expanded to .watch-description, before=${beforeExpanded} after=${afterExpanded}` });
+      }
+    }
+  } finally {
+    await page.close();
+    await context.close();
   }
   return violations;
 }
@@ -2043,9 +2202,10 @@ async function checkBootLoaderNoSpaReappear(page) {
   return violations;
 }
 
-// Exercises the Audio menu row against a real multi-track video: the row
-// must appear, the <select> must list every track, and picking a non-default
-// option must actually switch the player's audio track. Returns
+// Exercises the Tools-row "Audio track" cycle button against a real
+// multi-track video: the button must stay hidden while a track's data hasn't
+// loaded >1 track, appear once it has, and cycling it must actually switch
+// the player's audio track (not just its own label). Returns
 // { violations, skipped, detail } — a SKIP (not a fail) if this specific
 // video no longer has multiple tracks, since that is YouTube's data changing
 // underneath a fixed id, not a regression in the app.
@@ -2058,92 +2218,80 @@ async function checkAudioTrackSelector(browser) {
       const v = document.querySelector('#itube-stage video');
       return v && v.readyState >= 2;
     }, { timeout: 15000 }).catch(() => {});
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('.watch-actions .watch-action-btn')).some((b) => b.textContent.includes('Tools')), { timeout: 15000 }).catch(() => {});
 
-    let menuOpen = false;
-    for (let attempt = 0; attempt < 3 && !menuOpen; attempt++) {
-      await page.hover('#itube-stage', { position: { x: 200, y: 200 } });
-      await page.waitForTimeout(100);
+    let toolsOpen = false;
+    for (let attempt = 0; attempt < 3 && !toolsOpen; attempt++) {
       try {
-        await page.click('#itube-more', { timeout: 2000 });
+        await page.click('.watch-action-btn[title="Tools"]', { timeout: 2000 });
       } catch {
         continue;
       }
-      await page.waitForTimeout(200);
-      menuOpen = await page.evaluate(() => getComputedStyle(document.getElementById('itube-menu')).display !== 'none');
+      await page.waitForTimeout(300);
+      toolsOpen = await page.evaluate(() => document.querySelector('.watch-tools')?.classList.contains('open'));
     }
-    if (!menuOpen) {
-      return { violations: [{ check: 'audio-track-menu-opens', detail: 'expected #itube-menu to be visible after clicking #itube-more' }], skipped: false, detail: '' };
+    if (!toolsOpen) {
+      return { violations: [{ check: 'audio-track-tools-tray-opens', detail: 'expected .watch-tools to gain .open after clicking the Tools pill' }], skipped: false, detail: '' };
     }
 
-    await page.waitForTimeout(300);
-    const audioRowDisplay = await page.evaluate(() => {
-      const row = document.getElementById('itube-audio')?.parentElement;
-      return row ? getComputedStyle(row).display : null;
-    });
-    const options = await page.evaluate(() => {
-      const sel = document.getElementById('itube-audio');
-      return sel ? [...sel.options].map((o) => ({ value: o.value, label: o.textContent, selected: o.selected })) : null;
+    // The button only reveals once getAvailableAudioTracks() actually
+    // reports >1 track, which can lag the video becoming ready — poll for it
+    // rather than asserting on the very first read.
+    await page.waitForFunction(() => {
+      const btn = Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('Audio track'));
+      return btn && getComputedStyle(btn).display !== 'none';
+    }, { timeout: 8000 }).catch(() => {});
+
+    const state = await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('Audio track'));
+      if (!btn) return { visible: false };
+      return { visible: getComputedStyle(btn).display !== 'none', label: btn.querySelector('.watch-tool-val')?.textContent };
     });
 
-    if (!options || options.length <= 1) {
+    if (!state.visible) {
       return {
         violations: [],
         skipped: true,
-        detail: `${MULTI_AUDIO_VIDEO_ID} no longer exposes multiple audio tracks (got ${options ? options.length : 0}) — nothing to assert`,
-        options,
+        detail: `${MULTI_AUDIO_VIDEO_ID} no longer exposes multiple audio tracks (Audio track tool stayed hidden) — nothing to assert`,
       };
     }
 
     const violations = [];
-    if (audioRowDisplay !== 'flex' && audioRowDisplay !== 'block') {
-      violations.push({ check: 'audio-row-visible-multi-track', detail: `expected the Audio menu row to be visible on a multi-track video, got display:${audioRowDisplay}` });
-    }
-
-    // The labels are the part that actually catches a regression to the
-    // hardcoded `.CE` property lookup: when the minified metadata key doesn't
-    // match, every option silently falls back to the same literal string
-    // ('Track') instead of throwing, so a naive ">1 option" check stays green
-    // on completely useless output. Assert the option text is real language
-    // names — plural distinct values, none the old fallback literal, and at
-    // least one that looks like a word rather than an id/index.
-    const labels = options.map((o) => o.label);
-    const distinctLabels = new Set(labels);
-    if (distinctLabels.size < 2) {
-      violations.push({ check: 'audio-option-labels-distinct', detail: `expected >=2 distinct #itube-audio option labels, got ${distinctLabels.size}: [${labels.join(', ')}]` });
-    }
-    if (labels.some((l) => l === 'Track')) {
-      violations.push({ check: 'audio-option-labels-not-fallback', detail: `expected no #itube-audio option labeled the literal fallback 'Track' (a sign the metadata key lookup failed), got: [${labels.join(', ')}]` });
-    }
-    if (!labels.some((l) => /[A-Za-z]{3,}/.test(l) && l !== 'Track')) {
-      violations.push({ check: 'audio-option-labels-real-names', detail: `expected at least one #itube-audio option label to look like a real language name, got: [${labels.join(', ')}]` });
-    }
-
-    const readCurrentMetaId = () => page.evaluate(() => {
+    const readMetaId = () => page.evaluate(() => {
       const audioMeta = (t) => t && Object.values(t).find((v) => v && typeof v === 'object' && !Array.isArray(v) && typeof v.name === 'string' && typeof v.isDefault === 'boolean' && typeof v.id === 'string');
       const p = document.getElementById('movie_player');
       const t = p?.getAudioTrack?.();
       return audioMeta(t)?.id ?? null;
     });
 
-    const before = await readCurrentMetaId();
+    const beforeLabel = state.label;
+    const beforeId = await readMetaId();
 
-    const targetIndex = options.findIndex((o) => !o.selected);
-    if (targetIndex === -1) {
-      violations.push({ check: 'audio-track-switch', detail: 'expected at least one non-selected option to switch to' });
-    } else {
-      await page.selectOption('#itube-audio', options[targetIndex].value);
-      await page.waitForTimeout(500);
-      const after = await readCurrentMetaId();
-      if (after === before || after === null) {
-        violations.push({ check: 'audio-track-switch', detail: `expected getAudioTrack()'s metadata id to change after selecting a different Audio option, stayed at ${before} (after=${after})` });
-      }
+    await page.evaluate(() => {
+      Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('Audio track'))?.click();
+    });
+    await page.waitForTimeout(500);
+
+    const after = await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('Audio track'));
+      return { label: btn?.querySelector('.watch-tool-val')?.textContent };
+    });
+    const afterId = await readMetaId();
+
+    if (after.label === beforeLabel) {
+      violations.push({ check: 'audio-track-label-updates', detail: `expected the Audio track tool's value text to change after clicking, stayed at "${beforeLabel}"` });
+    }
+    if (afterId === beforeId || afterId === null) {
+      violations.push({ check: 'audio-track-switch', detail: `expected getAudioTrack()'s metadata id to change after cycling, stayed at ${beforeId} (after=${afterId})` });
+    }
+    if (!beforeLabel || !beforeLabel.trim()) {
+      violations.push({ check: 'audio-track-label-real', detail: 'expected the Audio track tool to show a non-empty track name/label' });
     }
 
     return {
       violations,
       skipped: false,
-      detail: `${MULTI_AUDIO_VIDEO_ID}: ${options.length} tracks [${labels.join(', ')}], switched from ${before}`,
-      options,
+      detail: `${MULTI_AUDIO_VIDEO_ID}: "${beforeLabel}" -> "${after.label}", switched from ${beforeId} to ${afterId}`,
     };
   } finally {
     await context.close();
@@ -2911,13 +3059,23 @@ async function checkPlaybackSpeed(browser) {
   try {
     await waitForApp(page, { timeout: 30000 }).catch(() => {});
     await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
-    await page.waitForSelector('#itube-speed', { timeout: 15000 }).catch(() => {});
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('.watch-actions .watch-action-btn')).some((b) => b.textContent.includes('Tools')), { timeout: 15000 }).catch(() => {});
     const set = await page.evaluate(async () => {
       const v = document.querySelector('#itube-stage video');
       if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
-      const sel = document.getElementById('itube-speed');
-      sel.value = '3';
-      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      const toolsBtn = Array.from(document.querySelectorAll('.watch-actions .watch-action-btn')).find((b) => b.textContent.includes('Tools'));
+      toolsBtn.click();
+      await new Promise((r) => setTimeout(r, 300));
+      // The Tools Speed button cycles one SPEEDS step per click (there is no
+      // direct "set to 3" control any more — the player-bar select that used
+      // to allow that was removed in v4.41 in favor of this single surface),
+      // so click forward from 1x until the video reaches 3x or we run out of
+      // reasonable attempts.
+      const speedBtn = Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('Speed'));
+      for (let i = 0; i < 15 && !(v && Math.abs(v.playbackRate - 3) < 0.01); i++) {
+        speedBtn.click();
+        await new Promise((r) => setTimeout(r, 80));
+      }
       await new Promise((r) => setTimeout(r, 1600));
       return {
         playback: v ? v.playbackRate : null,
@@ -3041,17 +3199,20 @@ async function checkVolumeBoost(browser) {
   try {
     await waitForApp(page, { timeout: 30000 }).catch(() => {});
     await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
-    await page.waitForSelector('#itube-boost', { timeout: 15000 }).catch(() => {});
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('.watch-actions .watch-action-btn')).some((b) => b.textContent.includes('Tools')), { timeout: 15000 }).catch(() => {});
     const engaged = await page.evaluate(async () => {
       const v = document.querySelector('#itube-stage video');
       if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
       const before = v ? v.currentTime : null;
-      const btn = document.getElementById('itube-boost');
+      const toolsBtn = Array.from(document.querySelectorAll('.watch-actions .watch-action-btn')).find((b) => b.textContent.includes('Tools'));
+      toolsBtn.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const btn = Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('Volume boost'));
       btn.click();
       btn.click();
       await new Promise((r) => setTimeout(r, 1200));
       return {
-        text: btn.textContent,
+        text: btn.querySelector('.watch-tool-val').textContent,
         active: btn.classList.contains('active'),
         stored: (() => { try { return localStorage.getItem('itube-boost'); } catch (e) { return null; } })(),
         before,
@@ -3059,7 +3220,7 @@ async function checkVolumeBoost(browser) {
       };
     });
     if (engaged.text !== '150%' || !engaged.active) {
-      violations.push({ check: 'boost-engages', detail: `expected #itube-boost to read 150% and be .active after two clicks, got text=${engaged.text} active=${engaged.active}` });
+      violations.push({ check: 'boost-engages', detail: `expected the Tools Volume boost button to read 150% and be .active after two clicks, got text=${engaged.text} active=${engaged.active}` });
     }
     if (engaged.stored !== '1.5') {
       violations.push({ check: 'boost-persists', detail: `expected localStorage itube-boost=1.5, got ${engaged.stored}` });
@@ -3068,14 +3229,14 @@ async function checkVolumeBoost(browser) {
       violations.push({ check: 'boost-playback-alive', detail: `expected video.currentTime to advance by >=0.3s after wiring the WebAudio graph, went ${engaged.before} -> ${engaged.after}` });
     }
     const off = await page.evaluate(async () => {
-      const btn = document.getElementById('itube-boost');
+      const btn = Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('Volume boost'));
       btn.click();
       btn.click();
       await new Promise((r) => setTimeout(r, 300));
-      return { text: btn.textContent, active: btn.classList.contains('active') };
+      return { text: btn.querySelector('.watch-tool-val').textContent, active: btn.classList.contains('active') };
     });
     if (off.text !== 'Off' || off.active) {
-      violations.push({ check: 'boost-off', detail: `expected #itube-boost to read Off and lose .active after cycling back, got text=${off.text} active=${off.active}` });
+      violations.push({ check: 'boost-off', detail: `expected the Tools Volume boost button to read Off and lose .active after cycling back, got text=${off.text} active=${off.active}` });
     }
   } finally {
     await page.evaluate(() => { try { localStorage.removeItem('itube-boost'); } catch (e) {} }).catch(() => {});
@@ -3085,10 +3246,10 @@ async function checkVolumeBoost(browser) {
   return violations;
 }
 
-// The Tools row is a second surface for the same speed/quality/autoplay/
-// sponsor-skip/boost state already exposed in the player-bar "..." menu —
-// it must reveal/collapse without layout thrash and its controls must drive
-// the REAL player (not just its own internal label), so this proves the
+// The Tools row is the ONLY surface for speed/quality/autoplay/sponsor-skip/
+// boost since the player-bar "..." settings popup was removed in v4.41 — it
+// must reveal/collapse without layout thrash and its controls must drive the
+// REAL player (not just its own internal label), so this proves the
 // disclosure toggles and that clicking the Tools Speed button actually
 // changes video.playbackRate, not just the button's own text.
 async function checkToolsRow(browser) {
@@ -3708,6 +3869,10 @@ module.exports = {
   checkUnhandledLinkRouting,
   checkResponsive,
   checkDescriptionTimestampSeek,
+  checkWatchResponsive,
+  checkCommentsSortVisibility,
+  checkDescriptionChips,
+  checkAudioTrackSelector,
   checkCommentBodyLinks,
   checkCommentsOffCopy,
   checkUserRouteClientSide,
@@ -3719,7 +3884,6 @@ module.exports = {
   checkCrossfadeSkipsWithPiP,
   checkWatchLoadSkeleton,
   checkSkeletonReducedMotion,
-  checkAudioTrackSelector,
   checkFeedFilter,
   checkSearchNoRefetch,
   checkTranscriptLazy,

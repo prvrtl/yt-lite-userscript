@@ -556,7 +556,7 @@ function layoutInPage() {
         report('player-bar-controls', `#itube-bar is still ${barCs.display === 'none' ? 'display:none' : 'visibility:hidden'} after #itube-stage.show was applied — the layout invariants above cannot see any control`);
       }
       const barRect = bar.getBoundingClientRect();
-      for (const id of ['itube-play', 'itube-seek', 'itube-vol', 'itube-more']) {
+      for (const id of ['itube-play', 'itube-seek', 'itube-vol', 'itube-ab']) {
         const ctl = document.getElementById(id);
         if (!ctl) {
           report('player-bar-controls', `expected #${id} to exist inside the player bar, got null`);

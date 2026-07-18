@@ -42,6 +42,9 @@ const {
   checkThumbFlyAnimation,
   checkTheaterMode,
   checkAbLoop,
+  checkWatchResponsive,
+  checkCommentsSortVisibility,
+  checkDescriptionChips,
   checkPlaybackSpeed,
   checkTranscript,
   checkVolumeBoost,
@@ -95,7 +98,7 @@ const SCROLLING_PAGES = new Set(['search', 'channel']);
 // id-preserving, so any watchable id proves it).
 const SHORTS_REDIRECT_ID = 'aircAruvnKk';
 
-// A known 24-audio-track video (dubbed languages + original), used by
+// A known multi-audio-track video (dubbed languages + original), used by
 // checkAudioTrackSelector — the default watch fixture above is single-track.
 const MULTI_AUDIO_VIDEO_ID = '0e3GPea1Tyg';
 
@@ -408,10 +411,9 @@ async function main() {
   }
 
   // The audio-track selector needs a SPECIFIC multi-track video (the default
-  // watch fixture is single-track and is covered instead by the
-  // 'audio-row-hidden-single-track' assertion inside runWatchFunctional), so
-  // it runs once, in its own context, rather than per-page. A SKIP (not a
-  // FAIL) means YouTube stopped serving multiple tracks on that id.
+  // watch fixture is single-track), so it runs once, in its own context,
+  // rather than per-page. A SKIP (not a FAIL) means YouTube stopped serving
+  // multiple tracks on that id.
   if (!args.page && (!args.check || args.check === 'functional')) {
     console.log(`\n--- audio track selector (https://www.youtube.com/watch?v=${MULTI_AUDIO_VIDEO_ID}) ---`);
     let res;
@@ -715,6 +717,62 @@ async function main() {
     table.push({ page: 'toolsrow', check: 'functional', status, count: violations.length });
     console.log(`  tools row: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=toolsrow ${fmt(v)}`);
+  }
+
+  // Pins the v4.41 watch-page responsive redesign: no horizontal overflow at
+  // any of the new breakpoints, and Subscribe never floats over the related
+  // rail at ~1000px (the exact reported bug).
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- watch responsive layout ---');
+    let violations;
+    try {
+      violations = await checkWatchResponsive(browser);
+    } catch (err) {
+      console.error(`  ERROR running the watch-responsive check: ${err.stack || err}`);
+      violations = [{ check: 'watch-responsive', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'watchresponsive', check: 'functional', status, count: violations.length });
+    console.log(`  watch responsive layout: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=watchresponsive ${fmt(v)}`);
+  }
+
+  // The Top/Newest sort control must only be reachable while comments are
+  // actually expanded on screen.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- comments sort visibility ---');
+    let violations;
+    try {
+      violations = await checkCommentsSortVisibility(browser);
+    } catch (err) {
+      console.error(`  ERROR running the comments-sort-visibility check: ${err.stack || err}`);
+      violations = [{ check: 'comments-sort-visibility', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'commentssort', check: 'functional', status, count: violations.length });
+    console.log(`  comments sort visibility: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=commentssort ${fmt(v)}`);
+  }
+
+  // Description link chips: extracted from a real video's description URLs,
+  // each chip's href must trace back to the description text, and "More"
+  // must expand the full text in place.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- description link chips ---');
+    let violations;
+    try {
+      violations = await checkDescriptionChips(browser);
+    } catch (err) {
+      console.error(`  ERROR running the description-chips check: ${err.stack || err}`);
+      violations = [{ check: 'description-chips', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'descriptionchips', check: 'functional', status, count: violations.length });
+    console.log(`  description link chips: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=descriptionchips ${fmt(v)}`);
   }
 
   // Audio-only mode covers the video with an art overlay and drops quality,

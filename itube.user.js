@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.40.0
+// @version      4.41.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -152,13 +152,13 @@
       ['path', { fill: 'currentColor', d: 'M10.4 2.5H12v11h-1.6z' }],
       ['path', { fill: 'currentColor', d: 'M2.5 2.5v11L9.5 8z' }],
     ]),
-    more: () => icon([
-      ['circle', { cx: '3', cy: '8', r: '1.5', fill: 'currentColor' }],
-      ['circle', { cx: '8', cy: '8', r: '1.5', fill: 'currentColor' }],
-      ['circle', { cx: '13', cy: '8', r: '1.5', fill: 'currentColor' }],
-    ]),
     chevron: () => icon([
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', 'stroke-linejoin': 'round', d: 'M4.5 6.2 8 9.7l3.5-3.5' }],
+    ]),
+    link: () => icon([
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M6.6 9.4 9.4 6.6' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', d: 'M7.6 4.6 8.9 3.3a2.3 2.3 0 0 1 3.3 3.3l-1.3 1.3' }],
+      ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', d: 'M8.4 11.4 7.1 12.7a2.3 2.3 0 0 1-3.3-3.3l1.3-1.3' }],
     ]),
     thumbsUp: () => icon([
       ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M4.5 9.75 8 6.25l3.5 3.5' }],
@@ -374,6 +374,23 @@
     }
     #itube .search:focus {
       border: 2px solid var(--accent);
+    }
+    #itube .rail-search-btn {
+      display: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+    }
+    #itube .rail-search-btn:hover {
+      background: var(--hover);
+      color: var(--text);
     }
     #itube .search-suggest {
       position: absolute;
@@ -891,7 +908,7 @@
     }
     #itube .watch {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) clamp(340px, 24vw, 460px);
+      grid-template-columns: minmax(0, 1fr) clamp(300px, 26vw, 400px);
       gap: 24px;
       align-items: start;
     }
@@ -975,6 +992,8 @@
     }
     #itube .stage-wrap {
       position: relative;
+      width: min(100%, calc(72vh * 16 / 9));
+      margin: 0 auto;
     }
     #itube .itube-ambient {
       position: absolute;
@@ -1177,13 +1196,14 @@
       letter-spacing: -.02em;
     }
     #itube .watch-meta {
-      margin-top: 14px;
-      background: var(--surface);
-      border-radius: var(--r-md);
-      padding: 14px 16px;
+      margin-top: 16px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
+    }
+    #itube .watch-head {
+      display: flex;
+      flex-direction: column;
     }
     #itube .watch-channel {
       display: flex;
@@ -1241,12 +1261,14 @@
     #itube .watch-actions {
       display: flex;
       align-items: center;
-      flex: none;
+      flex-wrap: wrap;
+      margin-top: 12px;
       gap: 8px;
     }
     #itube .watch-action-btn {
       display: flex;
       align-items: center;
+      min-width: 0;
       gap: 6px;
       height: 34px;
       padding: 0 14px;
@@ -1280,12 +1302,19 @@
       max-height: 0;
       opacity: 0;
       margin-top: 0;
-      transition: max-height var(--tr), opacity var(--tr), margin-top var(--tr);
+      padding: 0 12px;
+      border-radius: var(--r-md);
+      background: rgba(0, 0, 0, .18);
+      border: 0 solid var(--hairline);
+      box-sizing: border-box;
+      transition: max-height var(--tr), opacity var(--tr), margin-top var(--tr), padding var(--tr), border-width var(--tr);
     }
     #itube .watch-tools.open {
       max-height: 200px;
       opacity: 1;
-      margin-top: 12px;
+      margin-top: 14px;
+      padding: 12px;
+      border-width: 1px;
     }
     #itube .watch-tool {
       display: inline-flex;
@@ -1322,6 +1351,7 @@
     #itube .watch-likes {
       display: flex;
       align-items: center;
+      min-width: 0;
       height: 34px;
       background: var(--surface);
       border: 1px solid var(--hairline);
@@ -1494,30 +1524,85 @@
       }
     }
     #itube .watch-stats {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 10px;
       font-size: 13px;
       color: var(--muted);
       font-variant-numeric: tabular-nums;
     }
+    #itube .watch-stats-text {
+      color: var(--muted);
+    }
+    #itube .watch-hashtag {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    #itube .watch-hashtag:hover {
+      text-decoration: underline;
+    }
     #itube .watch-description {
       font-size: 14px;
       line-height: 1.5;
-      color: var(--text);
+      color: var(--muted);
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       display: -webkit-box;
-      -webkit-line-clamp: 3;
+      -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
     #itube .watch-description.expanded {
       display: block;
+      color: var(--text);
       -webkit-line-clamp: unset;
       overflow: visible;
     }
     #itube .watch-desc-link {
       color: var(--accent);
     }
+    #itube .watch-desc-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    #itube .watch-desc-chips:empty {
+      display: none;
+    }
+    #itube .watch-desc-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 12px;
+      border-radius: var(--r-pill);
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      color: var(--muted);
+      font-size: 12.5px;
+      text-decoration: none;
+      max-width: 220px;
+    }
+    #itube .watch-desc-chip span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #itube .watch-desc-chip svg {
+      flex: none;
+      width: 12px;
+      height: 12px;
+    }
+    #itube .watch-desc-chip:hover {
+      border-color: rgba(var(--accent-rgb), .4);
+      color: var(--accent);
+    }
     #itube .watch-desc-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       align-self: flex-start;
       background: none;
       border: none;
@@ -1529,6 +1614,17 @@
     }
     #itube .watch-desc-toggle:hover {
       text-decoration: underline;
+    }
+    #itube .watch-desc-toggle-icon svg {
+      transition: transform var(--tr);
+    }
+    #itube .watch-desc-toggle-icon svg.open {
+      transform: rotate(180deg);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #itube .watch-desc-toggle-icon svg {
+        transition: none;
+      }
     }
     #itube .comments {
       margin-top: 24px;
@@ -1573,6 +1669,12 @@
     #itube .transcript-toggle svg.open {
       transform: rotate(180deg);
     }
+    #itube .comments-count {
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--muted);
+      letter-spacing: normal;
+    }
     #itube .comments-sort {
       display: none;
       align-items: center;
@@ -1603,28 +1705,26 @@
     #itube .comments-list {
       display: flex;
       flex-direction: column;
-      gap: 10px;
     }
     #itube .comment-row {
       display: flex;
       gap: 12px;
-      padding: 14px 16px;
-      background: var(--surface);
-      border: 1px solid var(--hairline);
-      border-radius: var(--r-md);
-      transition: border-color var(--tr), background var(--tr);
+      padding: 16px 0;
+      border-bottom: 1px solid var(--hairline);
+      transition: background var(--tr);
       content-visibility: auto;
       contain-intrinsic-size: auto 96px;
       contain: layout paint style;
     }
+    #itube .comments-list > .comment-row:last-child {
+      border-bottom: none;
+    }
     #itube .comment-row:hover {
-      border-color: rgba(var(--accent-rgb), .28);
       background: rgba(var(--accent-rgb), .04);
     }
     #itube .comment-replies .comment-row {
       background: none;
       border: none;
-      border-radius: 0;
       padding: 10px 0;
     }
     #itube .comment-replies .comment-row:hover {
@@ -2215,24 +2315,6 @@
     }
     #itube-bar button:hover { background: rgba(255, 255, 255, .14); }
     #itube-bar button:active { background: rgba(255, 255, 255, .22); }
-    #itube-bar select {
-      -webkit-appearance: none;
-      appearance: none;
-      background: rgba(255, 255, 255, .1);
-      color: #fff;
-      font: 500 11px -apple-system, system-ui, sans-serif;
-      border: 1px solid rgba(255, 255, 255, .14);
-      border-radius: 999px;
-      padding: 3px 9px;
-      cursor: pointer;
-      flex: none;
-      text-align: center;
-      transition: border-color var(--tr), background var(--tr);
-    }
-    #itube-bar select:hover {
-      border-color: rgba(255, 255, 255, .35);
-      background: rgba(255, 255, 255, .16);
-    }
     #itube-bar .itube-time {
       flex: none;
       opacity: .85;
@@ -2351,67 +2433,6 @@
     }
     #itube-live.behind { opacity: .55; }
     #itube-live.behind::before { background: #999; }
-    #itube-menu {
-      position: absolute;
-      right: 10px;
-      bottom: 100%;
-      display: none;
-      min-width: 208px;
-      padding: 6px;
-      z-index: 22;
-      border-radius: 16px;
-      background: rgba(18, 18, 24, .72);
-      backdrop-filter: blur(22px) saturate(1.7);
-      -webkit-backdrop-filter: blur(22px) saturate(1.7);
-      border: 1px solid rgba(255, 255, 255, .17);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 8px 32px rgba(0, 0, 0, .35);
-    }
-    .itube-menu-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 14px;
-      padding: 5px 8px;
-      border-radius: 10px;
-    }
-    .itube-menu-row:hover { background: rgba(255, 255, 255, .08); }
-    .itube-menu-row > span { opacity: .7; }
-    #itube-menu select { min-width: 96px; }
-    #itube-menu #itube-auto {
-      width: auto;
-      height: 22px;
-      padding: 0 12px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, .12);
-      font: 500 11px -apple-system, system-ui, sans-serif;
-    }
-    #itube-menu #itube-auto.active {
-      background: rgba(var(--accent-rgb), .3);
-      color: #fff;
-    }
-    #itube-menu #itube-skip-sponsors {
-      width: auto;
-      height: 22px;
-      padding: 0 12px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, .12);
-      font: 500 11px -apple-system, system-ui, sans-serif;
-    }
-    #itube-menu #itube-skip-sponsors.active {
-      background: rgba(var(--accent-rgb), .3);
-      color: var(--accent);
-    }
-    #itube-menu #itube-boost {
-      width: auto;
-      height: 22px;
-      padding: 0 12px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, .12);
-      font: 500 11px -apple-system, system-ui, sans-serif;
-    }
-    #itube-boost.active {
-      color: var(--accent);
-    }
     ytd-app {
       position: fixed !important;
       left: -99999px !important;
@@ -2421,9 +2442,35 @@
       opacity: 0 !important;
       pointer-events: none !important;
     }
-    @media (max-width: 1000px) {
+    @media (max-width: 1511px) {
+      #itube .watch-action-btn span {
+        display: none;
+      }
+      #itube .watch-action-btn {
+        padding: 0 10px;
+      }
+    }
+    @media (max-width: 1239px) {
+      #itube .watch {
+        grid-template-columns: 1fr;
+      }
+      #itube .watch-right {
+        position: static;
+        max-height: none;
+      }
+      #itube .related-wrap {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 16px 12px;
+      }
+      #itube .queue-wrap,
+      #itube .related-wrap {
+        gap: 16px 12px;
+      }
+    }
+    @media (max-width: 1100px) {
       #itube .sidebar {
-        width: 64px;
+        width: 72px;
         padding: 12px 4px 16px;
       }
       #itube .sidebar-head {
@@ -2431,12 +2478,27 @@
         padding: 0 0 10px;
       }
       #itube .sidebar-logo-row {
-        justify-content: center;
+        justify-content: space-between;
       }
-      #itube .search-wrap,
+      #itube .search-wrap {
+        display: none;
+      }
+      #itube .search-wrap.expanded {
+        display: flex;
+        position: absolute;
+        left: calc(100% + 8px);
+        top: 0;
+        width: 260px;
+        z-index: 30;
+      }
+      #itube .rail-search-btn {
+        display: flex;
+      }
       #itube .brand-word,
-      #itube .itube-power,
-      #itube .hd-right {
+      #itube .itube-power {
+        display: none;
+      }
+      #itube .hd-signin {
         display: none;
       }
       #itube .nav-row {
@@ -2454,6 +2516,10 @@
       }
     }
     @media (max-width: 600px) {
+      #itube .rail-search-btn,
+      #itube .search-wrap.expanded {
+        display: none;
+      }
       #itube .body {
         flex-direction: column;
       }
@@ -2509,11 +2575,6 @@
         flex: 1 1 100%;
         min-width: 100%;
         height: 0;
-      }
-      #itube .watch-actions {
-        flex: 1 1 100%;
-        min-width: 0;
-        flex-wrap: wrap;
       }
       #itube .search-filters {
         flex-wrap: wrap;
@@ -3687,6 +3748,18 @@
     return t.simpleText || (Array.isArray(t.runs) ? t.runs.map((r) => r?.text || '').join('') : null);
   };
 
+  const getCommentsCountLabel = (root) => {
+    const raw = getCommentsCount(root);
+    if (!raw) return null;
+    const n = parseCount(raw);
+    // If the count text carries no parseable digits (some locales' initial
+    // ytInitialData ships a bare word like "Kommentare" with the number only
+    // arriving later, in the `next` continuation response), showing the raw
+    // string would duplicate/garble the fixed "Comments" label next to it —
+    // omit the count entirely rather than show something that isn't a count.
+    return Number.isFinite(n) ? formatCompact(n) : null;
+  };
+
   const fmt = (s) => {
     if (!isFinite(s)) return 'LIVE';
     s = Math.max(0, Math.floor(s));
@@ -4110,10 +4183,28 @@
   });
 
   document.addEventListener('mousedown', (e) => {
-    if (!searchWrap.contains(e.target)) hideSuggestions();
+    if (!searchWrap.contains(e.target)) { hideSuggestions(); searchWrap.classList.remove('expanded'); }
   });
 
   searchWrap.append(searchIcon, search, suggestEl);
+
+  const railSearchBtn = document.createElement('button');
+  railSearchBtn.type = 'button';
+  railSearchBtn.className = 'rail-search-btn';
+  railSearchBtn.title = 'Search';
+  railSearchBtn.setAttribute('aria-label', 'Search');
+  railSearchBtn.appendChild(icon([
+    ['circle', { cx: '6.2', cy: '6.2', r: '4.4', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75' }],
+    ['path', { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.75', 'stroke-linecap': 'square', d: 'M9.6 9.6 13 13' }],
+  ]));
+  railSearchBtn.addEventListener('click', () => {
+    searchWrap.classList.add('expanded');
+    search.focus();
+  });
+  search.addEventListener('blur', () => {
+    setTimeout(() => { if (!searchWrap.contains(document.activeElement)) searchWrap.classList.remove('expanded'); }, 150);
+  });
+
   const hdRight = document.createElement('div');
   hdRight.className = 'hd-right';
   const hdSignIn = document.createElement('a');
@@ -4267,6 +4358,7 @@
   powerToggle.addEventListener('click', () => setItubeOff(true));
   hdLeft.appendChild(powerToggle);
   hdLeft.appendChild(hdRight);
+  hdLeft.appendChild(railSearchBtn);
 
   const sidebarHead = document.createElement('div');
   sidebarHead.className = 'sidebar-head';
@@ -5994,19 +6086,6 @@
     const timeDur = el('span', null); timeDur.className = 'itube-time';
     const mute = el('button', 'itube-mute', ICONS.vol());
     const vol = el('input', 'itube-vol'); vol.type = 'range'; vol.min = 0; vol.max = 100;
-    const speed = el('select', 'itube-speed');
-    for (const s of SPEEDS) {
-      const o = document.createElement('option');
-      o.value = s; o.textContent = s + '×';
-      speed.appendChild(o);
-    }
-    const quality = el('select', 'itube-quality');
-    const audio = el('select', 'itube-audio');
-    const cc = el('select', 'itube-cc');
-    cc.appendChild(new Option('CC', ''));
-    const auto = el('button', 'itube-auto', 'Auto');
-    const skipSponsors = el('button', 'itube-skip-sponsors', 'On');
-    const boostBtn = el('button', 'itube-boost', 'Off');
     const ab = el('button', 'itube-ab', ICONS.loop());
     ab.setAttribute('aria-label', 'A–B repeat loop');
     ab.title = 'A–B repeat loop';
@@ -6026,31 +6105,19 @@
     seekwrap.appendChild(preview);
     const live = el('button', 'itube-live', 'LIVE');
     live.style.display = 'none';
-    const more = el('button', 'itube-more', ICONS.more());
     const cue = el('div', 'itube-cue');
-    const menu = el('div', 'itube-menu');
     const left = el('div', 'itube-bar-left');
     const center = el('div', 'itube-bar-center');
     const right = el('div', 'itube-bar-right');
-    const row = (label, control) => {
-      const r = el('div');
-      r.className = 'itube-menu-row';
-      const s = el('span', null, label);
-      r.append(s, control);
-      return r;
-    };
-    const audioRow = row('Audio', audio);
-    audioRow.style.display = 'none';
-    menu.append(row('Speed', speed), row('Quality', quality), audioRow, row('Captions', cc), row('Autoplay', auto), row('Skip sponsors', skipSponsors), row('Volume boost', boostBtn));
     left.append(prev, play, next, timeCur);
     center.append(live);
-    right.append(timeDur, mute, vol, more, ab, pip, theater, shot, fs);
-    bar.append(seekwrap, left, center, right, menu);
+    right.append(timeDur, mute, vol, ab, pip, theater, shot, fs);
+    bar.append(seekwrap, left, center, right);
     stage.appendChild(bar);
     stage.appendChild(cue);
     return {
       bar, prev, next, play, timeCur, seek, seekwrap, preview, ptime, timeDur, live, mute, vol,
-      speed, quality, audio, audioRow, cc, auto, skipSponsors, boost: boostBtn, ab, pip, theater, shot, fs, more, menu, left, right, cue, scrubbing: false, isLive: false,
+      ab, pip, theater, shot, fs, left, right, cue, scrubbing: false, isLive: false,
     };
   };
 
@@ -6117,11 +6184,17 @@
     const { btn: saveBtn, label: saveLabel } = pillButton(ICONS.save, '', 'watch-action-btn');
     const { btn: shareBtn, label: shareLabel } = pillButton(ICONS.share, 'Share', 'watch-action-btn');
     const { btn: toolsBtn } = pillButton(ICONS.tools, 'Tools', 'watch-action-btn');
+    saveBtn.title = 'Save';
+    saveBtn.setAttribute('aria-label', 'Save');
+    shareBtn.title = 'Share';
+    shareBtn.setAttribute('aria-label', 'Share');
+    toolsBtn.title = 'Tools';
+    toolsBtn.setAttribute('aria-label', 'Tools');
     toolsBtn.setAttribute('aria-expanded', 'false');
     const { btn: subscribeBtn, label: subscribeLabel } = pillButton(null, '', 'watch-subscribe');
 
-    actions.append(likes, saveBtn, shareBtn, toolsBtn, subscribeBtn);
-    channelRow.append(avatarLink, channelInfo, channelSpacer, actions);
+    actions.append(likes, saveBtn, shareBtn, toolsBtn);
+    channelRow.append(avatarLink, channelInfo, channelSpacer, subscribeBtn);
 
     const toolsRow = document.createElement('div');
     toolsRow.className = 'watch-tools';
@@ -6141,11 +6214,31 @@
     const tSpeed = toolBtn('Speed');
     const tQuality = toolBtn('Quality');
     const tCC = toolBtn('Captions');
+    const tAudioTrack = toolBtn('Audio track');
+    tAudioTrack.b.style.display = 'none';
     const tAuto = toolBtn('Autoplay');
     const tSkip = toolBtn('Skip sponsors');
     const tBoost = toolBtn('Volume boost');
     const tAudio = toolBtn('Audio only');
-    toolsRow.append(tAb.b, tSpeed.b, tQuality.b, tCC.b, tAuto.b, tSkip.b, tBoost.b, tAudio.b);
+    toolsRow.append(tAb.b, tSpeed.b, tQuality.b, tCC.b, tAudioTrack.b, tAuto.b, tSkip.b, tBoost.b, tAudio.b);
+
+    const audioMeta = (t) => t && Object.values(t).find((v) => v && typeof v === 'object' && !Array.isArray(v) && typeof v.name === 'string' && typeof v.isDefault === 'boolean' && typeof v.id === 'string');
+    let audioTracks = [];
+
+    const syncAudioTrack = (p) => {
+      const tracks = p && typeof p.getAvailableAudioTracks === 'function' ? p.getAvailableAudioTracks() || [] : [];
+      audioTracks = tracks;
+      if (tracks.length <= 1) {
+        tAudioTrack.b.style.display = 'none';
+        return;
+      }
+      tAudioTrack.b.style.display = '';
+      const cur = typeof p.getAudioTrack === 'function' ? p.getAudioTrack() : null;
+      const curId = audioMeta(cur)?.id;
+      const idx = curId ? tracks.findIndex((t) => audioMeta(t)?.id === curId) : -1;
+      const meta = audioMeta(tracks[idx === -1 ? 0 : idx]);
+      tAudioTrack.v.textContent = meta?.name || `Track ${(idx === -1 ? 0 : idx) + 1}`;
+    };
 
     const syncTools = () => {
       const abOn = abA != null && abB != null;
@@ -6154,8 +6247,9 @@
       tSpeed.v.textContent = desiredRate + '×';
       const p = player();
       const q = p && p.getPlaybackQuality ? p.getPlaybackQuality() : '';
-      tQuality.v.textContent = q && q !== 'unknown' ? q : 'Auto';
+      tQuality.v.textContent = q && q !== 'unknown' ? (QUALITY_LABELS[q] || q) : 'Auto';
       tCC.v.textContent = 'CC';
+      syncAudioTrack(p);
       tAuto.b.classList.toggle('active', autoplayEnabled);
       tAuto.v.textContent = autoplayEnabled ? 'On' : 'Off';
       tSkip.b.classList.toggle('active', sbEnabled);
@@ -6339,22 +6433,30 @@
       const idx = levels.indexOf(cur);
       const next = levels[(idx + 1) % levels.length];
       p.setPlaybackQualityRange?.(next, next);
-      if (ui && ui.quality) ui.quality.value = next;
       syncTools();
-      showOSD(ICONS.tools, next);
+      showOSD(ICONS.tools, QUALITY_LABELS[next] || next);
     });
     tCC.b.addEventListener('click', () => { player()?.toggleSubtitles?.(); tCC.b.classList.toggle('active'); });
+    tAudioTrack.b.addEventListener('click', () => {
+      const p = player();
+      if (!p || audioTracks.length < 2) return;
+      const cur = typeof p.getAudioTrack === 'function' ? p.getAudioTrack() : null;
+      const curId = audioMeta(cur)?.id;
+      const idx = curId ? audioTracks.findIndex((t) => audioMeta(t)?.id === curId) : -1;
+      const next = audioTracks[((idx === -1 ? 0 : idx) + 1) % audioTracks.length];
+      p.setAudioTrack?.(next);
+      syncTools();
+      showOSD(ICONS.tools, audioMeta(next)?.name || 'Audio track');
+    });
     tAuto.b.addEventListener('click', () => {
       autoplayEnabled = !autoplayEnabled;
       lsSet('itube-autoplay', autoplayEnabled ? '1' : '0');
-      ui?.syncAuto?.();
       syncTools();
       showOSD(ICONS.tools, autoplayEnabled ? 'Autoplay on' : 'Autoplay off');
     });
     tSkip.b.addEventListener('click', () => {
       sbEnabled = !sbEnabled;
       setSponsorSkipOn(sbEnabled);
-      ui?.syncSkipSponsors?.();
       syncTools();
       showOSD(ICONS.tools, sbEnabled ? 'Skip sponsors on' : 'Skip sponsors off');
     });
@@ -6411,18 +6513,27 @@
     metaDivider.className = 'watch-meta-divider';
     const stats = document.createElement('div');
     stats.className = 'watch-stats';
+    const descChips = document.createElement('div');
+    descChips.className = 'watch-desc-chips';
     const desc = document.createElement('div');
     desc.className = 'watch-description';
     const descToggle = document.createElement('button');
     descToggle.type = 'button';
     descToggle.className = 'watch-desc-toggle';
-    descToggle.textContent = 'Show more';
+    const descToggleIcon = document.createElement('span');
+    descToggleIcon.className = 'watch-desc-toggle-icon';
+    descToggleIcon.appendChild(ICONS.chevron());
+    const descToggleLabel = document.createElement('span');
+    descToggleLabel.textContent = 'More';
+    descToggle.append(descToggleIcon, descToggleLabel);
     descToggle.style.display = 'none';
     let descExpanded = false;
     descToggle.addEventListener('click', () => {
       descExpanded = !descExpanded;
       desc.classList.toggle('expanded', descExpanded);
-      descToggle.textContent = descExpanded ? 'Show less' : 'Show more';
+      descToggleIcon.firstChild?.classList.toggle('open', descExpanded);
+      descToggleLabel.textContent = descExpanded ? 'Less' : 'More';
+      renderDescription(currentDescSegments, currentDescFallback, descExpanded);
     });
     const unavailable = document.createElement('div');
     unavailable.className = 'watch-unavailable';
@@ -6458,7 +6569,7 @@
     skelDesc.append(skelDescLine1, skelDescLine2, skelDescLine3);
     skeleton.append(skelChannel, skelStats, skelDesc);
 
-    const META_CONTENT_ELS = [channelRow, metaDivider, stats, desc];
+    const META_CONTENT_ELS = [stats, channelRow, actions, metaDivider, desc];
     let metaSkeletonVisible = false;
 
     const showMetaSkeleton = () => {
@@ -6492,8 +6603,8 @@
 
     const watchHead = document.createElement('div');
     watchHead.className = 'watch-head';
-    watchHead.append(channelRow, toolsRow);
-    meta.append(unavailable, skeleton, watchHead, signInHint, metaDivider, stats, desc, descToggle);
+    watchHead.append(channelRow, actions, toolsRow);
+    meta.append(unavailable, skeleton, stats, watchHead, signInHint, metaDivider, desc, descChips, descToggle);
     showMetaSkeleton();
 
     const transcriptPanel = document.createElement('div');
@@ -6515,6 +6626,9 @@
     const commentsHeader = document.createElement('div');
     commentsHeader.className = 'comments-header';
     const { btn: commentsToggle, icon: commentsChevron, label: commentsLabel } = pillButton(ICONS.chevron, 'Comments', 'comments-toggle');
+    const commentsCount = document.createElement('span');
+    commentsCount.className = 'comments-count';
+    commentsToggle.appendChild(commentsCount);
     const commentsSort = document.createElement('div');
     commentsSort.className = 'comments-sort';
     commentsHeader.append(commentsToggle, commentsSort);
@@ -6555,13 +6669,16 @@
       return null;
     };
 
-    const renderDescription = (segments, fallbackText) => {
+    let currentDescSegments = null;
+    let currentDescFallback = '';
+
+    const renderDescription = (segments, fallbackText, interactive) => {
       desc.replaceChildren();
       if (segments && segments.length) {
         const currentId = resolveVideoId();
         for (const seg of segments) {
           if (!seg.text) continue;
-          if (seg.url) {
+          if (seg.url && interactive) {
             const a = document.createElement('a');
             a.className = 'watch-desc-link';
             a.href = seg.url;
@@ -6580,6 +6697,90 @@
         }
       } else {
         desc.textContent = fallbackText || '';
+      }
+    };
+
+    const HASHTAG_RE = /#[\p{L}\p{N}_]+/gu;
+    const extractHashtags = (text) => {
+      if (!text) return [];
+      const seen = new Set();
+      const out = [];
+      for (const m of text.matchAll(HASHTAG_RE)) {
+        const key = m[0].toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(m[0]);
+        if (out.length >= 6) break;
+      }
+      return out;
+    };
+
+    const renderStatsLine = (viewsText, dateText, tags) => {
+      stats.replaceChildren();
+      const text = [viewsText, dateText].filter(Boolean).join(' · ');
+      if (text) {
+        const t = document.createElement('span');
+        t.className = 'watch-stats-text';
+        t.textContent = text;
+        stats.appendChild(t);
+      }
+      for (const tag of tags) {
+        const a = document.createElement('a');
+        a.className = 'watch-hashtag';
+        a.href = '/results?search_query=' + encodeURIComponent(tag);
+        a.textContent = tag;
+        stats.appendChild(a);
+      }
+    };
+
+    const resolveExternalDescUrl = (raw) => {
+      if (!raw) return null;
+      try {
+        const abs = /^https?:\/\//i.test(raw) ? raw : (raw.startsWith('//') ? 'https:' + raw : null);
+        if (!abs) return null;
+        const u = new URL(abs);
+        if (/(^|\.)youtube\.com$/i.test(u.hostname) && u.pathname === '/redirect') {
+          const q = u.searchParams.get('q');
+          return q && /^https?:\/\//i.test(q) ? q : null;
+        }
+        if (/(^|\.)(youtube\.com|youtu\.be|google\.com)$/i.test(u.hostname)) return null;
+        return abs;
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const extractDescriptionLinks = (segments, fallbackText) => {
+      const urls = [];
+      const seen = new Set();
+      const addRaw = (raw) => {
+        const url = resolveExternalDescUrl(raw);
+        if (!url || seen.has(url)) return;
+        seen.add(url);
+        urls.push(url);
+      };
+      if (segments) for (const seg of segments) if (seg.url) addRaw(seg.url);
+      const text = fallbackText || (segments ? segments.map((s) => s.text || '').join('') : '');
+      for (const m of text.matchAll(/https?:\/\/\S+/g)) addRaw(m[0].replace(/[.,)>\]]+$/, ''));
+      return urls.slice(0, 8);
+    };
+
+    const renderDescChips = (segments, fallbackText) => {
+      descChips.replaceChildren();
+      const urls = extractDescriptionLinks(segments, fallbackText);
+      for (const url of urls) {
+        let domain = url;
+        try { domain = new URL(url).hostname.replace(/^www\./, ''); } catch (e) { /* keep raw url */ }
+        const a = document.createElement('a');
+        a.className = 'watch-desc-chip';
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.appendChild(ICONS.link());
+        const label = document.createElement('span');
+        label.textContent = domain;
+        a.appendChild(label);
+        descChips.appendChild(a);
       }
     };
 
@@ -6603,8 +6804,11 @@
         unavailable.style.display = '';
         channelRow.style.display = 'none';
         metaDivider.style.display = 'none';
-        stats.textContent = '';
-        renderDescription(null, '');
+        stats.replaceChildren();
+        currentDescSegments = null;
+        currentDescFallback = '';
+        renderDescription(null, '', false);
+        descChips.replaceChildren();
         descToggle.style.display = 'none';
         relatedWrap.replaceChildren();
         firstRelatedId = null;
@@ -6646,12 +6850,19 @@
       const viewsText = primary?.viewCount?.videoViewCountRenderer?.viewCount?.simpleText
         || (details?.viewCount ? details.viewCount + ' views' : '');
       const dateText = primary?.dateText?.simpleText || '';
-      stats.textContent = [viewsText, dateText].filter(Boolean).join(' · ');
+      const hashtags = extractHashtags([title.textContent, details?.shortDescription].filter(Boolean).join(' '));
+      renderStatsLine(viewsText, dateText, hashtags);
 
-      renderDescription(buildDescriptionSegments(secondary), details?.shortDescription || '');
+      const descSegments = buildDescriptionSegments(secondary);
+      const descFallback = details?.shortDescription || '';
+      currentDescSegments = descSegments;
+      currentDescFallback = descFallback;
       descExpanded = false;
+      renderDescription(descSegments, descFallback, false);
+      renderDescChips(descSegments, descFallback);
       desc.classList.remove('expanded');
-      descToggle.textContent = 'Show more';
+      descToggleIcon.firstChild?.classList.remove('open');
+      descToggleLabel.textContent = 'More';
       descToggle.style.display = 'none';
       requestAnimationFrame(() => {
         if (desc.scrollHeight > desc.clientHeight + 1) descToggle.style.display = '';
@@ -6850,6 +7061,7 @@
 
     const showCommentsOff = () => {
       commentsLabel.textContent = 'Comments';
+      commentsCount.textContent = '';
       const empty = document.createElement('div');
       empty.className = 'comments-empty';
       empty.textContent = 'Comments are turned off.';
@@ -6877,8 +7089,8 @@
           return;
         }
         if (initial) {
-          const count = getCommentsCount(res);
-          commentsLabel.textContent = count || 'Comments';
+          const label = getCommentsCountLabel(res);
+          commentsCount.textContent = label ? ' · ' + label : '';
         }
         const entityMap = commentEntityMap(res);
         const items = extractComments(res, entityMap, commentsSeen);
@@ -6902,10 +7114,13 @@
 
     let sortOptions = [];
     let activeSortIndex = 0;
+    const updateSortVisibility = () => {
+      commentsSort.style.display = (sortOptions.length && commentsExpanded) ? 'flex' : 'none';
+    };
     const renderSortPills = () => {
       commentsSort.replaceChildren();
-      if (!sortOptions.length) { commentsSort.style.display = 'none'; return; }
-      commentsSort.style.display = 'flex';
+      updateSortVisibility();
+      if (!sortOptions.length) return;
       sortOptions.forEach((opt, i) => {
         const { btn } = pillButton(null, opt.label, 'comments-sort-btn');
         btn.classList.toggle('active', i === activeSortIndex);
@@ -6936,8 +7151,9 @@
       commentsBody.classList.add('collapsed');
       setChevron();
       commentsToken = findCommentsToken(data);
-      const count = getCommentsCount(data);
-      commentsLabel.textContent = commentsToken ? (count || 'Comments') : (fresh ? 'Comments are turned off.' : 'Comments');
+      const label = getCommentsCountLabel(data);
+      commentsLabel.textContent = commentsToken ? 'Comments' : (fresh ? 'Comments are turned off.' : 'Comments');
+      commentsCount.textContent = (commentsToken && label) ? ' · ' + label : '';
       commentsToggle.disabled = !commentsToken;
       sortOptions = findCommentsSortOptions(data);
       activeSortIndex = 0;
@@ -6948,6 +7164,7 @@
       commentsExpanded = !commentsExpanded;
       commentsBody.classList.toggle('collapsed', !commentsExpanded);
       setChevron();
+      updateSortVisibility();
       if (commentsExpanded && !commentsFetched) {
         commentsFetched = true;
         fetchComments(true);
@@ -7048,7 +7265,6 @@
       const video = stage.querySelector('video');
       if (video) video.playbackRate = rate;
       if (rate <= 2) player()?.setPlaybackRate?.(rate);
-      if (ui) ui.speed.value = String(rate);
       lsSet('itube-speed', String(rate));
     };
     let boost = savedBoost();
@@ -7082,17 +7298,11 @@
       if (boostCtx && boostCtx.state === 'suspended') boostCtx.resume().catch(() => {});
       gain.gain.value = boost;
     };
-    const syncBoostBtn = () => {
-      if (!ui || !ui.boost) return;
-      ui.boost.textContent = boost > 1 ? Math.round(boost * 100) + '%' : 'Off';
-      ui.boost.classList.toggle('active', boost > 1);
-    };
     const cycleBoost = () => {
       const i = BOOST_STEPS.indexOf(boost);
       boost = BOOST_STEPS[(i + 1) % BOOST_STEPS.length];
       setSavedBoost(boost);
       applyBoost(stage.querySelector('video'));
-      syncBoostBtn();
       showOSD(ICONS.vol, boost > 1 ? 'Boost ' + Math.round(boost * 100) + '%' : 'Boost off');
     };
     const captureFrame = () => {
@@ -7259,7 +7469,7 @@
 
     let clickTimer = null;
     stage.addEventListener('click', (e) => {
-      if (e.target.closest('#itube-bar') || e.target.closest('#itube-menu')) return;
+      if (e.target.closest('#itube-bar')) return;
       if (clickTimer) return;
       clickTimer = setTimeout(() => {
         clickTimer = null;
@@ -7271,7 +7481,7 @@
       }, 220);
     });
     stage.addEventListener('dblclick', (e) => {
-      if (e.target.closest('#itube-bar') || e.target.closest('#itube-menu')) return;
+      if (e.target.closest('#itube-bar')) return;
       clearTimeout(clickTimer);
       clickTimer = null;
       toggleFullscreen();
@@ -7398,105 +7608,14 @@
       restoreUserVolume(p);
     };
 
-    const populateQuality = (p) => {
-      if (!ui) return;
-      const levels = p.getAvailableQualityLevels?.() || [];
-      const current = p.getPlaybackQuality?.();
-      ui.quality.textContent = '';
-      for (const q of levels) {
-        const o = document.createElement('option');
-        o.value = q;
-        o.textContent = QUALITY_LABELS[q] || q;
-        if (q === current) o.selected = true;
-        ui.quality.appendChild(o);
-      }
-    };
-
-    const audioMeta = (t) => t && Object.values(t).find((v) => v && typeof v === 'object' && !Array.isArray(v) && typeof v.name === 'string' && typeof v.isDefault === 'boolean' && typeof v.id === 'string');
-
-    let audioTracks = [];
-    const populateAudioTracks = (p) => {
-      if (!ui) return;
-      const tracks = typeof p.getAvailableAudioTracks === 'function' ? p.getAvailableAudioTracks() || [] : [];
-      audioTracks = tracks;
-      if (tracks.length <= 1) {
-        ui.audioRow.style.display = 'none';
-        return;
-      }
-      ui.audioRow.style.display = 'flex';
-      const cur = typeof p.getAudioTrack === 'function' ? p.getAudioTrack() : null;
-      const curId = audioMeta(cur)?.id;
-      ui.audio.replaceChildren();
-      tracks.forEach((t, i) => {
-        const meta = audioMeta(t);
-        const id = meta?.id;
-        const label = meta?.name || t?.id || `Audio ${i + 1}`;
-        ui.audio.appendChild(new Option(label, String(i), false, !!curId && id === curId));
-      });
-    };
-
-    const populateTracks = (p) => {
-      if (!ui || ui.cc.options.length > 1) return;
-      const wasOn = p.isSubtitlesOn?.();
-      if (!wasOn) p.toggleSubtitles?.();
-      const tracks = p.getOption?.('captions', 'tracklist') || [];
-      const cur = p.getOption?.('captions', 'track')?.languageCode || '';
-      ui.cc.replaceChildren(new Option('CC off', ''));
-      for (const t of tracks) {
-        const o = new Option(t.displayName, t.languageCode, false, t.languageCode === cur);
-        ui.cc.appendChild(o);
-      }
-      if (!wasOn) p.toggleSubtitles?.();
-    };
-
     const wireBar = (p, video) => {
-      const setMenu = (open) => { ui.menu.style.display = open ? 'block' : 'none'; };
-      ui.menu.style.display = 'none';
-      ui.more.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const open = ui.menu.style.display !== 'block';
-        if (open) { populateQuality(p); populateAudioTracks(p); populateTracks(p); ui.syncAuto?.(); ui.syncSkipSponsors?.(); ui.syncBoost?.(); }
-        setMenu(open);
-      });
-      ui.menu.addEventListener('change', () => setMenu(false));
-      ui.bar.addEventListener('mouseleave', (e) => {
-        if (!ui.menu.contains(e.relatedTarget)) setMenu(false);
-      });
       ui.live.addEventListener('click', () => {
         if (p.seekToLiveHead) p.seekToLiveHead();
         else if (isFinite(video.duration)) video.currentTime = video.duration - 2;
       });
-      ui.syncAuto = () => {
-        ui.auto.classList.toggle('active', autoplayEnabled);
-        ui.auto.setAttribute('aria-pressed', String(autoplayEnabled));
-      };
-      ui.auto.addEventListener('click', () => {
-        autoplayEnabled = !autoplayEnabled;
-        lsSet('itube-autoplay', autoplayEnabled ? '1' : '0');
-        ui.syncAuto();
-        showOSD(ICONS.next, autoplayEnabled ? 'Autoplay on' : 'Autoplay off');
-      });
-      ui.syncAuto();
 
       ui.ab.addEventListener('click', () => cycleAb());
       syncAbBtn();
-
-      ui.syncSkipSponsors = () => {
-        ui.skipSponsors.classList.toggle('active', sbEnabled);
-        ui.skipSponsors.setAttribute('aria-pressed', String(sbEnabled));
-        ui.skipSponsors.textContent = sbEnabled ? 'On' : 'Off';
-      };
-      ui.skipSponsors.addEventListener('click', () => {
-        sbEnabled = !sbEnabled;
-        setSponsorSkipOn(sbEnabled);
-        ui.syncSkipSponsors();
-        showOSD(ICONS.next, sbEnabled ? 'Skip sponsors on' : 'Skip sponsors off');
-      });
-      ui.syncSkipSponsors();
-
-      ui.syncBoost = syncBoostBtn;
-      ui.boost.addEventListener('click', () => cycleBoost());
-      syncBoostBtn();
 
       ui.seekwrap.addEventListener('pointerenter', () => {
         if (storyboard && !ui.isLive) ui.preview.style.display = 'block';
@@ -7518,26 +7637,6 @@
       });
       ui.mute.addEventListener('click', () => { setMuted(!isMuted()); });
       ui.vol.addEventListener('input', () => { setPlayerVolume(Number(ui.vol.value)); });
-      ui.speed.addEventListener('change', () => applyRate(Number(ui.speed.value)));
-      ui.quality.addEventListener('mousedown', () => populateQuality(p));
-      ui.quality.addEventListener('change', () => {
-        p.setPlaybackQualityRange?.(ui.quality.value, ui.quality.value);
-        lsSet('itube-quality', ui.quality.value);
-      });
-      ui.audio.addEventListener('change', () => {
-        const t = audioTracks[Number(ui.audio.value)];
-        if (t) p.setAudioTrack?.(t);
-      });
-      ui.cc.addEventListener('mousedown', () => populateTracks(p));
-      ui.cc.addEventListener('change', () => {
-        const on = p.isSubtitlesOn?.();
-        if (!ui.cc.value) {
-          if (on) p.toggleSubtitles?.();
-          return;
-        }
-        if (!on) p.toggleSubtitles?.();
-        setTimeout(() => p.setOption?.('captions', 'track', { languageCode: ui.cc.value }), 150);
-      });
       ui.pip.addEventListener('click', () => togglePiP(video));
       ui.shot.addEventListener('click', () => captureFrame());
       ui.fs.addEventListener('click', () => toggleFullscreen());
@@ -7550,13 +7649,13 @@
         stage.classList.add('show');
         clearTimeout(hideTimer);
         hideTimer = setTimeout(() => {
-          if (!video.paused && !ui.bar.matches(':hover') && ui.menu.style.display !== 'block') stage.classList.remove('show');
+          if (!video.paused && !ui.bar.matches(':hover')) stage.classList.remove('show');
         }, 2800);
       };
       stage.addEventListener('mousemove', showBar, { passive: true });
       stage.addEventListener('mouseleave', () => {
         clearTimeout(hideTimer);
-        if (!video.paused && ui.menu.style.display !== 'block') stage.classList.remove('show');
+        if (!video.paused) stage.classList.remove('show');
       }, { passive: true });
 
       video.addEventListener('play', () => { ui.play.replaceChildren(ICONS.pause()); showBar(); }, bound);
@@ -7593,7 +7692,6 @@
       ui.timeCur.textContent = fmt(video.currentTime);
       ui.timeDur.textContent = fmt(video.duration);
       ui.vol.value = video.muted ? 0 : Math.round(video.volume * 100);
-      populateQuality(p);
     };
 
     const onNavigateFinish = (e) => {
@@ -7639,13 +7737,8 @@
         miniDismissed = false;
         const saved = lsGet('itube-quality');
         if (saved && saved !== 'auto') p.setPlaybackQualityRange?.(saved, saved);
-        populateQuality(p);
-        if (saved) ui.quality.value = saved;
-        ui.speed.value = String(desiredRate);
         if (video) video.playbackRate = desiredRate;
         ui.prev.style.display = p.getPlaylist?.()?.length ? '' : 'none';
-        ui.cc.replaceChildren(new Option('CC', ''));
-        ui.syncAuto?.();
         ui.isLive = !!p.getVideoData?.()?.isLive;
         ui.live.style.display = ui.isLive ? '' : 'none';
         ui.timeDur.style.display = ui.isLive ? 'none' : '';
@@ -7653,7 +7746,6 @@
         storyboardTries = 0;
         ui.preview.style.display = 'none';
         ui.preview.dataset.src = '';
-        ui.menu.style.display = 'none';
         renderTicks();
         clearAb();
         if (audioOnly) { applyAudioOnlyArt(); p.setPlaybackQualityRange?.('tiny', 'tiny'); }
@@ -7845,7 +7937,7 @@
           search.focus();
           break;
         case 'Escape':
-          if (ui && ui.menu.style.display === 'block') ui.menu.style.display = 'none';
+          if (toolsOpen) setToolsOpen(false);
           else if (theaterOn) applyTheater(false);
           break;
         default:
