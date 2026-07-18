@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.38.0
+// @version      4.38.1
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -7280,7 +7280,7 @@
     const syncAdState = () => {
       const p = player();
       if (!p) return;
-      const video = stage.querySelector('video') || document.querySelector('#movie_player video');
+      const video = stage.querySelector('video') || document.querySelector('#itube-mini video') || document.querySelector('#movie_player video');
       if (adShowing()) {
         if (!adActive) {
           adActive = true;
@@ -7542,7 +7542,7 @@
     window.addEventListener('yt-navigate-finish', onNavigateFinish);
 
     const tick = () => {
-      const video = stage.querySelector('video') || document.querySelector('#movie_player video');
+      const video = stage.querySelector('video') || document.querySelector('#itube-mini video') || document.querySelector('#movie_player video');
       const p = player();
       if (!video || !p) return;
       if (video.hasAttribute('controls')) video.removeAttribute('controls');
