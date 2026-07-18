@@ -3283,6 +3283,82 @@ async function checkMiniPlayer(browser) {
   return violations;
 }
 
+// Audio-only mode hides the video behind an art overlay and drops quality to
+// save bandwidth, but the whole point is that decoding/playback must keep
+// running — the <video> is never display:none'd, just covered. The critical
+// guard here is proving currentTime keeps advancing (and the element stays
+// unpaused) while the overlay is up, since a naive implementation could
+// accidentally pause the underlying player when hiding it.
+async function checkAudioOnly(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    await page.evaluate(async () => {
+      const v = document.querySelector('#itube-stage video');
+      if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
+    });
+    await page.waitForFunction(() => {
+      return Array.from(document.querySelectorAll('#itube .watch-actions .watch-action-btn'))
+        .some((b) => b.textContent.includes('Tools'));
+    }, { timeout: 15000 }).catch(() => {});
+
+    const on = await page.evaluate(async () => {
+      const toolsBtn = Array.from(document.querySelectorAll('#itube .watch-actions .watch-action-btn'))
+        .find((b) => b.textContent.includes('Tools'));
+      toolsBtn.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const audioBtn = Array.from(document.querySelectorAll('#itube .watch-tools .watch-tool'))
+        .find((b) => b.textContent.includes('Audio only'));
+      audioBtn.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const overlay = document.querySelector('.stage-audio');
+      return {
+        hasAudioClass: document.getElementById('itube-stage').classList.contains('audio-only'),
+        overlayVisible: !!overlay && overlay.offsetWidth > 0,
+      };
+    });
+    if (!on.hasAudioClass || !on.overlayVisible) {
+      violations.push({ check: 'audio-only-overlay', detail: `expected #itube-stage.audio-only with a visible .stage-audio overlay, got ${JSON.stringify(on)}` });
+    }
+
+    const continuity = await page.evaluate(async () => {
+      const v = document.querySelector('#itube-stage video');
+      const t1 = v ? v.currentTime : null;
+      const paused1 = v ? v.paused : null;
+      await new Promise((r) => setTimeout(r, 700));
+      const t2 = v ? v.currentTime : null;
+      const paused2 = v ? v.paused : null;
+      return { t1, t2, paused1, paused2 };
+    });
+    if (continuity.t1 == null || continuity.t2 == null || continuity.t2 <= continuity.t1 || continuity.paused1 || continuity.paused2) {
+      violations.push({ check: 'audio-only-keeps-playing', detail: `expected video.currentTime to strictly advance and stay unpaused while audio-only is on, got ${JSON.stringify(continuity)}` });
+    }
+
+    const off = await page.evaluate(async () => {
+      const audioBtn = Array.from(document.querySelectorAll('#itube .watch-tools .watch-tool'))
+        .find((b) => b.textContent.includes('Audio only'));
+      audioBtn.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const overlay = document.querySelector('.stage-audio');
+      return {
+        hasAudioClass: document.getElementById('itube-stage').classList.contains('audio-only'),
+        overlayVisible: !!overlay && overlay.offsetWidth > 0,
+      };
+    });
+    if (off.hasAudioClass || off.overlayVisible) {
+      violations.push({ check: 'audio-only-off', detail: `expected .audio-only class and overlay to be removed after toggling off, got ${JSON.stringify(off)}` });
+    }
+  } finally {
+    await page.evaluate(() => { try { localStorage.removeItem('itube-audio-only'); } catch (e) {} }).catch(() => {});
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
 module.exports = {
   runWatchFunctional,
   checkThumbFlyAnimation,
@@ -3293,6 +3369,7 @@ module.exports = {
   checkTranscript,
   checkVolumeBoost,
   checkToolsRow,
+  checkAudioOnly,
   checkAccountMenu,
   checkSettings,
   checkCommandPalette,

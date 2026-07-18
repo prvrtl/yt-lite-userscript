@@ -46,6 +46,7 @@ const {
   checkTranscript,
   checkVolumeBoost,
   checkToolsRow,
+  checkAudioOnly,
   checkAccountMenu,
   checkSettings,
   checkCommandPalette,
@@ -633,6 +634,26 @@ async function main() {
     table.push({ page: 'toolsrow', check: 'functional', status, count: violations.length });
     console.log(`  tools row: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
     for (const v of violations) console.log(`    page=toolsrow ${fmt(v)}`);
+  }
+
+  // Audio-only mode covers the video with an art overlay and drops quality,
+  // so it runs once, in its own context, to prove the toggle actually
+  // engages the overlay and — critically — that playback keeps advancing
+  // rather than freezing/pausing once the video is hidden behind it.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- audio only ---');
+    let violations;
+    try {
+      violations = await checkAudioOnly(browser);
+    } catch (err) {
+      console.error(`  ERROR running the audio-only check: ${err.stack || err}`);
+      violations = [{ check: 'audio-only', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'audioonly', check: 'functional', status, count: violations.length });
+    console.log(`  audio only: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=audioonly ${fmt(v)}`);
   }
 
   // The account menu (avatar dropdown) runs once on the home page; the avatar is

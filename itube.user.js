@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.37.0
+// @version      4.38.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -1092,6 +1092,53 @@
       border-radius: 7px !important;
       -webkit-box-decoration-break: clone;
       box-decoration-break: clone;
+    }
+    .stage-audio {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: #06070c;
+      overflow: hidden;
+    }
+    #itube-stage.audio-only .stage-audio {
+      display: flex;
+    }
+    .stage-audio-back {
+      position: absolute;
+      inset: -10%;
+      background-size: cover;
+      background-position: center;
+      filter: blur(40px) brightness(.4);
+      transform: scale(1.1);
+    }
+    .stage-audio-art {
+      position: relative;
+      width: 140px;
+      height: 140px;
+      border-radius: 12px;
+      object-fit: cover;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+    }
+    .stage-audio-title {
+      position: relative;
+      color: var(--text);
+      font-weight: 600;
+      font-size: 15px;
+      max-width: 80%;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .stage-audio-tag {
+      position: relative;
+      color: var(--muted);
+      font-size: 12px;
     }
     #itube .watch-title {
       margin: 16px 0 0;
@@ -5964,6 +6011,19 @@
   const mountWatch = () => {
     if (miniActive) deactivateMini();
     const stage = el('div', 'itube-stage');
+    const stageAudio = document.createElement('div');
+    stageAudio.className = 'stage-audio';
+    const stageAudioBack = document.createElement('div');
+    stageAudioBack.className = 'stage-audio-back';
+    const stageAudioArt = document.createElement('img');
+    stageAudioArt.className = 'stage-audio-art';
+    const stageAudioTitle = document.createElement('div');
+    stageAudioTitle.className = 'stage-audio-title';
+    const stageAudioTag = document.createElement('div');
+    stageAudioTag.className = 'stage-audio-tag';
+    stageAudioTag.textContent = '♪ Audio only';
+    stageAudio.append(stageAudioBack, stageAudioArt, stageAudioTitle, stageAudioTag);
+    stage.appendChild(stageAudio);
     const watch = document.createElement('div');
     watch.className = 'watch';
     const watchLeft = document.createElement('div');
@@ -6038,7 +6098,8 @@
     const tAuto = toolBtn('Autoplay');
     const tSkip = toolBtn('Skip sponsors');
     const tBoost = toolBtn('Volume boost');
-    toolsRow.append(tAb.b, tSpeed.b, tQuality.b, tCC.b, tAuto.b, tSkip.b, tBoost.b);
+    const tAudio = toolBtn('Audio only');
+    toolsRow.append(tAb.b, tSpeed.b, tQuality.b, tCC.b, tAuto.b, tSkip.b, tBoost.b, tAudio.b);
 
     const syncTools = () => {
       const abOn = abA != null && abB != null;
@@ -6055,6 +6116,8 @@
       tSkip.v.textContent = sbEnabled ? 'On' : 'Off';
       tBoost.b.classList.toggle('active', boost > 1);
       tBoost.v.textContent = boost > 1 ? Math.round(boost * 100) + '%' : 'Off';
+      tAudio.b.classList.toggle('active', audioOnly);
+      tAudio.v.textContent = audioOnly ? 'On' : 'Off';
     };
     let toolsOpen = false;
     const setToolsOpen = (open) => {
@@ -6250,6 +6313,11 @@
       showOSD(ICONS.tools, sbEnabled ? 'Skip sponsors on' : 'Skip sponsors off');
     });
     tBoost.b.addEventListener('click', () => { cycleBoost(); syncTools(); });
+    tAudio.b.addEventListener('click', () => {
+      applyAudioOnly(!audioOnly);
+      syncTools();
+      showOSD(ICONS.tools, audioOnly ? 'Audio only on' : 'Audio only off');
+    });
 
     const refreshActions = (data, details) => {
       signInHint.style.display = 'none';
@@ -6984,6 +7052,35 @@
         showOSD(ICONS.camera, 'Capture unavailable');
       }
     };
+    const audioOnlyPref = () => { try { return localStorage.getItem('itube-audio-only') === '1'; } catch (e) { return false; } };
+    const setAudioOnlyPref = (on) => { try { localStorage.setItem('itube-audio-only', on ? '1' : '0'); } catch (e) {} };
+    let audioOnly = audioOnlyPref();
+    let audioOnlyPrevQuality = null;
+    if (audioOnly) stage.classList.add('audio-only');
+    const applyAudioOnlyArt = () => {
+      const vid = player()?.getVideoData?.()?.video_id;
+      const poster = vid ? 'https://i.ytimg.com/vi/' + vid + '/hqdefault.jpg' : '';
+      stageAudioArt.src = poster;
+      stageAudioBack.style.backgroundImage = poster ? 'url(' + poster + ')' : '';
+      stageAudioTitle.textContent = title.textContent || '';
+    };
+    const applyAudioOnly = (on) => {
+      audioOnly = on;
+      setAudioOnlyPref(on);
+      stage.classList.toggle('audio-only', on);
+      applyAudioOnlyArt();
+      const p = player();
+      try {
+        if (on) {
+          audioOnlyPrevQuality = p?.getPlaybackQuality?.() || audioOnlyPrevQuality;
+          p?.setPlaybackQualityRange?.('tiny', 'tiny');
+        } else {
+          const q = localStorage.getItem('itube-quality') || audioOnlyPrevQuality || 'auto';
+          if (q && q !== 'auto') p?.setPlaybackQualityRange?.(q, q);
+        }
+      } catch (e) {}
+      if (toolsOpen) syncTools();
+    };
     let abA = null;
     let abB = null;
     const renderAbMarkers = () => {
@@ -7493,6 +7590,7 @@
         ui.menu.style.display = 'none';
         renderTicks();
         clearAb();
+        if (audioOnly) { applyAudioOnlyArt(); p.setPlaybackQualityRange?.('tiny', 'tiny'); }
         if (toolsOpen) syncTools();
       }
 
@@ -7693,6 +7791,10 @@
     const onVisibility = () => {
       if (theaterOn) { if (document.visibilityState === 'visible') startAmbient(); else stopAmbient(); }
       if (boostCtx && document.visibilityState === 'visible' && boostCtx.state === 'suspended') boostCtx.resume().catch(() => {});
+      if (audioOnly && document.visibilityState === 'hidden') {
+        const v = stage.querySelector('video');
+        if (v && v.paused) v.play().catch(() => {});
+      }
     };
     document.addEventListener('visibilitychange', onVisibility);
 
