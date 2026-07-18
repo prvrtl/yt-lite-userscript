@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.49.0
+// @version      4.50.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -32,6 +32,8 @@
   const setTheaterPref = (on) => lsSet('itube-theater', on ? '1' : '0');
   const sponsorSkipOn = () => lsGet('itube-skip-sponsors') !== '0';
   const setSponsorSkipOn = (on) => lsSet('itube-skip-sponsors', on ? '1' : '0');
+  const dislikesEnabled = () => lsGet('itube-dislikes') !== '0';
+  const setDislikesEnabled = (on) => lsSet('itube-dislikes', on ? '1' : '0');
   const savedBoost = () => { const v = parseFloat(lsGet('itube-boost')); return v >= 1 && v <= 2 ? v : 1; };
   const setSavedBoost = (b) => lsSet('itube-boost', String(b));
 
@@ -3396,7 +3398,10 @@
     return Number.isFinite(n) ? n : null;
   };
 
+  const isHttpUrl = (raw) => typeof raw === 'string' && /^https?:\/\//i.test(raw);
+
   const fetchDislikes = async (videoId) => {
+    if (!dislikesEnabled()) return null;
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), RYD_FETCH_TIMEOUT);
@@ -4927,12 +4932,6 @@
   );
   settingsPanel.appendChild(settingsRowEl('Autoplay', autoplayToggle.el));
 
-  const skipSponsorsToggle = settingsToggle(
-    () => sponsorSkipOn(),
-    (on) => setSponsorSkipOn(on),
-  );
-  settingsPanel.appendChild(settingsRowEl('Skip sponsors', skipSponsorsToggle.el));
-
   const qualitySelect = document.createElement('select');
   qualitySelect.className = 'settings-select';
   const QUALITY_OPTIONS = [
@@ -4963,6 +4962,20 @@
     },
   );
   settingsPanel.appendChild(settingsRowEl('Reduce motion', reduceMotionToggle.el));
+
+  settingsPanel.appendChild(settingsSectionHeading('Privacy'));
+
+  const skipSponsorsToggle = settingsToggle(
+    () => sponsorSkipOn(),
+    (on) => setSponsorSkipOn(on),
+  );
+  settingsPanel.appendChild(settingsRowEl('Skip sponsors', skipSponsorsToggle.el));
+
+  const dislikesToggle = settingsToggle(
+    () => dislikesEnabled(),
+    (on) => setDislikesEnabled(on),
+  );
+  settingsPanel.appendChild(settingsRowEl('Show dislike estimates', dislikesToggle.el));
 
   settingsPanel.appendChild(settingsSectionHeading('Filters'));
 
@@ -6216,13 +6229,16 @@
         const linksEl = document.createElement('div');
         linksEl.className = 'ch-about-links';
         for (const link of links) {
+          if (!isHttpUrl(link.url)) continue;
           const a = document.createElement('a');
           a.className = 'ch-about-link';
           a.textContent = link.label;
-          a.href = link.url || '#';
+          a.href = link.url;
+          a.target = '_blank';
+          a.rel = 'noopener';
           linksEl.appendChild(a);
         }
-        aboutEl.appendChild(linksEl);
+        if (linksEl.childElementCount) aboutEl.appendChild(linksEl);
       }
       if (!aboutEl.childElementCount) {
         const empty = document.createElement('div');
@@ -7142,6 +7158,11 @@
     tSkip.b.addEventListener('click', () => {
       sbEnabled = !sbEnabled;
       setSponsorSkipOn(sbEnabled);
+      if (sbEnabled) {
+        sbVideoId = null;
+        const vid = player()?.getVideoData?.()?.video_id;
+        if (vid) sbLoad(vid);
+      }
       syncTools();
       showOSD(ICONS.tools, sbEnabled ? 'Skip sponsors on' : 'Skip sponsors off');
     });
@@ -7503,12 +7524,12 @@
     const resolveExternalDescUrl = (raw) => {
       if (!raw) return null;
       try {
-        const abs = /^https?:\/\//i.test(raw) ? raw : (raw.startsWith('//') ? 'https:' + raw : null);
+        const abs = isHttpUrl(raw) ? raw : (raw.startsWith('//') ? 'https:' + raw : null);
         if (!abs) return null;
         const u = new URL(abs);
         if (/(^|\.)youtube\.com$/i.test(u.hostname) && u.pathname === '/redirect') {
           const q = u.searchParams.get('q');
-          return q && /^https?:\/\//i.test(q) ? q : null;
+          return q && isHttpUrl(q) ? q : null;
         }
         if (/(^|\.)(youtube\.com|youtu\.be|google\.com)$/i.test(u.hostname)) return null;
         return abs;
@@ -8045,6 +8066,7 @@
     const sbCache = new Map();
     const SB_CATS = ['sponsor', 'selfpromo', 'interaction'];
     const sbLoad = async (videoId) => {
+      if (!sbEnabled) return;
       if (!videoId || videoId === sbVideoId) return;
       sbVideoId = videoId;
       sbSegments = [];

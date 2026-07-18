@@ -2674,6 +2674,73 @@ async function checkDislikeEstimate(browser) {
   return violations;
 }
 
+// Return YouTube Dislike sends the exact videoId to a third party on every
+// watch load with no way to disable it — itube-dislikes (default ON, to
+// preserve the pre-existing behavior above) is the opt-out. With it OFF,
+// fetchDislikes must short-circuit before ever hitting the network: this
+// mocks the RYD endpoint (so a real request would be caught, not just
+// silently fail against the live API) and asserts zero requests land, and
+// that the estimate label stays empty (never a stale/partial value). It also
+// proves the Settings-panel toggle actually flips + persists the same pref
+// the mocked-off run seeded, so the wiring between the UI and the pref this
+// check gates is exercised, not just the pref in isolation.
+async function checkDislikesOptOut(browser) {
+  const violations = [];
+  const context = await newPrefContext(browser, { 'itube-dislikes': '0' });
+  const rydRequests = [];
+  try {
+    const page = await context.newPage();
+    page.on('request', (req) => { if (req.url().startsWith('https://returnyoutubedislikeapi.com/')) rydRequests.push(req.url()); });
+    await context.route(RYD_ROUTE_PATTERN, (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: DISLIKE_TEST_VIDEO_ID, dateCreated: '2020-01-01', likes: 100000, rawDislikes: 12345,
+        rawLikes: 100000, dislikes: 12345, rating: 4, viewCount: 1000000, deleted: false,
+      }),
+    }));
+    await page.goto(`https://www.youtube.com/watch?v=${DISLIKE_TEST_VIDEO_ID}`, { waitUntil: 'domcontentloaded' });
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(1200);
+
+    if (rydRequests.length > 0) {
+      violations.push({ check: 'dislikes-opt-out-no-fetch', detail: `expected 0 requests to returnyoutubedislikeapi.com with itube-dislikes=0, got ${rydRequests.length}: ${rydRequests.slice(0, 3).join(', ')}` });
+    }
+    const label = await readDislikeLabel(page);
+    if (label !== '' && label !== null) {
+      violations.push({ check: 'dislikes-opt-out-label-empty', detail: `expected the dislike label to stay empty with itube-dislikes=0, got "${label}"` });
+    }
+
+    const navBtn = await page.$('.nav-settings');
+    if (navBtn) {
+      await navBtn.click();
+      const toggled = await page.evaluate(() => {
+        const row = [...document.querySelectorAll('.settings-row')].find((r) => r.querySelector('.settings-row-label')?.textContent === 'Show dislike estimates');
+        const toggle = row?.querySelector('.settings-toggle');
+        if (!toggle) return null;
+        const before = toggle.classList.contains('active');
+        toggle.click();
+        return { before, after: toggle.classList.contains('active'), stored: (() => { try { return localStorage.getItem('itube-dislikes'); } catch (e) { return null; } })() };
+      });
+      if (!toggled) {
+        violations.push({ check: 'dislikes-settings-toggle-exists', detail: 'expected a "Show dislike estimates" settings row with a .settings-toggle' });
+      } else {
+        if (toggled.before !== false) {
+          violations.push({ check: 'dislikes-settings-toggle-initial', detail: `expected the toggle to read OFF given itube-dislikes=0, was active=${toggled.before}` });
+        }
+        if (toggled.after !== true || toggled.stored !== '1') {
+          violations.push({ check: 'dislikes-settings-toggle-persists', detail: `expected clicking the toggle to flip it on and persist itube-dislikes=1, got active=${toggled.after} stored="${toggled.stored}"` });
+        }
+      }
+    } else {
+      violations.push({ check: 'dislikes-settings-nav-exists', detail: 'expected a .nav-settings sidebar button to exist' });
+    }
+  } finally {
+    await context.close();
+  }
+  return violations;
+}
+
 // SponsorBlock auto-skip: segments come from a third-party API (privacy
 // hash-prefix endpoint, mocked here rather than hit live) and must (1) paint
 // as colored markers on the seek bar once the video's duration is known, and
@@ -2732,6 +2799,48 @@ async function checkSponsorBlock(browser) {
     await context.close();
   }
   return { violations };
+}
+
+// Companion to checkSponsorBlock: sbLoad used to fire unconditionally from
+// the playback tick regardless of the Skip-sponsors pref, so turning the
+// feature OFF still leaked the video id (as a hash prefix) to sponsor.ajay.app
+// on every watch. With itube-skip-sponsors=0 seeded before mount, sbLoad must
+// early-return before the fetch — this mocks the same endpoint checkSponsorBlock
+// mocks (so a real request would be caught) and asserts zero hits land.
+async function checkSponsorBlockDisabled(browser) {
+  const violations = [];
+  const context = await newPrefContext(browser, { 'itube-skip-sponsors': '0' });
+  const sbRequests = [];
+  try {
+    const page = await context.newPage();
+    page.on('request', (req) => { if (req.url().startsWith('https://sponsor.ajay.app/')) sbRequests.push(req.url()); });
+    await context.route(SPONSORBLOCK_ROUTE_PATTERN, (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        videoID: SPONSORBLOCK_TEST_VIDEO_ID,
+        segments: [{ category: 'sponsor', actionType: 'skip', segment: [8, 20], UUID: 'test-uuid' }],
+      }]),
+    }));
+    await page.goto(`https://www.youtube.com/watch?v=${SPONSORBLOCK_TEST_VIDEO_ID}`, { waitUntil: 'domcontentloaded' });
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 15000 }).catch(() => {});
+    await page.evaluate(() => {
+      const v = document.querySelector('#itube-stage video');
+      if (v) { v.muted = true; v.play(); }
+    });
+    await page.waitForTimeout(1500);
+    if (sbRequests.length > 0) {
+      violations.push({ check: 'sponsorblock-disabled-no-fetch', detail: `expected 0 requests to sponsor.ajay.app with itube-skip-sponsors=0, got ${sbRequests.length}: ${sbRequests.slice(0, 3).join(', ')}` });
+    }
+    const hasMarker = await page.evaluate(() => !!document.querySelector('.itube-sb-marker'));
+    if (hasMarker) {
+      violations.push({ check: 'sponsorblock-disabled-no-marker', detail: 'expected no .itube-sb-marker to appear when itube-skip-sponsors=0 (no fetch means no segments to paint)' });
+    }
+  } finally {
+    await context.close();
+  }
+  return violations;
 }
 
 // Regression: YouTube migrated videoOwnerRenderer to viewModels on some videos —
@@ -4595,6 +4704,22 @@ async function newAutoplayContext(browser, autoplayOn) {
   return context;
 }
 
+// Shared with checkSponsorBlockDisabled and checkDislikesOptOut: both prefs
+// (itube-skip-sponsors, itube-dislikes) can be read synchronously at
+// document-start (sbEnabled) or on the first watch mount (fetchDislikes), so
+// like newAutoplayContext above, the pref must already be in localStorage
+// BEFORE the userscript's own init script runs, not set afterward.
+async function newPrefContext(browser, prefs) {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await context.addCookies(CONSENT_COOKIES);
+  await context.addInitScript((p) => {
+    try { for (const [k, v] of Object.entries(p)) localStorage.setItem(k, v); } catch (e) {}
+  }, prefs);
+  const scriptSource = fs.readFileSync(SCRIPT_PATH, 'utf8');
+  await context.addInitScript({ content: scriptSource });
+  return context;
+}
+
 // The ads check (checkAdStateMachine/checkVideoAds) deliberately DISABLES
 // autoplay to keep it from interfering with ad-skip assertions — which means
 // nothing else in the suite actually proves the feature works. Autoplay is
@@ -5152,7 +5277,9 @@ module.exports = {
   checkSubscribeConfirmsOnPopup,
   checkWatchMetaReveals,
   checkDislikeEstimate,
+  checkDislikesOptOut,
   checkSponsorBlock,
+  checkSponsorBlockDisabled,
   checkColdLoadSkeleton,
   checkBootLoaderColdLoad,
   checkBootLoaderFeedColdLoad,
