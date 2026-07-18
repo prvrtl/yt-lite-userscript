@@ -93,6 +93,13 @@ in a headline.
 
 ## Caveats
 
+- **`scheduler.yield` (v4.45).** The restore-from-cache pump and the comments
+  append loop yield between chunks via `scheduler.yield` where available. This
+  is an input-responsiveness win on Chromium only — it lets a pending click or
+  keystroke jump ahead of the next chunk instead of waiting behind it. Safari
+  has no `scheduler` API and falls back to `setTimeout(0)`, which is the same
+  scheduling behavior iTube already used before this change — no regression,
+  no measured improvement claimed there.
 - **Chromium, not Safari.** Safari is the target; these numbers are a proxy. The
   DOM and script work are identical across both, but frame timing is
   engine-specific.

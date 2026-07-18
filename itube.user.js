@@ -2,7 +2,7 @@
 // @name         iTube
 // @name:en      iTube
 // @namespace    https://github.com/prvrtl/yt-lite-userscript
-// @version      4.44.0
+// @version      4.45.0
 // @description  YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @description:en YouTube rebuilt as a native-feeling Mac app — our own UI and player, YouTube's data. Faster, calmer, no clutter.
 // @author       prvrtl
@@ -226,6 +226,7 @@
   };
 
   const supportsPopover = 'showPopover' in HTMLElement.prototype;
+  const supportsAnchor = typeof window.CSS !== 'undefined' && !!window.CSS.supports?.('anchor-name', '--a');
 
   const makePopup = (className) => {
     const overlay = document.createElement('div');
@@ -464,6 +465,22 @@
     #itube .search-suggest.show {
       display: flex;
     }
+    #itube .search-suggest:popover-open {
+      display: flex;
+    }
+    @supports (anchor-name: --a) {
+      #itube .search-wrap {
+        anchor-name: --search-anchor;
+      }
+      #itube .search-suggest[popover] {
+        position-anchor: --search-anchor;
+        position: fixed;
+        top: calc(anchor(bottom) + 6px);
+        left: anchor(left);
+        right: auto;
+        width: anchor-size(width);
+      }
+    }
     #itube .search-suggest-row {
       display: flex;
       align-items: center;
@@ -532,6 +549,21 @@
     }
     #itube .acct-menu.open {
       display: flex;
+    }
+    #itube .acct-menu:popover-open {
+      display: flex;
+    }
+    @supports (anchor-name: --a) {
+      #itube .hd-avatar {
+        anchor-name: --acct-anchor;
+      }
+      #itube .acct-menu {
+        position-anchor: --acct-anchor;
+        position: fixed;
+        top: calc(anchor(bottom) + 8px);
+        left: anchor(left);
+        right: auto;
+      }
     }
     #itube .acct-head {
       display: flex;
@@ -746,6 +778,7 @@
       font-weight: 600;
       letter-spacing: -.01em;
       margin: 0 0 16px;
+      text-wrap: balance;
     }
     #itube .page-heading {
       font-size: 22px;
@@ -947,6 +980,7 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
+      text-wrap: pretty;
     }
     #itube .c-chan {
       margin-top: 4px;
@@ -992,6 +1026,10 @@
     }
     #itube .watch-left {
       min-width: 0;
+    }
+    #itube .watch-left.itube-cursor-hide,
+    #itube .watch-left.itube-cursor-hide * {
+      cursor: none;
     }
     #itube .watch-right {
       position: sticky;
@@ -1073,29 +1111,25 @@
       width: min(100%, calc(72vh * 16 / 9));
       margin: 0 auto;
     }
-    #itube .itube-ambient {
-      position: absolute;
-      top: -34%;
-      left: -22%;
-      width: 144%;
-      height: 168%;
-      z-index: 0;
-      display: none;
-      opacity: 0;
-      pointer-events: none;
-      filter: blur(96px) saturate(1.75);
-      transition: opacity .5s ease;
-      will-change: opacity;
-    }
-    #itube.theater .itube-ambient {
-      display: block;
-      opacity: .85;
-    }
     #itube.theater {
       background: #000;
     }
     #itube.theater .body {
-      background: radial-gradient(ellipse 130% 115% at 50% 42%, #0b0c12 0%, #000 66%);
+      background: radial-gradient(ellipse 130% 115% at 50% 42%, #121212 0%, #050505 100%);
+    }
+    @media (dynamic-range: high) {
+      #itube.theater .body {
+        background: radial-gradient(ellipse 130% 115% at 50% 42%, #060606 0%, #000 100%);
+      }
+    }
+    .itube-theater-scrim {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483200;
+      background: #000;
+      opacity: 0;
+      transition: opacity 180ms ease;
+      pointer-events: none;
     }
     #itube.theater .content {
       background: transparent;
@@ -1129,11 +1163,18 @@
     #itube-theater.active {
       color: var(--accent);
     }
+    #itube.theater #itube-stage {
+      border-radius: 0;
+      clip-path: none;
+    }
+    #itube.theater #itube-bar {
+      --accent: rgba(var(--accent-rgb), .7);
+    }
     @media (prefers-reduced-motion: reduce) {
-      #itube .itube-ambient {
+      #itube.theater .sidebar {
         transition: none;
       }
-      #itube.theater .sidebar {
+      .itube-theater-scrim {
         transition: none;
       }
     }
@@ -1272,6 +1313,7 @@
       font-size: 22px;
       font-weight: 600;
       letter-spacing: -.02em;
+      text-wrap: balance;
     }
     #itube .watch-meta {
       margin-top: 16px;
@@ -1425,6 +1467,63 @@
       #itube .watch-tools {
         transition: none;
       }
+    }
+    #itube .tool-menu {
+      position: fixed;
+      z-index: 10000;
+      min-width: 160px;
+      max-width: calc(100vw - 16px);
+      max-height: 60vh;
+      overflow-y: auto;
+      background: var(--raised);
+      border: 1px solid var(--hairline);
+      border-radius: var(--r-lg);
+      box-shadow: 0 12px 40px -12px rgba(0, 0, 0, .7);
+      padding: 6px;
+      display: none;
+      flex-direction: column;
+    }
+    #itube .tool-menu.open {
+      display: flex;
+    }
+    #itube .tool-menu:popover-open {
+      display: flex;
+    }
+    @supports (anchor-name: --a) {
+      #itube .tool-menu[style*="position-anchor"] {
+        top: calc(anchor(bottom) + 6px);
+        left: anchor(left);
+      }
+    }
+    #itube .tool-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 32px;
+      padding: 0 10px;
+      border: none;
+      border-radius: 8px;
+      background: none;
+      color: var(--text);
+      font: 500 13px -apple-system, system-ui, sans-serif;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+    }
+    #itube .tool-menu-item:hover {
+      background: var(--hover);
+    }
+    #itube .tool-menu-item.active {
+      color: var(--accent);
+    }
+    #itube .tool-menu-item svg {
+      width: 14px;
+      height: 14px;
+      flex: none;
+      visibility: hidden;
+    }
+    #itube .tool-menu-item.active svg {
+      visibility: visible;
     }
     #itube .watch-likes {
       display: flex;
@@ -1975,6 +2074,7 @@
       font-size: 16px;
       font-weight: 700;
       letter-spacing: -.01em;
+      color: var(--text);
     }
     #itube .popup-close {
       background: none;
@@ -2039,6 +2139,7 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
+      text-wrap: pretty;
     }
     #itube .rc-chan {
       margin-top: 4px;
@@ -2132,6 +2233,7 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
+      text-wrap: pretty;
     }
     #itube .row-chan {
       margin-top: 6px;
@@ -2385,12 +2487,19 @@
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
+      transition: opacity 200ms ease, visibility 0s linear 200ms;
     }
     #itube-stage.show #itube-bar,
     #itube-bar:focus-within {
       opacity: 1;
       visibility: visible;
       pointer-events: auto;
+      transition: opacity 120ms ease;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #itube-bar {
+        transition: none;
+      }
     }
     #itube-cue {
       position: absolute;
@@ -4259,6 +4368,8 @@
 
   const suggestEl = document.createElement('div');
   suggestEl.className = 'search-suggest';
+  const suggestUsePopover = supportsPopover && supportsAnchor;
+  if (suggestUsePopover) suggestEl.setAttribute('popover', 'auto');
 
   let suggestItems = [];
   let suggestIndex = -1;
@@ -4269,6 +4380,7 @@
     if (suggestTimer) { clearTimeout(suggestTimer); suggestTimer = null; }
     suggestGeneration++;
     suggestEl.classList.remove('show');
+    if (suggestUsePopover) { try { suggestEl.hidePopover(); } catch (e) {} }
     suggestEl.replaceChildren();
     suggestItems = [];
     suggestIndex = -1;
@@ -4295,6 +4407,7 @@
     suggestIndex = -1;
     if (!items.length) {
       suggestEl.classList.remove('show');
+      if (suggestUsePopover) { try { suggestEl.hidePopover(); } catch (e) {} }
       return;
     }
     for (const text of items) {
@@ -4308,6 +4421,7 @@
       suggestEl.appendChild(row);
     }
     suggestEl.classList.add('show');
+    if (suggestUsePopover) { try { suggestEl.showPopover(); } catch (e) {} }
   };
 
   const fetchSuggestions = async (q) => {
@@ -4439,6 +4553,7 @@
   acctList.append(acctChannel, acctStudio, acctSettings, acctSwitch, acctSignOut);
   acctMenu.append(acctHead, acctList);
   root.appendChild(acctMenu);
+  if (supportsPopover) acctMenu.setAttribute('popover', 'auto');
 
   let acctOpen = false;
   const positionAcctMenu = () => {
@@ -4453,22 +4568,33 @@
   const closeAcctMenu = () => {
     if (!acctOpen) return;
     acctOpen = false;
+    if (supportsPopover) { try { acctMenu.hidePopover(); } catch (e) {} }
     acctMenu.classList.remove('open');
     avatar.setAttribute('aria-expanded', 'false');
   };
   const openAcctMenu = () => {
     if (acctOpen) return;
     acctOpen = true;
+    if (supportsPopover) { try { acctMenu.showPopover(); } catch (e) {} }
     acctMenu.classList.add('open');
     avatar.setAttribute('aria-expanded', 'true');
-    positionAcctMenu();
+    if (!supportsAnchor) positionAcctMenu();
   };
   avatar.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); acctOpen ? closeAcctMenu() : openAcctMenu(); });
   acctMenu.addEventListener('click', (e) => { e.stopPropagation(); });
   acctList.addEventListener('click', () => { closeAcctMenu(); });
-  document.addEventListener('click', () => { closeAcctMenu(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAcctMenu(); });
-  window.addEventListener('resize', () => { if (acctOpen) positionAcctMenu(); });
+  if (supportsPopover) {
+    acctMenu.addEventListener('toggle', (e) => {
+      acctOpen = e.newState === 'open';
+      acctMenu.classList.toggle('open', acctOpen);
+      avatar.setAttribute('aria-expanded', acctOpen ? 'true' : 'false');
+      if (acctOpen && !supportsAnchor) positionAcctMenu();
+    });
+  } else {
+    document.addEventListener('click', () => { closeAcctMenu(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAcctMenu(); });
+  }
+  window.addEventListener('resize', () => { if (acctOpen && !supportsAnchor) positionAcctMenu(); });
 
   let accountLoaded = false;
   const loadAccount = async () => {
@@ -4856,6 +4982,7 @@
   const idle = window.requestIdleCallback
     ? (cb) => window.requestIdleCallback(cb, { timeout: 1500 })
     : (cb) => setTimeout(cb, 200);
+  const yieldTask = () => (window.scheduler && scheduler.yield ? scheduler.yield() : new Promise((r) => setTimeout(r)));
   const MAX_GUIDE_CHANNELS = 30;
   const GUIDE_POLL_MS = 200;
   const GUIDE_MAX_WAIT = 15000;
@@ -5431,11 +5558,12 @@
       cap();
       content.scrollTop = target;
       if (i < capturedItems.length) {
-        const pump = () => {
-          if (gen !== generation) return;
-          renderSlice();
-          cap();
-          if (i < capturedItems.length) idle(pump);
+        const pump = async () => {
+          while (gen === generation && i < capturedItems.length) {
+            renderSlice();
+            cap();
+            await yieldTask();
+          }
         };
         idle(pump);
       }
@@ -6556,6 +6684,143 @@
       if (open) syncTools();
     };
 
+    let toolMenuSeq = 0;
+    const createToolMenu = (btn) => {
+      const menu = document.createElement('div');
+      menu.className = 'tool-menu';
+      if (supportsPopover) menu.setAttribute('popover', 'auto');
+      if (supportsAnchor) {
+        const anchorName = '--itube-tool-anchor-' + (++toolMenuSeq);
+        btn.style.setProperty('anchor-name', anchorName);
+        menu.style.setProperty('position-anchor', anchorName);
+      }
+      root.appendChild(menu);
+      let open = false;
+      const position = () => {
+        const r = btn.getBoundingClientRect();
+        menu.style.top = Math.round(r.bottom + 6) + 'px';
+        let left = Math.round(r.left);
+        const w = menu.offsetWidth || 160;
+        if (left + w > window.innerWidth - 8) left = window.innerWidth - 8 - w;
+        if (left < 8) left = 8;
+        menu.style.left = left + 'px';
+      };
+      const close = () => {
+        if (!open) return;
+        open = false;
+        if (supportsPopover) { try { menu.hidePopover(); } catch (e) {} }
+        menu.classList.remove('open');
+        btn.setAttribute('aria-expanded', 'false');
+      };
+      const show = () => {
+        if (open) return;
+        open = true;
+        if (supportsPopover) { try { menu.showPopover(); } catch (e) {} }
+        menu.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
+        if (!supportsAnchor) position();
+      };
+      const onMenuClick = (e) => e.stopPropagation();
+      menu.addEventListener('click', onMenuClick);
+      const onToggle = (e) => {
+        open = e.newState === 'open';
+        menu.classList.toggle('open', open);
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open && !supportsAnchor) position();
+      };
+      const onDocClick = (e) => {
+        if (open && !menu.contains(e.target) && e.target !== btn) close();
+      };
+      const onDocKeydown = (e) => { if (open && e.key === 'Escape') close(); };
+      if (supportsPopover) {
+        menu.addEventListener('toggle', onToggle);
+      } else {
+        document.addEventListener('click', onDocClick);
+        document.addEventListener('keydown', onDocKeydown);
+      }
+      const onResize = () => { if (open && !supportsAnchor) position(); };
+      window.addEventListener('resize', onResize);
+      return {
+        isOpen: () => open,
+        toggle: () => (open ? close() : show()),
+        close,
+        setItems: (items) => {
+          menu.replaceChildren();
+          for (const it of items) {
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'tool-menu-item' + (it.active ? ' active' : '');
+            row.append(ICONS.check(), document.createTextNode(it.label));
+            row.addEventListener('click', () => { it.onSelect(); close(); });
+            menu.appendChild(row);
+          }
+        },
+        destroy: () => {
+          close();
+          menu.removeEventListener('click', onMenuClick);
+          menu.removeEventListener('toggle', onToggle);
+          document.removeEventListener('click', onDocClick);
+          document.removeEventListener('keydown', onDocKeydown);
+          window.removeEventListener('resize', onResize);
+          menu.remove();
+        },
+      };
+    };
+
+    const qualityMenu = createToolMenu(tQuality.b);
+    const speedMenu = createToolMenu(tSpeed.b);
+
+    const openQualityMenu = () => {
+      const p = player();
+      const levels = p && p.getAvailableQualityLevels ? p.getAvailableQualityLevels() : [];
+      if (!levels.length) return;
+      const cur = p.getPlaybackQuality ? p.getPlaybackQuality() : levels[0];
+      const seen = new Set();
+      const items = [];
+      for (const lvl of levels) {
+        if (lvl === 'auto' || seen.has(lvl)) continue;
+        seen.add(lvl);
+        items.push({
+          label: QUALITY_LABELS[lvl] || lvl,
+          active: lvl === cur,
+          onSelect: () => {
+            p.setPlaybackQualityRange?.(lvl, lvl);
+            lsSet('itube-quality', lvl);
+            syncTools();
+            showOSD(ICONS.tools, QUALITY_LABELS[lvl] || lvl);
+          },
+        });
+      }
+      if (levels.includes('auto')) {
+        items.unshift({
+          label: 'Auto',
+          active: cur === 'auto' || !cur,
+          onSelect: () => {
+            p.setPlaybackQualityRange?.('auto', 'auto');
+            lsSet('itube-quality', 'auto');
+            syncTools();
+            showOSD(ICONS.tools, 'Auto');
+          },
+        });
+      }
+      qualityMenu.setItems(items);
+      qualityMenu.toggle();
+    };
+
+    const openSpeedMenu = () => {
+      const items = SPEEDS.map((rate) => ({
+        label: rate + '×',
+        active: rate === desiredRate,
+        onSelect: () => {
+          applyRate(rate);
+          syncTools();
+          showOSD(ICONS.speed, rate + '×');
+        },
+      }));
+      speedMenu.setItems(items);
+      speedMenu.toggle();
+    };
+
     const signInHint = document.createElement('div');
     signInHint.className = 'watch-signin-hint';
     signInHint.style.display = 'none';
@@ -6707,23 +6972,10 @@
 
     toolsBtn.addEventListener('click', () => setToolsOpen(!toolsOpen));
     tAb.b.addEventListener('click', () => { cycleAb(); syncTools(); });
-    tSpeed.b.addEventListener('click', () => {
-      const i = SPEEDS.indexOf(desiredRate);
-      applyRate(SPEEDS[(i + 1) % SPEEDS.length]);
-      syncTools();
-      showOSD(ICONS.speed, desiredRate + '×');
-    });
-    tQuality.b.addEventListener('click', () => {
-      const p = player();
-      const levels = p && p.getAvailableQualityLevels ? p.getAvailableQualityLevels() : [];
-      if (!levels.length) return;
-      const cur = p.getPlaybackQuality ? p.getPlaybackQuality() : levels[0];
-      const idx = levels.indexOf(cur);
-      const next = levels[(idx + 1) % levels.length];
-      p.setPlaybackQualityRange?.(next, next);
-      syncTools();
-      showOSD(ICONS.tools, QUALITY_LABELS[next] || next);
-    });
+    tSpeed.b.setAttribute('aria-haspopup', 'menu');
+    tSpeed.b.addEventListener('click', (e) => { e.stopPropagation(); openSpeedMenu(); });
+    tQuality.b.setAttribute('aria-haspopup', 'menu');
+    tQuality.b.addEventListener('click', (e) => { e.stopPropagation(); openQualityMenu(); });
     tCC.b.addEventListener('click', () => { player()?.toggleSubtitles?.(); tCC.b.classList.toggle('active'); });
     tAudioTrack.b.addEventListener('click', () => {
       const p = player();
@@ -6917,6 +7169,7 @@
     transcriptSearch.type = 'text';
     transcriptSearch.className = 'transcript-search';
     transcriptSearch.placeholder = 'Search transcript';
+    transcriptSearch.style.display = 'none';
     const transcriptBody = document.createElement('div');
     transcriptBody.className = 'transcript-body';
     transcriptPopup.panel.append(transcriptPopupHeader, transcriptSearch, transcriptBody);
@@ -6983,11 +7236,7 @@
 
     const stageWrap = document.createElement('div');
     stageWrap.className = 'stage-wrap';
-    const ambient = document.createElement('canvas');
-    ambient.className = 'itube-ambient';
-    ambient.width = 32;
-    ambient.height = 18;
-    stageWrap.append(ambient, stage);
+    stageWrap.append(stage);
     watchLeft.append(stageWrap, title, meta);
     watch.append(watchLeft, watchRight, descPopup.overlay, transcriptPopup.overlay);
 
@@ -7206,10 +7455,79 @@
       firstRelatedId = related[0]?.id || null;
       relatedWrap.replaceChildren();
       for (const item of related) relatedWrap.appendChild(createCompactCard(item));
+      updateMediaSessionMetadata();
     };
 
     let currentPlaylist = null;
     let firstRelatedId = null;
+
+    const resolveNextId = () => {
+      const p = player();
+      const curId = p?.getVideoData?.()?.video_id;
+      if (currentPlaylist) {
+        const idx = currentPlaylist.items.findIndex((it) => it.id === curId);
+        if (idx !== -1 && idx + 1 < currentPlaylist.items.length) {
+          return { nextId: currentPlaylist.items[idx + 1].id, listId: currentPlaylist.id };
+        }
+        return { nextId: null, listId: null };
+      }
+      return { nextId: firstRelatedId, listId: null };
+    };
+
+    const resolvePrevId = () => {
+      const p = player();
+      const curId = p?.getVideoData?.()?.video_id;
+      if (currentPlaylist) {
+        const idx = currentPlaylist.items.findIndex((it) => it.id === curId);
+        if (idx > 0) return { prevId: currentPlaylist.items[idx - 1].id, listId: currentPlaylist.id };
+      }
+      return { prevId: null, listId: null };
+    };
+
+    const updateMediaSessionMetadata = () => {
+      if (!('mediaSession' in navigator)) return;
+      try {
+        const vid = resolveVideoId();
+        if (!vid) return;
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: title.textContent || '',
+          artist: channelName.textContent || '',
+          artwork: [
+            { src: 'https://i.ytimg.com/vi/' + vid + '/mqdefault.jpg', sizes: '320x180', type: 'image/jpeg' },
+            { src: 'https://i.ytimg.com/vi/' + vid + '/hqdefault.jpg', sizes: '480x360', type: 'image/jpeg' },
+          ],
+        });
+      } catch (e) {}
+    };
+
+    const syncMediaSessionQueueActions = () => {
+      if (!('mediaSession' in navigator)) return;
+      try {
+        const { prevId, listId: prevListId } = resolvePrevId();
+        navigator.mediaSession.setActionHandler('previoustrack', prevId ? () => watchNav(prevId, prevListId) : null);
+        const { nextId, listId } = resolveNextId();
+        navigator.mediaSession.setActionHandler('nexttrack', nextId ? () => watchNav(nextId, listId) : null);
+      } catch (e) {}
+    };
+
+    const setMediaSessionAvActions = () => {
+      if (!('mediaSession' in navigator)) return;
+      try {
+        navigator.mediaSession.setActionHandler('play', () => { wired?.play().catch(() => {}); });
+        navigator.mediaSession.setActionHandler('pause', () => { wired?.pause(); });
+        navigator.mediaSession.setActionHandler('seekbackward', () => {
+          if (wired) wired.currentTime = Math.max(0, wired.currentTime - 10);
+        });
+        navigator.mediaSession.setActionHandler('seekforward', () => {
+          if (wired && isFinite(wired.duration)) wired.currentTime = Math.min(wired.duration, wired.currentTime + 10);
+        });
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+          if (!wired || ui?.isLive || !isFinite(wired.duration)) return;
+          if (details.fastSeek && wired.fastSeek) wired.fastSeek(details.seekTime);
+          else wired.currentTime = details.seekTime;
+        });
+      } catch (e) {}
+    };
 
     const renderQueuePanel = (videoId) => {
       queueWrap.replaceChildren();
@@ -7246,6 +7564,7 @@
       if (!listId) {
         currentPlaylist = null;
         renderQueuePanel(videoId);
+        syncMediaSessionQueueActions();
         return;
       }
       if (!currentPlaylist || currentPlaylist.id !== listId) {
@@ -7254,6 +7573,7 @@
         currentPlaylist = panel ? { id: listId, title: panel.title, items: panel.items } : null;
       }
       renderQueuePanel(videoId);
+      syncMediaSessionQueueActions();
     };
 
     const mountedFromSpa = spaNav;
@@ -7267,6 +7587,7 @@
     let commentsShown = 0;
     let commentsLoading = false;
     let commentsFetched = false;
+    let commentsGeneration = 0;
 
     let transcriptGeneration = 0;
     let transcriptSegments = [];
@@ -7325,6 +7646,7 @@
       transcriptActiveIndex = -1;
       transcriptExpanded = false;
       transcriptSearch.value = '';
+      transcriptSearch.style.display = 'none';
       transcriptStatus.textContent = '';
       transcriptBtn.style.display = 'none';
       const gen = transcriptGeneration;
@@ -7347,18 +7669,29 @@
       }
     };
 
+    const transcriptProvedUnavailable = () => {
+      transcriptBtn.style.display = 'none';
+      if (transcriptExpanded) transcriptPopupWire.close();
+    };
+
     const loadTranscript = async (videoId) => {
       if (!videoId || transcriptLoadedId === videoId || transcriptLoading) return;
       const gen = transcriptGeneration;
       transcriptLoading = true;
+      transcriptSearch.style.display = 'none';
       transcriptStatus.textContent = 'Loading transcript…';
       const pres = await waitForPlayerResponse(videoId, gen);
       if (gen !== transcriptGeneration) return;
       const track = pickCaptionTrack(pres?.captions?.playerCaptionsTracklistRenderer?.captionTracks);
       if (!track?.baseUrl) {
         transcriptLoading = false;
-        if (pres) transcriptLoadedId = videoId;
-        transcriptStatus.textContent = pres ? 'Transcript unavailable' : 'Transcript not ready — try again';
+        if (pres) {
+          transcriptLoadedId = videoId;
+          transcriptStatus.textContent = 'Transcript unavailable';
+          transcriptProvedUnavailable();
+        } else {
+          transcriptStatus.textContent = 'Transcript not ready — try again';
+        }
         return;
       }
       const tr = await fetch(track.baseUrl + '&fmt=json3', { credentials: 'omit' }).catch(() => null);
@@ -7367,6 +7700,7 @@
         transcriptLoading = false;
         transcriptLoadedId = videoId;
         transcriptStatus.textContent = 'Transcript unavailable';
+        transcriptProvedUnavailable();
         return;
       }
       const tj = await tr.json().catch(() => null);
@@ -7376,11 +7710,13 @@
       transcriptLoadedId = videoId;
       if (!segments.length) {
         transcriptStatus.textContent = 'Transcript unavailable';
+        transcriptProvedUnavailable();
         return;
       }
       transcriptSegments = segments;
       transcriptStatus.textContent = '';
       renderTranscriptLines();
+      transcriptSearch.style.display = '';
     };
 
     const showCommentsOff = () => {
@@ -7394,12 +7730,14 @@
 
     const fetchComments = async (initial) => {
       if (commentsLoading || !commentsToken || commentsShown >= MAX_COMMENTS) return;
+      const gen = commentsGeneration;
       commentsLoading = true;
       commentsSpinner.classList.add('show');
       commentsMore.style.display = 'none';
       if (initial) commentsList.replaceChildren();
       try {
         const res = await innertube('next', { continuation: commentsToken });
+        if (gen !== commentsGeneration) return;
         if (!res) {
           console.warn('[itube] comments fetch failed');
           commentsFetched = false;
@@ -7422,8 +7760,18 @@
         const page = initial ? COMMENTS_PAGE : (MAX_COMMENTS - commentsShown);
         const room = Math.min(page, MAX_COMMENTS - commentsShown);
         const batch = items.slice(0, Math.max(0, room));
-        for (const item of batch) commentsList.appendChild(createCommentRow(item));
-        commentsShown += batch.length;
+        let appended = 0;
+        for (let bi = 0; bi < batch.length; bi++) {
+          if (gen !== commentsGeneration) break;
+          commentsList.appendChild(createCommentRow(batch[bi]));
+          appended++;
+          if ((bi + 1) % 10 === 0) {
+            await yieldTask();
+            if (gen !== commentsGeneration) break;
+          }
+        }
+        if (gen !== commentsGeneration) return;
+        commentsShown += appended;
         if (initial && commentsShown === 0 && !commentsToken) {
           showCommentsOff();
           return;
@@ -7464,6 +7812,7 @@
     };
 
     const resetComments = (data = window.ytInitialData, fresh = true) => {
+      commentsGeneration++;
       commentsList.replaceChildren();
       commentsSpinner.classList.remove('show');
       commentsMore.style.display = 'none';
@@ -7709,44 +8058,54 @@
     };
     let theaterOn = false;
     let theaterBtn = null;
-    let ambientCtx = null;
-    let ambientTimer = 0;
-    const AMBIENT_W = 32;
-    const AMBIENT_H = 18;
-    const AMBIENT_MS = 70;
-    const ambientDraw = () => {
-      ambientTimer = 0;
-      if (!theaterOn) return;
-      if (document.visibilityState === 'visible' && !document.fullscreenElement && !document.webkitFullscreenElement && !document.pictureInPictureElement) {
-        const video = stage.querySelector('video');
-        if (video && !video.paused && video.readyState >= 2) {
-          if (!ambientCtx) ambientCtx = ambient.getContext('2d');
-          try { ambientCtx.drawImage(video, 0, 0, AMBIENT_W, AMBIENT_H); } catch (e) {}
-        }
-      }
-      ambientTimer = setTimeout(ambientDraw, AMBIENT_MS);
+
+    const THEATER_ENTER_MS = 180;
+    const THEATER_EXIT_MS = 220;
+    let theaterScrim = null;
+    let theaterScrimTimer = null;
+
+    const clearTheaterScrim = () => {
+      clearTimeout(theaterScrimTimer);
+      theaterScrimTimer = null;
+      if (theaterScrim) { theaterScrim.remove(); theaterScrim = null; }
     };
-    const startAmbient = () => {
-      if (ambientTimer || prefersReducedMotion()) return;
-      ambientTimer = setTimeout(ambientDraw, AMBIENT_MS);
-    };
-    const stopAmbient = () => {
-      if (ambientTimer) { clearTimeout(ambientTimer); ambientTimer = 0; }
-    };
-    const applyTheater = (on) => {
+
+    const applyTheaterInstant = (on) => {
       theaterOn = !!on;
       root.classList.toggle('theater', theaterOn);
       if (theaterBtn) theaterBtn.classList.toggle('active', theaterOn);
       setTheaterPref(theaterOn);
-      if (theaterOn) startAmbient(); else stopAmbient();
+    };
+
+    const applyTheater = (on) => {
+      const next = !!on;
+      if (next === theaterOn) return;
+      if (prefersReducedMotion()) { applyTheaterInstant(next); return; }
+      clearTheaterScrim();
+      const scrim = document.createElement('div');
+      scrim.className = 'itube-theater-scrim';
+      document.body.appendChild(scrim);
+      theaterScrim = scrim;
+      requestAnimationFrame(() => { scrim.style.opacity = '1'; });
+      theaterScrimTimer = setTimeout(() => {
+        applyTheaterInstant(next);
+        scrim.style.transition = `opacity ${THEATER_EXIT_MS}ms ease`;
+        scrim.style.opacity = '0';
+        theaterScrimTimer = setTimeout(() => {
+          if (theaterScrim === scrim) { scrim.remove(); theaterScrim = null; }
+          theaterScrimTimer = null;
+        }, THEATER_EXIT_MS);
+      }, THEATER_ENTER_MS);
     };
 
     const toggleFullscreen = () => {
       const active = document.fullscreenElement || document.webkitFullscreenElement;
       if (active) {
         (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      } else if (stage.requestFullscreen) {
+        stage.requestFullscreen({ navigationUI: 'hide' });
       } else {
-        (stage.requestFullscreen || stage.webkitRequestFullscreen).call(stage);
+        stage.webkitRequestFullscreen();
       }
       showOSD(ICONS.fs, active ? 'Exit Fullscreen' : 'Fullscreen');
     };
@@ -7913,6 +8272,7 @@
       restoreUserVolume(p);
     };
 
+    let showBar = () => {};
     const wireBar = (p, video) => {
       ui.live.addEventListener('click', () => {
         if (p.seekToLiveHead) p.seekToLiveHead();
@@ -7945,24 +8305,33 @@
       ui.fs.addEventListener('click', () => toggleFullscreen());
       theaterBtn = ui.theater;
       theaterBtn.addEventListener('click', () => applyTheater(!theaterOn));
-      applyTheater(theaterPref());
+      applyTheaterInstant(theaterPref());
+      setMediaSessionAvActions();
 
+      const isImmersive = () => theaterOn || !!(document.fullscreenElement || document.webkitFullscreenElement);
+      const IDLE_MS = 2800;
+      const IDLE_MS_IMMERSIVE = 3000;
       let hideTimer = null;
-      const showBar = () => {
+      showBar = () => {
         stage.classList.add('show');
+        watchLeft.classList.remove('itube-cursor-hide');
         clearTimeout(hideTimer);
         hideTimer = setTimeout(() => {
-          if (!video.paused && !ui.bar.matches(':hover')) stage.classList.remove('show');
-        }, 2800);
+          if (!video.paused && !ui.bar.matches(':hover')) {
+            stage.classList.remove('show');
+            if (isImmersive()) watchLeft.classList.add('itube-cursor-hide');
+          }
+        }, isImmersive() ? IDLE_MS_IMMERSIVE : IDLE_MS);
       };
       stage.addEventListener('mousemove', showBar, { passive: true });
       stage.addEventListener('mouseleave', () => {
         clearTimeout(hideTimer);
+        watchLeft.classList.remove('itube-cursor-hide');
         if (!video.paused) stage.classList.remove('show');
       }, { passive: true });
 
-      video.addEventListener('play', () => { ui.play.replaceChildren(ICONS.pause()); showBar(); }, bound);
-      video.addEventListener('pause', () => { ui.play.replaceChildren(ICONS.play()); showBar(); }, bound);
+      video.addEventListener('play', () => { ui.play.replaceChildren(ICONS.pause()); showBar(); updateMediaSessionMetadata(); }, bound);
+      video.addEventListener('pause', () => { ui.play.replaceChildren(ICONS.play()); showBar(); updateMediaSessionMetadata(); }, bound);
       video.addEventListener('timeupdate', () => {
         if (adActive) { killAd(video); return; }
         if (abA != null && abB != null && video.currentTime >= abB) { video.currentTime = abA; }
@@ -8030,6 +8399,7 @@
       }
       syncAdState();
       resumePlayback();
+      if (toolsOpen) syncTools();
       if (video) sbSkipCheck(video);
       if (video && !adActive && video.playbackRate !== desiredRate) video.playbackRate = desiredRate;
 
@@ -8135,6 +8505,7 @@
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable || (target.tagName === 'BUTTON' && !target.closest('#itube-bar')))) return;
       const video = wired;
       if (!video) return;
+      showBar();
       if (HANDLED_KEYS.has(e.key)) e.stopImmediatePropagation();
       switch (e.key) {
         case ' ':
@@ -8250,7 +8621,6 @@
     document.addEventListener('keydown', onKeydown, true);
 
     const onVisibility = () => {
-      if (theaterOn) { if (document.visibilityState === 'visible') startAmbient(); else stopAmbient(); }
       if (boostCtx && document.visibilityState === 'visible' && boostCtx.state === 'suspended') boostCtx.resume().catch(() => {});
       if (audioOnly && document.visibilityState === 'hidden') {
         const v = stage.querySelector('video');
@@ -8298,6 +8668,7 @@
       adRestoring = false;
       wired = null;
       transcriptGeneration++;
+      commentsGeneration++;
       transcriptSegments = [];
       transcriptLineEls = [];
       transcriptActiveIndex = -1;
@@ -8317,11 +8688,25 @@
         }
       }
       releaseCaptions(stage);
-      stopAmbient();
+      clearTheaterScrim();
+      qualityMenu.destroy();
+      speedMenu.destroy();
       root.classList.remove('theater');
+      watchLeft.classList.remove('itube-cursor-hide');
       document.removeEventListener('keydown', onKeydown, true);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('yt-navigate-finish', onNavigateFinish);
+      if ('mediaSession' in navigator) {
+        try {
+          navigator.mediaSession.setActionHandler('play', null);
+          navigator.mediaSession.setActionHandler('pause', null);
+          navigator.mediaSession.setActionHandler('seekbackward', null);
+          navigator.mediaSession.setActionHandler('seekforward', null);
+          navigator.mediaSession.setActionHandler('seekto', null);
+          navigator.mediaSession.setActionHandler('previoustrack', null);
+          navigator.mediaSession.setActionHandler('nexttrack', null);
+        } catch (e) {}
+      }
       watchApi = null;
     };
   };

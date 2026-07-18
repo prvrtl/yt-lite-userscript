@@ -49,6 +49,7 @@ const {
   checkDescriptionChips,
   checkPlaybackSpeed,
   checkTranscript,
+  checkTranscriptProvedUnavailable,
   checkVolumeBoost,
   checkToolsRow,
   checkAudioOnly,
@@ -599,6 +600,25 @@ async function main() {
     for (const v of violations) console.log(`    page=transcript ${fmt(v)}`);
   }
 
+  // Regression guard: the pill's metadata check can say yes while the real
+  // caption fetch says no — must hide the pill and close the popup, never
+  // leave a dead "Transcript unavailable" state reachable.
+  if (!args.page && (!args.check || args.check === 'functional')) {
+    console.log('\n--- transcript proved unavailable ---');
+    let violations;
+    try {
+      violations = await checkTranscriptProvedUnavailable(browser);
+    } catch (err) {
+      console.error(`  ERROR running the transcript-proved-unavailable check: ${err.stack || err}`);
+      violations = [{ check: 'transcript-proved-unavailable', detail: String(err.message || err).split('\n')[0] }];
+    }
+    const status = violations.length === 0 ? 'PASS' : 'FAIL';
+    if (status === 'FAIL') anyFail = true;
+    table.push({ page: 'transcript', check: 'functional', status, count: violations.length });
+    console.log(`  transcript proved unavailable: ${status}${violations.length ? ` (${violations.length} violation${violations.length === 1 ? '' : 's'})` : ''}`);
+    for (const v of violations) console.log(`    page=transcript ${fmt(v)}`);
+  }
+
   // Transcript must not fetch anything until the toggle is opened — no
   // /youtubei/v1/player POST and no /api/timedtext request on mount.
   if (!args.page && (!args.check || args.check === 'functional')) {
@@ -976,8 +996,9 @@ async function main() {
     for (const v of violations) console.log(`    page=frameexport ${fmt(v)}`);
   }
 
-  // Theater mode toggles a full-screen cinema layout + ambient canvas and
-  // persists the choice, so it runs once in its own watch context.
+  // Theater mode toggles a full-screen cinema layout (squared frame, static
+  // vignette, scrim-covered transition, unified idle-hide) and persists the
+  // choice, so it runs once in its own watch context.
   if (!args.page && (!args.check || args.check === 'functional')) {
     console.log('\n--- theater mode ---');
     let violations;

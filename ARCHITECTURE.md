@@ -125,6 +125,51 @@ leave a stale or blank header — caching it properly would mean caching the
 header payload too, which is a bigger change than this mechanism is worth
 right now.
 
+## Theater mode v2, MediaSession, and popover menus (v4.45)
+
+Theater's ambient-glow canvas is gone; the surround is a static CSS vignette
+and enter/exit goes through an opaque scrim (fade in, swap layout classes,
+fade out) instead of an instant class toggle, so `.content`'s `overflow` is
+always set before the scrim starts fading out (no scrollbar flash). The idle
+timer that hides the bar also toggles a `.itube-cursor-hide` class on
+`.watch-left` (`cursor: none` on it and descendants) in theater/fullscreen —
+extended from the existing hide-timer guards (never while paused, never while
+the bar is hovered), not a second parallel timer.
+
+**MediaSession queue actions must route through `watchNav`, never
+`player.previousVideo()/nextVideo()`.** Those methods drive the parked,
+offscreen `ytd-app` player instance directly — calling them changes what the
+headless engine plays without going through iTube's own router/state, so
+iTube's UI (title, queue highlight, related list) desyncs from what's
+actually playing. `previoustrack`/`nexttrack` resolve the prev/next id from
+iTube's own `currentPlaylist`/`firstRelatedId` state and call `watchNav(id,
+listId)` — the same client-side navigation a queue-panel click uses — and are
+only registered (non-null) when iTube actually knows a prev/next item exists.
+
+**Popover menus (account menu, search-suggest, Quality/Speed tool menus)**
+call `showPopover()`/`hidePopover()` manually from our own click handlers
+rather than declaring a native `popovertarget`/`popoverTargetElement` invoker
+relationship. This is a theoretical light-dismiss race: a browser that treats
+the trigger button as an ordinary outside click (not a recognized invoker)
+could auto-close the popover on `pointerdown` and then have our own `click`
+handler read stale open-state and immediately reopen it, making the button
+unable to close its own menu. Probed against Chromium 149 (the current
+Playwright-bundled build) with a real trusted click on both the account
+avatar and the Quality pill while open — it reliably closes, not reopens — so
+no native-invoker rework has been done. If this class of bug ever surfaces
+(different engine, different Chromium build), the fix is to set
+`btn.popoverTargetElement = menu` (and drop the manual open call on that
+button) so the browser's own invoker-aware toggle semantics take over instead
+of racing our JS.
+
+**Generation counters guard every per-video async path.** `renderGeneration`,
+`transcriptGeneration`, and `commentsGeneration` are bumped on every
+navigation/reset; anything that awaits across a navigation boundary (an
+`innertube()` fetch, a `yieldTask()` chunk) must re-check its captured `gen`
+against the live counter before touching shared state or the DOM — otherwise
+a fetch that resolves after the user has already navigated to a different
+video appends stale rows (comments) or renders a stale transcript.
+
 ## Non-negotiables (carried over — every one of these has bitten us)
 
 - No `innerHTML` anywhere. Trusted Types is enforced on youtube.com.

@@ -11,6 +11,17 @@ const { waitForApp, openPage, newContext } = require('../lib/harness');
 // runWatchFunctional (which runs against the default single-track video).
 const MULTI_AUDIO_VIDEO_ID = '0e3GPea1Tyg';
 
+// Perceived (relative) luminance of a `getComputedStyle(...).color` string
+// (rgb()/rgba()), 0 (black) to 1 (white). Used to catch text that inherited
+// a near-black color instead of the app's light --text token.
+function luminanceOf(colorStr) {
+  const m = /rgba?\(([^)]+)\)/.exec(colorStr || '');
+  if (!m) return null;
+  const [r, g, b] = m[1].split(',').map((n) => parseFloat(n));
+  if ([r, g, b].some((n) => Number.isNaN(n))) return null;
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
 async function getPlayerVolume(page) {
   return page.evaluate(() => {
     const p = document.getElementById('movie_player');
@@ -345,29 +356,50 @@ async function runWatchFunctional(page) {
     report('tools-tray-opens', `expected .watch-tools to gain .open after a real click on the Tools pill (3 attempts)${clickError ? ` — last click failed: ${clickError}` : ''}`);
   }
   // A single stale label ("Auto" left over from the previous video) used to
-  // satisfy the old `> 0` options check on the removed <select>. Real
-  // quality data is a ladder of several concrete resolutions, each rendered
-  // as a resolution the user can recognise — cycle the Quality tool button
-  // and collect every label it shows.
+  // satisfy the old `> 0` options check on the removed <select>. Real quality
+  // data is a ladder of several concrete resolutions. v4.45 replaced the
+  // one-click cycle (which got users stuck re-clicking through a whole
+  // ladder to find the one they wanted, e.g. stuck on "144p") with a real
+  // anchored menu listing every level at once — open it and read the items.
   const YT_QUALITY_LABELS = /^\d+p$|^auto$/i;
   const quality = await page.evaluate(async () => {
     const btn = Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('Quality'));
     if (!btn) return null;
-    const val = btn.querySelector('.watch-tool-val');
-    const labels = new Set([val.textContent]);
-    for (let i = 0; i < 8; i++) {
-      btn.click();
+    btn.click();
+    await new Promise((r) => setTimeout(r, 200));
+    const items = Array.from(document.querySelectorAll('.tool-menu.open .tool-menu-item, .tool-menu:popover-open .tool-menu-item'));
+    const labels = items.map((it) => it.textContent.trim());
+    const activeCount = items.filter((it) => it.classList.contains('active')).length;
+    // Prefer a concrete resolution over "Auto": forcing a specific level is
+    // applied by the real player far more promptly than waiting for it to
+    // renegotiate down to an adaptive "auto" choice, which can lag well past
+    // a short fixed wait and isn't the thing this assertion is after.
+    const other = items.find((it) => !it.classList.contains('active') && it.textContent.trim() !== 'Auto')
+      || items.find((it) => !it.classList.contains('active'));
+    const otherLabel = other ? other.textContent.trim() : null;
+    other?.click();
+    let valAfter = btn.querySelector('.watch-tool-val')?.textContent;
+    for (let i = 0; i < 20 && otherLabel && valAfter !== otherLabel; i++) {
       await new Promise((r) => setTimeout(r, 150));
-      labels.add(val.textContent);
+      valAfter = btn.querySelector('.watch-tool-val')?.textContent;
     }
-    return [...labels];
+    return { labels, activeCount, otherLabel, valAfter };
   });
   if (!quality) {
     report('quality-options', 'expected a Tools row Quality button to exist, got none');
   } else {
-    const badLabels = quality.filter((l) => !YT_QUALITY_LABELS.test((l || '').trim()));
+    if (!quality.labels.length) {
+      report('quality-menu-opens', 'expected clicking the Quality pill to open a menu listing at least one quality item');
+    }
+    const badLabels = quality.labels.filter((l) => !YT_QUALITY_LABELS.test((l || '').trim()));
     if (badLabels.length) {
-      report('quality-options', `expected every Quality tool label to match /^\\d+p$|^auto$/i, got malformed: [${badLabels.join(', ')}]`);
+      report('quality-options', `expected every Quality menu item to match /^\\d+p$|^auto$/i, got malformed: [${badLabels.join(', ')}]`);
+    }
+    if (quality.labels.length && quality.activeCount !== 1) {
+      report('quality-menu-marks-current', `expected exactly one .tool-menu-item.active (the current quality) in the Quality menu, got ${quality.activeCount}`);
+    }
+    if (quality.otherLabel && quality.valAfter !== quality.otherLabel) {
+      report('quality-menu-selects', `expected clicking a non-active Quality menu item ("${quality.otherLabel}") to update the pill's value text, got "${quality.valAfter}"`);
     }
   }
   await page.keyboard.press('Escape');
@@ -1372,6 +1404,16 @@ async function checkWatchPopups(browser) {
       if (afterOpen.textLength === 0) {
         violations.push({ check: 'description-popup-full-text', detail: 'expected the Description popup body to contain the full description text' });
       }
+      // Regression guard: .popup-title used to inherit `color` through a
+      // [popover] element, whose UA stylesheet sets `color: CanvasText`
+      // (near-black) on the popover host itself — that beat the light
+      // --text token inherited from #itube, rendering the title unreadable
+      // on the dark panel. Assert the computed color is actually light.
+      const descTitleColor = await page.evaluate(() => getComputedStyle(document.querySelector('.desc-popup .popup-title')).color);
+      const descLum = luminanceOf(descTitleColor);
+      if (descLum == null || descLum < 0.4) {
+        violations.push({ check: 'description-popup-title-readable', detail: `expected .desc-popup .popup-title color to be light on the dark panel, got ${descTitleColor} (luminance=${descLum})` });
+      }
       await page.keyboard.press('Escape');
       await page.waitForTimeout(250);
       const afterEscape = await page.evaluate(() => document.querySelector('.desc-popup')?.classList.contains('show'));
@@ -1403,20 +1445,41 @@ async function checkWatchPopups(browser) {
       if (state.descOpen) {
         violations.push({ check: 'popups-mutually-exclusive', detail: 'expected opening the Transcript popup to close an already-open Description popup' });
       }
+      // v4.45 added a real recovery path: if the actual caption fetch proves
+      // the pill's metadata wrong (empty/failed body on a live, flaky
+      // caption endpoint), loadTranscript() hides the pill AND closes the
+      // popup it just opened — same as checkTranscriptProvedUnavailable
+      // exercises deterministically. That is an intentional, correct outcome
+      // here too, not a bug, so distinguish it from a real "pill did nothing"
+      // failure by also checking whether the pill itself got hidden.
       if (!state.transcriptOpen) {
-        violations.push({ check: 'transcript-popup-opens', detail: 'expected the Transcript pill to open .transcript-popup' });
-      }
-      const backdropDismiss = await page.evaluate(() => {
-        const overlay = document.querySelector('.transcript-popup');
-        if (!overlay) return null;
-        overlay.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        return true;
-      });
-      if (backdropDismiss) {
-        await page.waitForTimeout(250);
-        const stillOpen = await page.evaluate(() => document.querySelector('.transcript-popup')?.classList.contains('show'));
-        if (stillOpen && !(await page.evaluate(() => 'showPopover' in HTMLElement.prototype))) {
-          violations.push({ check: 'transcript-popup-backdrop-closes', detail: 'expected clicking the overlay backdrop to close the Transcript popup' });
+        const pillNowHidden = await page.evaluate(() => {
+          const btn = document.querySelector('.watch-action-btn[aria-label="Transcript"]');
+          return !!btn && getComputedStyle(btn).display === 'none';
+        });
+        if (pillNowHidden) {
+          console.log('  watch-popups: note — the Transcript popup opened then self-closed because the caption fetch proved unavailable (recovery path, see checkTranscriptProvedUnavailable); skipping the remaining transcript-popup assertions');
+        } else {
+          violations.push({ check: 'transcript-popup-opens', detail: 'expected the Transcript pill to open .transcript-popup' });
+        }
+      } else {
+        const transcriptTitleColor = await page.evaluate(() => getComputedStyle(document.querySelector('.transcript-popup .popup-title')).color);
+        const transcriptLum = luminanceOf(transcriptTitleColor);
+        if (transcriptLum == null || transcriptLum < 0.4) {
+          violations.push({ check: 'transcript-popup-title-readable', detail: `expected .transcript-popup .popup-title color to be light on the dark panel, got ${transcriptTitleColor} (luminance=${transcriptLum})` });
+        }
+        const backdropDismiss = await page.evaluate(() => {
+          const overlay = document.querySelector('.transcript-popup');
+          if (!overlay) return null;
+          overlay.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          return true;
+        });
+        if (backdropDismiss) {
+          await page.waitForTimeout(250);
+          const stillOpen = await page.evaluate(() => document.querySelector('.transcript-popup')?.classList.contains('show'));
+          if (stillOpen && !(await page.evaluate(() => 'showPopover' in HTMLElement.prototype))) {
+            violations.push({ check: 'transcript-popup-backdrop-closes', detail: 'expected clicking the overlay backdrop to close the Transcript popup' });
+          }
         }
       }
       // The transcript popup is a full-viewport overlay too — close it via
@@ -2850,15 +2913,17 @@ async function checkThumbFlyAnimation(page) {
   return { violations };
 }
 
-// Theater mode: a bar button (and the `t` shortcut) must toggle an immersive
-// cinema layout — a `.theater` class on the #itube root and a visible
-// `.itube-ambient` light-spill canvas — persist the choice in localStorage, and
-// tear back down cleanly. This guards the whole feature: the button going dead,
-// the ambient canvas never showing (or never hiding again, which would leave a
-// blurred overlay stuck on the page), the preference not persisting, and the
-// keyboard shortcut regressing. The ambient render loop's zero-idle-cost and
-// reduced-motion gating are covered by review of the throttled setTimeout loop;
-// here we assert the user-visible state machine.
+// Theater mode v2 (v4.45): a bar button (and the `t` shortcut) must toggle an
+// immersive cinema layout — a `.theater` class on the #itube root, a squared
+// (border-radius:0) stage, an idle-hide that also hides the cursor — persist
+// the choice in localStorage, and tear back down cleanly. The ambient-glow
+// canvas is GONE entirely (replaced by a static CSS vignette), so this test
+// asserts its ABSENCE rather than its on/off display — the inverse of what
+// v4.44 checked. Enter/exit now goes through a scrim-covered cross-fade
+// (~180ms in, ~220ms out) instead of an instant class swap, so assertions
+// wait for it to settle and then confirm the scrim was torn down, not left
+// stuck over the page. Under prefers-reduced-motion the whole scrim path
+// must be skipped for an instant toggle — asserted separately at the end.
 async function checkTheaterMode(browser) {
   const violations = [];
   const context = await newContext(browser);
@@ -2876,33 +2941,82 @@ async function checkTheaterMode(browser) {
     }
     const read = () => page.evaluate(() => {
       const root = document.getElementById('itube');
-      const amb = document.querySelector('.itube-ambient');
+      const stage = document.getElementById('itube-stage');
       return {
         cls: !!(root && root.classList.contains('theater')),
-        disp: amb ? getComputedStyle(amb).display : null,
+        ambientPresent: !!document.querySelector('.itube-ambient'),
+        scrimPresent: !!document.querySelector('.itube-theater-scrim'),
+        stageRadius: stage ? getComputedStyle(stage).borderRadius : null,
         pref: (() => { try { return localStorage.getItem('itube-theater'); } catch (e) { return null; } })(),
       };
     });
+
     await page.evaluate(() => document.getElementById('itube-theater').click());
+    // Enter transition is scrim-in(180ms) -> class swap -> scrim-out(220ms)
+    // -> scrim removed; ~400ms total, give it comfortable margin.
+    await page.waitForTimeout(500);
     const on = await read();
     if (!on.cls) violations.push({ check: 'theater-enters', detail: 'clicking the theater button did not add .theater to #itube' });
-    if (on.disp !== 'block') violations.push({ check: 'theater-ambient-shows', detail: `expected .itube-ambient display:block in theater, got ${on.disp}` });
+    if (on.ambientPresent) violations.push({ check: 'theater-ambient-removed', detail: 'expected .itube-ambient to be entirely absent (the ambient-glow canvas was removed in v4.45), found one' });
+    if (on.scrimPresent) violations.push({ check: 'theater-scrim-teardown', detail: 'expected .itube-theater-scrim to be removed from the DOM once the enter transition settles' });
+    if (on.stageRadius && on.stageRadius !== '0px') violations.push({ check: 'theater-square-frame', detail: `expected #itube-stage border-radius to be 0 in theater mode, got ${on.stageRadius}` });
     if (on.pref !== '1') violations.push({ check: 'theater-persists-on', detail: `expected localStorage itube-theater=1 after enabling, got ${on.pref}` });
 
+    // --- unified idle hide: bar + cursor hide together after 3s idle while playing ---
+    await page.evaluate(async () => {
+      const v = document.querySelector('#itube-stage video');
+      if (v) { v.muted = true; try { await v.play(); } catch (e) {} }
+    });
+    await page.hover('#itube-stage', { position: { x: 200, y: 200 } }).catch(() => {});
+    await page.waitForTimeout(3300);
+    const idle = await page.evaluate(() => ({
+      barShown: document.getElementById('itube-stage')?.classList.contains('show'),
+      cursorHidden: document.querySelector('.watch-left')?.classList.contains('itube-cursor-hide'),
+    }));
+    if (idle.barShown) violations.push({ check: 'theater-idle-hides-bar', detail: 'expected the player bar to lose .show after 3s idle in theater mode while playing' });
+    if (!idle.cursorHidden) violations.push({ check: 'theater-idle-hides-cursor', detail: 'expected .watch-left to gain .itube-cursor-hide after 3s idle in theater mode while playing' });
+
+    await page.hover('#itube-stage', { position: { x: 220, y: 220 } }).catch(() => {});
+    await page.waitForTimeout(100);
+    const restored = await page.evaluate(() => ({
+      barShown: document.getElementById('itube-stage')?.classList.contains('show'),
+      cursorHidden: document.querySelector('.watch-left')?.classList.contains('itube-cursor-hide'),
+    }));
+    if (!restored.barShown || restored.cursorHidden) {
+      violations.push({ check: 'theater-mousemove-restores', detail: `expected a mousemove to instantly restore the bar and un-hide the cursor, got ${JSON.stringify(restored)}` });
+    }
+
     await page.evaluate(() => document.getElementById('itube-theater').click());
+    await page.waitForTimeout(500);
     const off = await read();
     if (off.cls) violations.push({ check: 'theater-exits', detail: 'clicking the theater button again did not remove .theater' });
-    if (off.disp !== 'none') violations.push({ check: 'theater-ambient-hides', detail: `expected .itube-ambient display:none when off, got ${off.disp}` });
+    if (off.scrimPresent) violations.push({ check: 'theater-scrim-teardown-exit', detail: 'expected .itube-theater-scrim to be removed from the DOM once the exit transition settles' });
     if (off.pref !== '0') violations.push({ check: 'theater-persists-off', detail: `expected localStorage itube-theater=0 after disabling, got ${off.pref}` });
 
-    // The `t` shortcut is YouTube's own theater key — it must toggle too.
+    // The `t` shortcut is YouTube's own theater key — it must toggle too
+    // (also goes through the animated scrim transition now).
     await page.evaluate(() => document.body.click());
     await page.keyboard.press('t');
-    await page.waitForTimeout(120);
+    await page.waitForTimeout(500);
     if (!(await page.evaluate(() => document.getElementById('itube').classList.contains('theater')))) {
       violations.push({ check: 'theater-key-toggle', detail: "pressing 't' did not toggle theater mode on" });
     }
     await page.keyboard.press('t');
+    await page.waitForTimeout(500);
+
+    // --- prefers-reduced-motion: instant toggle, scrim never appears ---
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.evaluate(() => { try { localStorage.removeItem('itube-theater'); } catch (e) {} });
+    await page.evaluate(() => document.getElementById('itube-theater').click());
+    await page.waitForTimeout(50);
+    const reducedOn = await page.evaluate(() => ({
+      cls: document.getElementById('itube').classList.contains('theater'),
+      scrimPresent: !!document.querySelector('.itube-theater-scrim'),
+    }));
+    if (!reducedOn.cls) violations.push({ check: 'theater-reduced-motion-instant', detail: 'expected prefers-reduced-motion to toggle theater mode instantly (no scrim wait) on click' });
+    if (reducedOn.scrimPresent) violations.push({ check: 'theater-reduced-motion-no-scrim', detail: 'expected prefers-reduced-motion to skip the scrim transition entirely' });
+    await page.evaluate(() => document.getElementById('itube-theater').click());
+    await page.emulateMedia({ reducedMotion: null });
   } finally {
     await page.close();
     await context.close();
@@ -3016,19 +3130,44 @@ async function checkAccountMenu(browser) {
         violations.push({ check: 'account-menu-item', detail: `expected ${desc} (item "${label}" missing or wrong)` });
       }
     }
-    // The avatar toggles the menu even while hidden (logged out): click opens it,
-    // Escape closes it.
-    const toggled = await page.evaluate(() => {
-      const av = document.querySelector('.hd-avatar');
-      const menu = document.querySelector('.acct-menu');
-      av.click();
-      const opened = menu.classList.contains('open');
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      const closed = !menu.classList.contains('open');
-      return { opened, closed };
+    // The avatar toggles the menu even while hidden (logged out): click opens
+    // it, Escape closes it. v4.45 made the menu a real popover where
+    // supported, whose native light-dismiss only reacts to TRUSTED key
+    // events — a synthetic dispatchEvent(...) from page.evaluate is not
+    // trusted and would silently no-op there, so Escape goes through
+    // page.keyboard.press (a real, trusted key event) rather than JS.
+    const opened = await page.evaluate(() => {
+      document.querySelector('.hd-avatar').click();
+      return document.querySelector('.acct-menu').classList.contains('open');
     });
-    if (!toggled.opened) violations.push({ check: 'account-menu-opens', detail: 'clicking the avatar did not open the account menu (.open)' });
-    if (!toggled.closed) violations.push({ check: 'account-menu-escape', detail: 'pressing Escape did not close the account menu' });
+    if (!opened) violations.push({ check: 'account-menu-opens', detail: 'clicking the avatar did not open the account menu (.open)' });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+    const closed = await page.evaluate(() => !document.querySelector('.acct-menu').classList.contains('open'));
+    if (!closed) violations.push({ check: 'account-menu-escape', detail: 'pressing Escape did not close the account menu' });
+
+    // Regression guard for a light-dismiss race: our popover click handler
+    // doesn't declare a native invoker relationship, so a strict reading of
+    // the spec allows the browser to auto-close the popover on pointerdown
+    // (treating the avatar as an outside click) and then have our own click
+    // handler read stale state and immediately reopen it — net effect,
+    // clicking the avatar again can't close its own menu. Needs a REAL
+    // trusted click (a synthetic .click() never dispatches the pointerdown
+    // light-dismiss keys off of), so force the avatar visible for this.
+    await page.evaluate(() => { document.querySelector('.hd-avatar').style.display = 'block'; });
+    await page.click('.hd-avatar');
+    await page.waitForTimeout(150);
+    const reopened = await page.evaluate(() => document.querySelector('.acct-menu').classList.contains('open'));
+    if (!reopened) {
+      violations.push({ check: 'account-menu-click-to-close-setup', detail: 'expected a real click on the avatar to open the account menu (setup for the click-to-close check)' });
+    } else {
+      await page.click('.hd-avatar');
+      await page.waitForTimeout(150);
+      const closedByClick = await page.evaluate(() => !document.querySelector('.acct-menu').classList.contains('open'));
+      if (!closedByClick) {
+        violations.push({ check: 'account-menu-click-to-close', detail: 'expected clicking the avatar again while the menu is open to close it, not reopen it (light-dismiss race)' });
+      }
+    }
   } finally {
     await page.close();
     await context.close();
@@ -3298,22 +3437,26 @@ async function checkPlaybackSpeed(browser) {
       const toolsBtn = Array.from(document.querySelectorAll('.watch-actions .watch-action-btn')).find((b) => b.textContent.includes('Tools'));
       toolsBtn.click();
       await new Promise((r) => setTimeout(r, 300));
-      // The Tools Speed button cycles one SPEEDS step per click (there is no
-      // direct "set to 3" control any more — the player-bar select that used
-      // to allow that was removed in v4.41 in favor of this single surface),
-      // so click forward from 1x until the video reaches 3x or we run out of
-      // reasonable attempts.
+      // v4.45: the Tools Speed button opens a real menu listing every SPEEDS
+      // entry (no more one-click-per-step cycle) — open it and click "3×"
+      // directly, the same "set to 3" a user would do in one gesture.
       const speedBtn = Array.from(document.querySelectorAll('.watch-tools .watch-tool')).find((b) => b.textContent.includes('Speed'));
-      for (let i = 0; i < 15 && !(v && Math.abs(v.playbackRate - 3) < 0.01); i++) {
-        speedBtn.click();
-        await new Promise((r) => setTimeout(r, 80));
-      }
+      speedBtn.click();
+      await new Promise((r) => setTimeout(r, 200));
+      const items = Array.from(document.querySelectorAll('.tool-menu.open .tool-menu-item, .tool-menu:popover-open .tool-menu-item'));
+      const item3x = items.find((it) => it.textContent.trim() === '3×');
+      item3x?.click();
       await new Promise((r) => setTimeout(r, 1600));
       return {
         playback: v ? v.playbackRate : null,
         stored: (() => { try { return localStorage.getItem('itube-speed'); } catch (e) { return null; } })(),
+        foundItem: !!item3x,
+        itemCount: items.length,
       };
     });
+    if (!set.foundItem) {
+      violations.push({ check: 'speed-menu-has-3x', detail: `expected the Speed menu to list a "3×" item among its ${set.itemCount} entries` });
+    }
     if (Math.abs((set.playback || 0) - 3) > 0.01) {
       violations.push({ check: 'speed-beyond-2x', detail: `expected video.playbackRate 3 (past YouTube's 2x cap), got ${set.playback}` });
     }
@@ -3412,6 +3555,55 @@ async function checkTranscript(browser) {
     const after = await page.evaluate(() => document.querySelector('#itube-stage video')?.currentTime ?? null);
     if (targetTime == null || after == null || Math.abs(after - targetTime) > 2) {
       violations.push({ check: 'transcript-seek', detail: `expected currentTime to land within ~2s of clicked line's ${targetTime}, got ${after}` });
+    }
+  } finally {
+    await page.close();
+    await context.close();
+  }
+  return violations;
+}
+
+// v4.45 regression guard: a caption track can exist in the player response's
+// metadata (so the pill is shown) while the actual json3 body comes back
+// empty — a region-locked ASR endpoint, a stale track entry, whatever the
+// cause. Before this fix that left a dead "Transcript unavailable" popup
+// reachable from a pill that should never have appeared confident in the
+// first place. Reproduce the exact split deterministically (metadata says
+// yes, fetch says no) by intercepting the real /api/timedtext request and
+// substituting an empty body, then assert the pill hides and the popup
+// closes rather than sitting there empty.
+async function checkTranscriptProvedUnavailable(browser) {
+  const violations = [];
+  const context = await newContext(browser);
+  const { page } = await openPage(context, 'https://www.youtube.com/watch?v=aircAruvnKk');
+  try {
+    await waitForApp(page, { timeout: 30000 }).catch(() => {});
+    await page.waitForSelector('#itube-stage video', { timeout: 30000 }).catch(() => {});
+    const pill = await page.waitForSelector('.watch-action-btn[aria-label="Transcript"]', { timeout: 10000 }).catch(() => null);
+    if (!pill) {
+      console.log('  transcript-proved-unavailable: SKIP — no Transcript pill appeared within 10s (this video may have no caption tracks)');
+      return violations;
+    }
+    await page.route('**/api/timedtext**', (route) => {
+      const url = route.request().url();
+      if (/fmt=json3/.test(url)) route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      else route.continue();
+    });
+    await pill.click();
+    await page.waitForSelector('.transcript-popup.show', { timeout: 5000 }).catch(() => {});
+    const closed = await page.waitForFunction(() => !document.querySelector('.transcript-popup')?.classList.contains('show'), { timeout: 5000 }).catch(() => null);
+    const after = await page.evaluate(() => {
+      const btn = document.querySelector('.watch-action-btn[aria-label="Transcript"]');
+      return {
+        popupOpen: document.querySelector('.transcript-popup')?.classList.contains('show'),
+        pillVisible: !!btn && getComputedStyle(btn).display !== 'none',
+      };
+    });
+    if (!closed || after.popupOpen) {
+      violations.push({ check: 'transcript-empty-fetch-closes-popup', detail: 'expected an empty transcript fetch (metadata said yes, body said no) to close the Transcript popup rather than leave a dead "Transcript unavailable" state open' });
+    }
+    if (after.pillVisible) {
+      violations.push({ check: 'transcript-empty-fetch-hides-pill', detail: 'expected an empty transcript fetch to hide the Transcript pill — its metadata-based presence was wrong for this video' });
     }
   } finally {
     await page.close();
@@ -3540,16 +3732,43 @@ async function checkToolsRow(browser) {
       const speedBtn = Array.from(document.querySelectorAll('#itube .watch-tools .watch-tool'))
         .find((b) => b.textContent.includes('Speed'));
       const beforeLabel = speedBtn ? speedBtn.querySelector('.watch-tool-val').textContent : null;
+      // v4.45: clicking the pill opens a menu instead of cycling directly —
+      // open it and pick a different entry to actually change the rate.
       speedBtn.click();
+      await new Promise((r) => setTimeout(r, 200));
+      const items = Array.from(document.querySelectorAll('.tool-menu.open .tool-menu-item, .tool-menu:popover-open .tool-menu-item'));
+      const target = items.find((it) => it.textContent.trim() !== beforeLabel) || items[0];
+      target?.click();
       await new Promise((r) => setTimeout(r, 300));
       const afterLabel = speedBtn.querySelector('.watch-tool-val').textContent;
-      return { before, after: v ? v.playbackRate : null, beforeLabel, afterLabel };
+      return { before, after: v ? v.playbackRate : null, beforeLabel, afterLabel, menuItemCount: items.length };
     });
+    if (!speedResult.menuItemCount) {
+      violations.push({ check: 'tools-speed-menu-opens', detail: 'expected clicking the Tools Speed button to open a menu listing SPEEDS entries' });
+    }
     if (speedResult.before == null || speedResult.after == null || Math.abs(speedResult.after - speedResult.before) < 0.01) {
-      violations.push({ check: 'tools-speed-works', detail: `expected clicking the Tools Speed button to change video.playbackRate, got ${JSON.stringify(speedResult)}` });
+      violations.push({ check: 'tools-speed-works', detail: `expected picking a different Speed menu entry to change video.playbackRate, got ${JSON.stringify(speedResult)}` });
     }
     if (speedResult.beforeLabel === speedResult.afterLabel) {
-      violations.push({ check: 'tools-speed-label-updates', detail: `expected the Tools Speed value text to change after clicking, stayed at ${speedResult.afterLabel}` });
+      violations.push({ check: 'tools-speed-label-updates', detail: `expected the Tools Speed value text to change after picking a different entry, stayed at ${speedResult.afterLabel}` });
+    }
+
+    // Regression guard for a light-dismiss race (see checkAccountMenu and
+    // ARCHITECTURE.md): needs a REAL trusted click, since a synthetic
+    // .click() never dispatches the pointerdown light-dismiss keys off of.
+    const speedPill = page.locator('.watch-tools .watch-tool', { hasText: 'Speed' });
+    await speedPill.click();
+    await page.waitForTimeout(200);
+    const menuOpenedByRealClick = await page.evaluate(() => !!document.querySelector('.tool-menu.open, .tool-menu:popover-open'));
+    if (!menuOpenedByRealClick) {
+      violations.push({ check: 'tools-menu-click-to-close-setup', detail: 'expected a real click on the Speed pill to open its menu (setup for the click-to-close check)' });
+    } else {
+      await speedPill.click();
+      await page.waitForTimeout(200);
+      const menuStillOpen = await page.evaluate(() => !!document.querySelector('.tool-menu.open, .tool-menu:popover-open'));
+      if (menuStillOpen) {
+        violations.push({ check: 'tools-menu-click-to-close', detail: 'expected clicking the Speed pill again while its menu is open to close it, not reopen it (light-dismiss race)' });
+      }
     }
 
     const closed = await page.evaluate(() => {
@@ -4374,6 +4593,7 @@ module.exports = {
   checkTheaterMode,
   checkPlaybackSpeed,
   checkTranscript,
+  checkTranscriptProvedUnavailable,
   checkVolumeBoost,
   checkToolsRow,
   checkAudioOnly,

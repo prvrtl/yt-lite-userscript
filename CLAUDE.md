@@ -75,3 +75,10 @@ rather than a bug. Re-run before believing a red.
   …). There is no feature-flag system and no config file.
 - Files under `tests/` carry explanatory comments — each check says which real
   bug it exists to catch. Match that style.
+- **Gotcha:** never reference the bare identifier `CSS` anywhere in
+  `itube.user.js` (e.g. `CSS.supports(...)`) — the file declares a top-level
+  `const CSS` (the CSS-in-JS stylesheet template) later in the same IIFE
+  scope, so an earlier reference hits its temporal dead zone and throws
+  `ReferenceError: Cannot access 'CSS' before initialization` at runtime,
+  breaking the entire app. `node --check` does not catch this. Use
+  `window.CSS` instead.
